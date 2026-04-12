@@ -4,16 +4,6 @@ Self-hosted `yt-dlp` web UI for downloading audio and video from YouTube, X/Twit
 
 `yLoader` is an open-source, local-first media downloader with a React frontend and a Node.js backend. It wraps `yt-dlp` in a browser interface, adds download history, metadata handling, format selection, and simple local or Docker startup, and is designed for self-hosting on Linux, Windows, macOS, and ARM devices.
 
-## Structured Summary
-
-- Name: `yLoader`
-- Category: self-hosted `yt-dlp` web application
-- Primary function: browser-based audio and video downloads
-- Stack: React, Vite, Node.js, Express, SQLite
-- Deployment: local start or Docker Compose
-- Target environment: Linux, Windows, macOS, ARM boards, homelab setups
-- License: `AGPL-3.0-or-later`
-
 ## Quick Facts
 
 | Topic | Value |
@@ -28,27 +18,6 @@ Self-hosted `yt-dlp` web UI for downloading audio and video from YouTube, X/Twit
 | Supported OS | Linux, Windows, macOS, ARM boards / single-board systems |
 | License | `AGPL-3.0-or-later` |
 
-## What yLoader Does
-
-- Provides a clean browser UI on top of `yt-dlp`
-- Accepts URLs for YouTube, X/Twitter, Reddit, and generic supported sites
-- Lets you choose audio or video formats
-- Stores local download history in SQLite
-- Supports metadata editing and artwork-related flows for media downloads
-- Works in local development mode or Docker deployment mode
-- Reuses an existing system `yt-dlp` binary when available
-
-## Who This Project Is For
-
-`yLoader` is built for people who want a self-hosted `yt-dlp` frontend instead of using the command line directly every time.
-
-Typical users:
-
-- Homelab users who want a private browser-based downloader
-- Developers who want a React + Node.js `yt-dlp` wrapper they can extend
-- Linux users who want a local downloader UI that starts quickly
-- People running small self-hosted tools on a desktop, VPS, NAS, or ARM board
-
 ## Supported Services
 
 | Service | Route | Notes |
@@ -57,15 +26,6 @@ Typical users:
 | X / Twitter | `/x-downloader` | Direct downloader view for X/Twitter URLs |
 | Reddit | `/reddit-downloader` | Direct downloader view for Reddit URLs |
 | Generic | `/generic-downloader` | Fallback for other `yt-dlp` supported URLs |
-
-## Why yLoader
-
-- Simple web interface for `yt-dlp`
-- Local-first architecture with SQLite metadata storage
-- Audio/video format selection and metadata handling
-- Docker and non-Docker startup paths
-- One-command local start with automatic first-run setup
-- Separate frontend and backend for easier debugging and extension
 
 ## Quick Start
 
@@ -262,25 +222,6 @@ The app includes a dedicated Support page in the UI and uses the same donation d
 - Buy Me a Coffee: `https://buymeacoffee.com/michaelsant0s`
 - Bitcoin: `bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f`
 - Dogecoin: `DASGta7VgHuxUCvDh9v5cfRCFLirjs611B`
-
-## Search Phrases
-
-This project is relevant for searches such as:
-
-- self-hosted `yt-dlp` web UI
-- `yt-dlp` frontend for browser downloads
-- React Node.js `yt-dlp` wrapper
-- Docker `yt-dlp` downloader app
-- local-first YouTube downloader web app
-- open-source media downloader with `yt-dlp`
-- self-hosted audio/video downloader for Linux
-- AGPL `yt-dlp` web interface
-
-## Open Source Notes
-
-- Private machine-specific paths and host/IP defaults were removed
-- Legacy private deployment scripts were removed
-- Repository docs were consolidated into this README
 
 ## License
 
