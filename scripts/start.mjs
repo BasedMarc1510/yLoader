@@ -14,7 +14,9 @@ const BACKEND_DIR = path.join(ROOT_DIR, 'backend')
 const FRONTEND_DIR = path.join(ROOT_DIR, 'frontend')
 const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads')
 const BACKEND_DATA_DIR = path.join(ROOT_DIR, 'backend-data')
-const LOCAL_YTDLP_DIR = path.join(ROOT_DIR, '.tools', 'yt-dlp-bin')
+const LOCAL_TOOLS_DIR = path.join(ROOT_DIR, '.tools')
+const LOCAL_YTDLP_DIR = path.join(LOCAL_TOOLS_DIR, 'yt-dlp-bin')
+const LOCAL_NPM_CACHE_DIR = path.join(LOCAL_TOOLS_DIR, 'npm-cache')
 const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
 const YTDLP_URLS = {
@@ -158,9 +160,20 @@ async function ensureNodeDependencies(projectDir, label) {
   const installArgs = fs.existsSync(lockFile)
     ? ['ci', '--no-audit', '--no-fund']
     : ['install', '--no-audit', '--no-fund']
+  const installEnv = sanitizeEnv({
+    ...process.env,
+    npm_config_cache: LOCAL_NPM_CACHE_DIR,
+    NPM_CONFIG_CACHE: LOCAL_NPM_CACHE_DIR,
+  })
+
+  fs.mkdirSync(LOCAL_NPM_CACHE_DIR, { recursive: true })
 
   info(`${label}: installing dependencies (${installArgs[0]})...`)
-  await runCommand(NPM_CMD, npmArgs(installArgs), { cwd: projectDir, prefix: `${label}:install` })
+  await runCommand(NPM_CMD, npmArgs(installArgs), {
+    cwd: projectDir,
+    env: installEnv,
+    prefix: `${label}:install`,
+  })
 }
 
 function getYtDlpAsset() {
@@ -289,7 +302,7 @@ async function main() {
 
   fs.mkdirSync(DOWNLOADS_DIR, { recursive: true })
   fs.mkdirSync(BACKEND_DATA_DIR, { recursive: true })
-  fs.mkdirSync(path.join(ROOT_DIR, '.tools'), { recursive: true })
+  fs.mkdirSync(LOCAL_TOOLS_DIR, { recursive: true })
 
   await ensurePortFree(4000, 'backend')
   await ensurePortFree(5173, 'frontend')
