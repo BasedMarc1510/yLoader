@@ -1,11 +1,5 @@
-@font-face {
-  font-family: 'YouTube Sans Bold';
-  src: url('/youtube-sans-bold.ttf') format('truetype');
-  font-weight: bold;
-  font-style: normal;
-}
-
 .youtube-title {
-  font-family: 'YouTube Sans Bold', sans-serif !important;
-  font-weight: bold !important;
+  font-family: 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em;
 }

@@ -271,8 +271,17 @@ if (!YT_DLP) {
 
 const YT_PIP = process.env.YT_PIP_PATH || ''
 const YT_DLP_UPDATE_METHOD = (process.env.YT_DLP_UPDATE_METHOD || (YT_PIP ? 'pip' : 'self')).toLowerCase()
+const DISABLED_UPDATE_METHODS = new Set(['disabled', 'none', 'system'])
+
+function isYtDlpUpdateDisabled() {
+  return DISABLED_UPDATE_METHODS.has(YT_DLP_UPDATE_METHOD)
+}
 
 function getYtDlpUpdateCommand() {
+  if (isYtDlpUpdateDisabled()) {
+    return null
+  }
+
   if (YT_DLP_UPDATE_METHOD === 'pip') {
     if (!YT_PIP) {
       throw new Error('YT_DLP_UPDATE_METHOD is set to "pip" but YT_PIP_PATH is missing')
@@ -327,6 +336,7 @@ try {
 
 console.log(`Using yt-dlp: ${YT_DLP}`)
 console.log(`yt-dlp JS runtimes: ${YT_DLP_JS_RUNTIMES}`)
+console.log(`yt-dlp update method: ${YT_DLP_UPDATE_METHOD}`)
 if (YT_DLP_COOKIES_FILE) {
   console.log(`yt-dlp cookies file: ${YT_DLP_COOKIES_FILE}`)
 }
@@ -388,6 +398,10 @@ async function checkAndAutoUpdateYtDlp() {
     }
 
     const updateCmd = getYtDlpUpdateCommand()
+    if (!updateCmd) {
+      console.log(`Skipping yt-dlp auto-update check because updates are managed externally (${YT_DLP_UPDATE_METHOD}).`)
+      return
+    }
     console.log(`Checking for yt-dlp updates via ${updateCmd.label}...`)
 
     // Get current version first
@@ -472,7 +486,14 @@ app.get('/api/yt-dlp/status', async (_req, res) => {
       console.warn('Failed to fetch PyPI data, keeping current version as latest:', e.message)
     }
 
-    res.json({ currentVersion, latestVersion, outdated, platform: os.platform() })
+    res.json({
+      currentVersion,
+      latestVersion,
+      outdated,
+      platform: os.platform(),
+      updateMethod: YT_DLP_UPDATE_METHOD,
+      updateSupported: !isYtDlpUpdateDisabled(),
+    })
   } catch (err) {
     res.status(500).json({ error: 'Failed to query yt-dlp status', details: String(err?.message || err) })
   }
@@ -641,6 +662,11 @@ app.get('/api/yt-dlp/update/stream', async (req, res) => {
   let updateCmd
   try {
     updateCmd = getYtDlpUpdateCommand()
+    if (!updateCmd) {
+      send('error', `Updates are managed externally for this yt-dlp installation (${YT_DLP_UPDATE_METHOD}).`)
+      send('end', 'failed')
+      return res.end()
+    }
   } catch (cmdErr) {
     send('error', String(cmdErr?.message || cmdErr))
     send('end', 'failed')

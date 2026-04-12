@@ -1,6 +1,6 @@
 import React from 'react'
 import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material'
-import { Menu, Home, Download } from 'lucide-react'
+import { Menu, Home, Download, Heart } from 'lucide-react'
 import { Box as ImageBox } from '@mui/material'
 import { useLocation } from 'react-router-dom'
 import { useI18n } from '../providers/I18nProvider'
@@ -14,6 +14,8 @@ export default function Header({ onMenuClick, sidebarWidth = 240 }) {
     switch (location.pathname) {
       case '/downloads':
         return { title: t('routes.downloads'), icon: <Download size={18} /> }
+      case '/support':
+        return { title: t('routes.support'), icon: <Heart size={18} /> }
       case '/youtube-downloader':
         return { title: t('routes.youtubeDownloader'), icon: <ImageBox component="img" src="/dl-icons/youtube-icon.svg" alt="YouTube" sx={{ width: 20, height: 20 }} /> }
       case '/reddit-downloader':

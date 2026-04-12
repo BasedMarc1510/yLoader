@@ -23,6 +23,9 @@ const YTDLP_URLS = {
   linuxArm64: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64',
   darwin: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos',
 }
+const DEFAULT_YTDLP_CANDIDATES = IS_WINDOWS
+  ? ['yt-dlp.exe', 'yt-dlp']
+  : ['yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp']
 
 function info(message) {
   process.stdout.write(`[yloader] ${message}\n`)
@@ -207,12 +210,28 @@ async function downloadFile(url, destinationPath) {
 }
 
 async function ensureLocalYtDlp() {
+  const explicitYtDlpPath = String(process.env.YT_DLP_PATH || '').trim()
+  const candidates = explicitYtDlpPath
+    ? [explicitYtDlpPath, ...DEFAULT_YTDLP_CANDIDATES]
+    : DEFAULT_YTDLP_CANDIDATES
+
+  for (const candidate of candidates) {
+    try {
+      const { stdout } = await runCommand(candidate, ['--version'], { captureOutput: true })
+      const normalizedVersion = stdout.trim()
+      info(`yt-dlp: using existing binary at ${candidate}${normalizedVersion ? ` (version ${normalizedVersion})` : ''}.`)
+      return { ytDlpPath: candidate, suggestedUpdateMethod: 'disabled' }
+    } catch {
+      // try next candidate
+    }
+  }
+
   const asset = getYtDlpAsset()
   fs.mkdirSync(LOCAL_YTDLP_DIR, { recursive: true })
 
   const ytDlpPath = path.join(LOCAL_YTDLP_DIR, asset.fileName)
   if (!fs.existsSync(ytDlpPath)) {
-    info(`yt-dlp: downloading binary for ${process.platform}...`)
+    info(`yt-dlp: downloading binary for ${process.platform} because no existing installation was found...`)
     await downloadFile(asset.url, ytDlpPath)
   } else {
     info('yt-dlp: local binary already present.')
@@ -225,7 +244,7 @@ async function ensureLocalYtDlp() {
   const { stdout } = await runCommand(ytDlpPath, ['--version'], { captureOutput: true })
   info(`yt-dlp: ready (version ${stdout.trim()}).`)
 
-  return { ytDlpPath }
+  return { ytDlpPath, suggestedUpdateMethod: 'self' }
 }
 
 async function waitForHttp(url, timeoutMs) {
@@ -278,7 +297,7 @@ async function main() {
   await ensureNodeDependencies(BACKEND_DIR, 'backend')
   await ensureNodeDependencies(FRONTEND_DIR, 'frontend')
 
-  const { ytDlpPath } = await ensureLocalYtDlp()
+  const { ytDlpPath, suggestedUpdateMethod } = await ensureLocalYtDlp()
 
   const hasFfmpeg = await canRun('ffmpeg', ['-version'])
   if (!hasFfmpeg) {
@@ -292,7 +311,9 @@ async function main() {
   })
 
   sharedEnv.YT_DLP_PATH = ytDlpPath
-  sharedEnv.YT_DLP_UPDATE_METHOD = 'self'
+  if (!sharedEnv.YT_DLP_UPDATE_METHOD && suggestedUpdateMethod) {
+    sharedEnv.YT_DLP_UPDATE_METHOD = suggestedUpdateMethod
+  }
 
   info('Starting backend and frontend...')
 

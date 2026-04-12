@@ -2,6 +2,7 @@
   "name": "yloader",
   "version": "1.0.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "description": "Self-hosted yt-dlp web wrapper with React UI and Node backend",
   "scripts": {
     "start": "node scripts/start.mjs",

@@ -35,7 +35,8 @@ What this command does:
 
 - Creates local runtime folders if missing
 - Installs backend/frontend Node dependencies on first run
-- Detects your OS and downloads the matching yt-dlp binary automatically on first run
+- Prefers `YT_DLP_PATH` or an existing `yt-dlp` installation from your system `PATH`
+- Downloads a matching yt-dlp binary automatically only if no existing installation was found
 - Starts backend and frontend with prefixed, readable console logs
 - Prints final service URLs and keeps both services running
 
@@ -101,6 +102,7 @@ For local mode:
 
 - Node.js 18+
 - npm 9+
+- yt-dlp (recommended on Linux so startup works without downloading a local binary)
 - ffmpeg (optional but recommended)
 
 For Docker mode:
@@ -127,7 +129,7 @@ Main backend runtime environment variables:
 - `DOWNLOAD_DIR` (default: `downloads/` in local mode)
 - `YT_DLP_PATH` (auto-managed by startup script when available)
 - `YT_DLP_JS_RUNTIMES` (default: `node`, used for extractor JavaScript execution)
-- `YT_DLP_UPDATE_METHOD` (`self` by default, optional `pip` with `YT_PIP_PATH`)
+- `YT_DLP_UPDATE_METHOD` (`self` for downloaded local binaries, `disabled` for reused system binaries, optional `pip` with `YT_PIP_PATH`)
 
 Optional YouTube auth-related variables:
 
@@ -136,6 +138,14 @@ Optional YouTube auth-related variables:
 - `YT_DLP_EXTRACTOR_ARGS` (advanced extractor tuning)
 
 If you see `Sign in to confirm you're not a bot`, set one of the cookie options above.
+
+## Support
+
+The app now includes a dedicated Support page in the UI with the same donation targets used in `openkeyboardheatmap`.
+
+- Buy Me a Coffee: https://buymeacoffee.com/michaelsant0s
+- Bitcoin: `bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f`
+- Dogecoin: `DASGta7VgHuxUCvDh9v5cfRCFLirjs611B`
 
 ## yt-dlp Binary Source
 
@@ -167,4 +177,15 @@ Response includes health checks for DB, yt-dlp, and ffmpeg.
 
 ## License
 
-Add your preferred license file before publishing on GitHub.
+The `yLoader` source code and original project assets in this repository are licensed under `AGPL-3.0-or-later`.
+
+Files:
+
+- `LICENSE` contains the GNU AGPL v3 license text
+- `COPYING` contains the same GNU AGPL v3 license text for compatibility with common repository conventions
+- `NOTICE.md` documents third-party marks/assets that cannot legally be relicensed under AGPL
+
+Important exceptions:
+
+- Brand icons in `frontend/public/dl-icons/` are used only to identify supported third-party services
+- Those marks remain the property of their respective owners and are not relicensed under AGPL

@@ -4,6 +4,7 @@ import { Box, Stack, Typography, TextField, Paper, InputAdornment, IconButton } 
 import { ArrowRight } from 'lucide-react'
 import AppLayout from './layout/AppLayout'
 import Downloader from './pages/Downloader'
+import SupportPage from './pages/Support'
 import { useI18n } from './providers/I18nProvider'
 
 function HomePage() {
@@ -241,6 +242,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/downloads" element={<DownloadsPage />} />
+          <Route path="/support" element={<SupportPage />} />
           <Route path="/youtube-downloader" element={<Downloader serviceKey="youtube" />} />
           <Route path="/reddit-downloader" element={<Downloader serviceKey="reddit" />} />
           <Route path="/x-downloader" element={<Downloader serviceKey="x" />} />

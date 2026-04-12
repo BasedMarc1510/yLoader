@@ -59,7 +59,14 @@ export default function SettingsModal({ open, onClose }) {
   const API_BASE = getApiBase()
 
   // yt-dlp state
-  const [ytInfo, setYtInfo] = useState({ currentVersion: '-', latestVersion: '-', outdated: false, loading: false, error: '' })
+  const [ytInfo, setYtInfo] = useState({
+    currentVersion: '-',
+    latestVersion: '-',
+    outdated: false,
+    updateSupported: true,
+    loading: false,
+    error: '',
+  })
   const [updating, setUpdating] = useState(false)
   const [logLines, setLogLines] = useState([])
   const logRef = useRef(null)
@@ -74,6 +81,7 @@ export default function SettingsModal({ open, onClose }) {
         currentVersion: data.currentVersion || '-',
         latestVersion: data.latestVersion || data.currentVersion || '-',
         outdated: !!data.outdated,
+        updateSupported: data.updateSupported !== false,
         loading: false,
         error: ''
       })
@@ -92,6 +100,11 @@ export default function SettingsModal({ open, onClose }) {
   }, [logLines])
 
   const startUpdate = () => {
+    if (!ytInfo.updateSupported) {
+      setLogLines((l) => [...l, t('settings.updateManagedExternally')])
+      return
+    }
+
     setUpdating(true)
     setLogLines((l) => [...l, t('settings.startUpdate')])
     const es = new EventSource(`${API_BASE}/api/yt-dlp/update/stream`)
@@ -294,16 +307,20 @@ export default function SettingsModal({ open, onClose }) {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     <Box sx={{
                       width: 7, height: 7, borderRadius: '50%',
-                      bgcolor: ytInfo.outdated ? '#f59e0b' : '#22c55e',
+                      bgcolor: !ytInfo.updateSupported ? '#9ca3af' : ytInfo.outdated ? '#f59e0b' : '#22c55e',
                       flexShrink: 0,
                     }} />
                     <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>
-                      {ytInfo.outdated ? t('settings.updateAvailable') : t('settings.upToDate')}
+                      {!ytInfo.updateSupported
+                        ? t('settings.updateManagedExternally')
+                        : ytInfo.outdated
+                          ? t('settings.updateAvailable')
+                          : t('settings.upToDate')}
                     </Typography>
                     <Button
                       variant="contained"
                       onClick={startUpdate}
-                      disabled={ytInfo.loading || updating || !ytInfo.outdated}
+                      disabled={ytInfo.loading || updating || !ytInfo.outdated || !ytInfo.updateSupported}
                       disableElevation
                       size="small"
                       sx={{

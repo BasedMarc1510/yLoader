@@ -20,6 +20,7 @@ const de = {
   routes: {
     home: 'Startseite',
     downloads: 'Alle Downloads',
+    support: 'Support',
     youtubeDownloader: 'YouTube Downloader',
     redditDownloader: 'Reddit Downloader',
     xDownloader: 'X/Twitter Downloader',
@@ -48,6 +49,7 @@ const de = {
     checkForUpdates: 'Auf Updates prüfen',
     updateAvailable: 'Eine neue Version ist verfügbar',
     upToDate: 'yt-dlp ist aktuell',
+    updateManagedExternally: 'Updates werden für diese Installation extern verwaltet',
     updating: 'Aktualisiere...',
     updateNow: 'Jetzt aktualisieren',
     updateLogs: 'Update-Logs',
@@ -132,6 +134,18 @@ const de = {
     openSourceVideo: 'Quellvideo in neuem Tab öffnen',
     emptyTitle: 'Keine Downloads gefunden',
     emptySubtitle: 'Dein Verlauf ist leer.',
+  },
+  support: {
+    kicker: 'Entwicklung unterstützen',
+    title: 'Danke, dass du yLoader unterstützt.',
+    description: 'Wenn du neue Features schneller sehen willst, kannst du gern einen Pull Request öffnen oder die Entwicklung hier unterstützen.',
+    thanks: 'Danke, deine Unterstützung hilft wirklich dabei, das Projekt voranzubringen.',
+    coffeeButton: 'Buy me a coffee',
+    pullRequestHint: 'Die Support-Seite nutzt dieselben Spendenziele wie openkeyboardheatmap.',
+    donationAddress: 'Spendenadresse',
+    copyAddress: 'Adresse kopieren',
+    copiedAddress: 'Kopiert',
+    openWallet: 'Wallet öffnen',
   },
 }
 
