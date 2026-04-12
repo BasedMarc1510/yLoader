@@ -1,0 +1,39 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Node.js
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Runtime data
+backend-data/
+downloads/
+backend/downloads/
+.tools/
+
+# Build outputs / caches
+/dist/
+/build/
+/coverage/
+.vite/
+.cache/
+
+# Docker / Compose
+# Keep main docker-compose.yml, ignore local overrides
+docker-compose.override.yml
+
+# Misc
+*.local

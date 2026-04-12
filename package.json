@@ -1,0 +1,15 @@
+{
+  "name": "yloader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted yt-dlp web wrapper with React UI and Node backend",
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "docker:start": "docker compose up -d --build --remove-orphans",
+    "docker:start:plain": "docker compose --progress plain build backend && docker compose --progress plain build frontend && docker compose up -d --remove-orphans",
+    "docker:start:fresh": "docker compose --progress plain build --no-cache --pull backend && docker compose --progress plain build --no-cache --pull frontend && docker compose up -d --remove-orphans",
+    "docker:start:guided": "node scripts/docker-start.mjs",
+    "docker:stop": "docker compose down",
+    "docker:logs": "docker compose logs -f --tail=100"
+  }
+}

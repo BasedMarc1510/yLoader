@@ -1,0 +1,23 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: yloader-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - DOWNLOAD_DIR=/downloads
+      - DB_PATH=/app/data/metadata.db
+    volumes:
+      - ./downloads:/downloads
+      - ./backend-data:/app/data
+  frontend:
+    build:
+      context: ./frontend
+    container_name: yloader-web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend

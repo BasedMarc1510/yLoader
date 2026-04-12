@@ -1,0 +1,16 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Vite / Build
+/dist/
+.vite/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
