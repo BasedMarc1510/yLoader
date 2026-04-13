@@ -4,6 +4,7 @@ import { Image as ImageIcon, Music2, Video, Tag, Scissors, TrendingUp, Download,
 import MetadataInput from './MetadataInput'
 import CustomSelect from './CustomSelect'
 import CombinedFilenameInput from './CombinedFilenameInput'
+import AudioCutSection from './AudioCutSection'
 import { useNotification } from '../../providers/NotificationProvider'
 import { parseVideoTitle } from '../../utils/metadataParser'
 import { getApiBase, normalizeUrlForNoembed, detectService, extractYouTubeId, youtubeThumb, fetchNoembed } from '../../utils/metadata'
@@ -77,6 +78,9 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
   const [selectedThumbValue, setSelectedThumbValue] = React.useState('')
   const [selectedThumbFormat, setSelectedThumbFormat] = React.useState('jpg')
   const [loadingThumbs, setLoadingThumbs] = React.useState(false)
+
+  // Audio cut states
+  const [audioCutsData, setAudioCutsData] = React.useState(null)
 
   // Album cover states (audio)
   const [coverEmbedEnabled, setCoverEmbedEnabled] = React.useState(true)
@@ -465,6 +469,12 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
             dataUrl: coverUpload.dataUrl,
           } : undefined,
         } : undefined,
+        audioCuts: type === 'audio' && audioCutsData?.enabled ? {
+          enabled: true,
+          trimStart: audioCutsData.trimStart ?? 0,
+          trimEnd: audioCutsData.trimEnd ?? (durationSeconds || 0),
+          removals: audioCutsData.removals ?? [],
+        } : undefined,
       }
 
       const response = await fetch(`${API_BASE}/api/download/stream`, {
@@ -752,28 +762,13 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
               borderRadius: '0 0 12px 12px',
             }}
           >
-            <Select
-              size="small"
-              value="none"
+            <AudioCutSection
+              duration={durationSeconds}
+              brandColor={brandColor}
+              isDark={isDark}
               disabled={downloading}
-              sx={{
-                width: 220,
-                bgcolor: selectBg,
-                color: textColor,
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: isDark ? '#3a3a3a' : '#d0d0d0',
-                },
-                '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: isDark ? '#4a4a4a' : '#b0b0b0',
-                },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                  borderColor: isDark ? '#5a5a5a' : '#909090',
-                },
-              }}
-            >
-              <MenuItem value="none" sx={{ bgcolor: selectBg, color: textColor }}>{i18nT('downloader.noCut')}</MenuItem>
-              <MenuItem value="range" sx={{ bgcolor: selectBg, color: textColor }}>{i18nT('downloader.selectRange')}</MenuItem>
-            </Select>
+              onChange={setAudioCutsData}
+            />
           </Box>
         </Collapse>
 

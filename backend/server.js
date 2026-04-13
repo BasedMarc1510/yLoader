@@ -148,6 +148,75 @@ function runCmd(cmd, args = [], opts = {}) {
   })
 }
 
+// ── Audio cut helpers ──────────────────────────────────────────────────────
+
+/** Compute the keep segments from trimStart/trimEnd and removal zones */
+function computeAudioKeepSegments(audioCuts, mediaDuration) {
+  if (!audioCuts || !audioCuts.enabled) return null
+  const { trimStart = 0, removals = [] } = audioCuts
+  const trimEnd =
+    audioCuts.trimEnd != null && audioCuts.trimEnd > 0
+      ? (mediaDuration != null ? Math.min(audioCuts.trimEnd, mediaDuration) : audioCuts.trimEnd)
+      : mediaDuration
+  if (trimEnd == null || trimEnd <= trimStart) return null
+
+  const sorted = [...removals]
+    .filter(r => typeof r.start === 'number' && typeof r.end === 'number' && r.end > r.start)
+    .sort((a, b) => a.start - b.start)
+
+  const segs = []
+  let cur = trimStart
+  for (const r of sorted) {
+    const rs = Math.max(r.start, trimStart)
+    const re = Math.min(r.end, trimEnd)
+    if (re <= rs) continue
+    if (rs > cur) segs.push({ start: cur, end: rs })
+    cur = Math.max(cur, re)
+  }
+  if (cur < trimEnd) segs.push({ start: cur, end: trimEnd })
+
+  // Check if result is a no-op (identical to entire media)
+  if (
+    segs.length === 1 &&
+    segs[0].start === 0 &&
+    mediaDuration != null &&
+    Math.abs(segs[0].end - mediaDuration) < 1
+  ) {
+    return null
+  }
+  return segs.length > 0 ? segs : null
+}
+
+/** FFmpeg audio codec args for a given file extension */
+function getAudioCodecArgs(extWithDot) {
+  switch ((extWithDot || '').replace('.', '').toLowerCase()) {
+    case 'mp3':  return ['-c:a', 'libmp3lame', '-q:a', '2']
+    case 'm4a':  return ['-c:a', 'aac', '-b:a', '192k']
+    case 'ogg':  return ['-c:a', 'libvorbis', '-q:a', '6']
+    case 'opus': return ['-c:a', 'libopus', '-b:a', '128k']
+    case 'flac': return ['-c:a', 'flac']
+    case 'wav':  return ['-c:a', 'pcm_s16le']
+    default:     return []
+  }
+}
+
+/** Build ffmpeg args to cut audio to the supplied keep segments */
+function buildAudioCutFfmpegArgs(inputPath, outputPath, keepSegments, ext) {
+  const codecArgs = getAudioCodecArgs(ext)
+  if (keepSegments.length === 1) {
+    const seg = keepSegments[0]
+    return ['-y', '-i', inputPath, '-ss', String(seg.start), '-to', String(seg.end), ...codecArgs, outputPath]
+  }
+  const filterParts = keepSegments.map(
+    (seg, i) => `[0:a]atrim=${seg.start}:${seg.end},asetpts=PTS-STARTPTS[a${i}]`
+  )
+  const concatInputs = keepSegments.map((_, i) => `[a${i}]`).join('')
+  const filter = [...filterParts, `${concatInputs}concat=n=${keepSegments.length}:v=0:a=1[out]`].join(';')
+  return ['-y', '-i', inputPath, '-filter_complex', filter, '-map', '[out]', ...codecArgs, outputPath]
+}
+
+// ── End audio cut helpers ─────────────────────────────────────────────────
+
 function buildYtDlpNetworkArgs(baseArgs = []) {
   const args = [...YT_DLP_JS_RUNTIME_ARGS]
 
@@ -1091,6 +1160,20 @@ app.post('/api/download/stream', async (req, res) => {
     coverUploadHash = crypto.createHash('sha256').update(buffer).digest('hex').substring(0, 12)
   }
 
+  // Parse and validate audioCuts
+  let audioCuts = null
+  const rawAudioCuts = req.body.audioCuts
+  if (type === 'audio' && rawAudioCuts && typeof rawAudioCuts === 'object' && rawAudioCuts.enabled) {
+    const acTrimStart = typeof rawAudioCuts.trimStart === 'number' ? Math.max(0, rawAudioCuts.trimStart) : 0
+    const acTrimEnd   = typeof rawAudioCuts.trimEnd   === 'number' ? Math.max(0, rawAudioCuts.trimEnd) : null
+    const acRemovals  = Array.isArray(rawAudioCuts.removals)
+      ? rawAudioCuts.removals
+          .filter(r => typeof r.start === 'number' && typeof r.end === 'number' && r.end > r.start)
+          .map(r => ({ start: Math.max(0, r.start), end: Math.max(0, r.end) }))
+      : []
+    audioCuts = { enabled: true, trimStart: acTrimStart, trimEnd: acTrimEnd, removals: acRemovals }
+  }
+
   // Setup SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -1137,6 +1220,7 @@ app.post('/api/download/stream', async (req, res) => {
           source: coverSource,
           upload: coverUploadHash || null,
         },
+        audioCuts: audioCuts || null,
       }))
       .digest('hex')
       .substring(0, 16)
@@ -1368,6 +1452,29 @@ app.post('/api/download/stream', async (req, res) => {
             const ext = path.extname(contentFile)
             let sourcePath = path.join(tempDir, contentFile)
 
+            // Apply audio cuts (trim + removals) if requested
+            if (type === 'audio' && audioCuts?.enabled) {
+              if (!HAS_FFMPEG) {
+                send('message', '⚠️ ffmpeg required for audio cutting – skipping cuts')
+              } else {
+                const keepSegments = computeAudioKeepSegments(audioCuts, duration || null)
+                if (keepSegments) {
+                  const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
+                  send('progress', { percent: 99, stage: 'processing' })
+                  try {
+                    const ffArgs = buildAudioCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext)
+                    await runCmd(FFMPEG_BIN, ffArgs)
+                    if (fs.existsSync(cutOutputPath)) {
+                      sourcePath = cutOutputPath
+                    }
+                  } catch (cutErr) {
+                    console.error('Audio cut failed:', cutErr)
+                    send('message', 'Audio cutting failed, continuing with original audio')
+                  }
+                }
+              }
+            }
+
             if (type === 'audio' && coverEnabled && coverSource === 'upload' && coverUpload) {
               try {
                 const coverPath = path.join(tempDir, `cover${coverUpload.ext}`)
@@ -1422,6 +1529,7 @@ app.post('/api/download/stream', async (req, res) => {
                   source: coverSource,
                   upload: coverUploadHash || null,
                 },
+                audioCuts: audioCuts || null,
               }
               fs.writeFileSync(metaPath, JSON.stringify(meta))
             } catch (err) {
