@@ -2,12 +2,15 @@ import React from 'react'
 import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material'
 import { Menu, Home, Download, Heart } from 'lucide-react'
 import { Box as ImageBox } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import { useLocation } from 'react-router-dom'
 import { useI18n } from '../providers/I18nProvider'
 
 export default function Header({ onMenuClick, sidebarWidth = 240 }) {
   const { t } = useI18n()
+  const theme = useTheme()
   const location = useLocation()
+  const xIcon = theme.palette.mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
 
   // Define route info (title + icon)
   const getRouteInfo = () => {
@@ -21,7 +24,7 @@ export default function Header({ onMenuClick, sidebarWidth = 240 }) {
       case '/reddit-downloader':
         return { title: t('routes.redditDownloader'), icon: <ImageBox component="img" src="/dl-icons/reddit-icon.svg" alt="Reddit" sx={{ width: 20, height: 20 }} /> }
       case '/x-downloader':
-        return { title: t('routes.xDownloader'), icon: <ImageBox component="img" src="/dl-icons/x-icon.svg" alt="X/Twitter" sx={{ width: 20, height: 20 }} /> }
+        return { title: t('routes.xDownloader'), icon: <ImageBox component="img" src={xIcon} alt="X/Twitter" sx={{ width: 20, height: 20 }} /> }
       case '/':
       default:
         return { title: t('routes.home'), icon: <Home size={18} /> }

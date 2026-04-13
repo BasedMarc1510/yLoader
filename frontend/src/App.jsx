@@ -13,9 +13,10 @@ function HomePage() {
   const theme = useTheme()
   const navigate = useNavigate()
   const genericIcon = theme.palette.mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
+  const xIcon = theme.palette.mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
   const platforms = [
     { key: 'youtube', placeholder: t('placeholders.youtubeUrl'), icon: '/dl-icons/youtube-icon.svg' },
-    { key: 'x', placeholder: t('placeholders.xUrl'), icon: '/dl-icons/x-icon.svg' },
+    { key: 'x', placeholder: t('placeholders.xUrl'), icon: xIcon },
     { key: 'reddit', placeholder: t('placeholders.redditUrl'), icon: '/dl-icons/reddit-icon.svg' },
     { key: 'generic', placeholder: t('placeholders.genericUrl'), icon: genericIcon },
   ]

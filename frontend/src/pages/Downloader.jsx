@@ -22,6 +22,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
   const t = useTheme()
   const mode = t.palette.mode
   const genericIcon = mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
+  const xIcon = mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
   const navigate = useNavigate()
   const inputRef = React.useRef(null)
 
@@ -56,7 +57,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
         'https://twitter.com/elonmusk/status/1234567890123456789',
         'https://x.com/i/status/1234567890123456789',
       ],
-      icon: '/dl-icons/x-icon.svg',
+      icon: xIcon,
       // X brand is black/white; adapt for contrast by theme
       yColor: mode === 'dark' ? '#ffffff' : '#000000',
     },

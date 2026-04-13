@@ -421,10 +421,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     }))
   }
 
-  // ── Add cut ────────────────────────────────────────────────────────────────
-  const addCut = () => {
-    if (dur === 0 || disabled) return
-    // Collect free gaps inside the trim range not covered by existing cuts
+  const getLargestGap = React.useCallback(() => {
     const gaps = []
     let prev = trimStart
     for (const c of cuts) {
@@ -433,11 +430,23 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     }
     if (prev < trimEnd) gaps.push({ from: prev, to: trimEnd })
 
-    // Pick the largest gap; need at least 2 seconds to fit a 1-second cut
-    const best = gaps.reduce(
+    return gaps.reduce(
       (a, b) => (b.to - b.from > a.to - a.from ? b : a),
-      { from: 0, to: 0 }
+      { from: trimStart, to: trimStart }
     )
+  }, [cuts, trimStart, trimEnd])
+
+  const canAddCut = React.useMemo(() => {
+    if (dur === 0) return false
+    const best = getLargestGap()
+    return (best.to - best.from) >= 2
+  }, [dur, getLargestGap])
+
+  // ── Add cut ────────────────────────────────────────────────────────────────
+  const addCut = () => {
+    if (dur === 0 || disabled) return
+    // Pick the largest free gap inside the trim range.
+    const best = getLargestGap()
     if (best.to - best.from < 2) return
 
     const gapSize = best.to - best.from

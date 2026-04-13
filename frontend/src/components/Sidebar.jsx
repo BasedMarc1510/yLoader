@@ -26,6 +26,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
   const location = useLocation()
   const sidebarBg = t.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
   const genericIcon = t.palette.mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
+  const xIcon = t.palette.mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
   const ICON_SIZE = 20
   const logoLeftOffset = Math.max(0, (collapsedWidth - ICON_SIZE) / 2)
   const [openDownloaders, setOpenDownloaders] = React.useState(true)
@@ -52,10 +53,10 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
 
   const downloaders = React.useMemo(() => ([
     { label: 'YouTube', to: '/youtube-downloader', icon: '/dl-icons/youtube-icon.svg' },
-    { label: 'X/Twitter', to: '/x-downloader', icon: '/dl-icons/x-icon.svg' },
+    { label: 'X/Twitter', to: '/x-downloader', icon: xIcon },
     { label: 'Reddit', to: '/reddit-downloader', icon: '/dl-icons/reddit-icon.svg' },
     { label: 'Generic', to: '/generic-downloader', icon: genericIcon },
-  ]), [genericIcon])
+  ]), [genericIcon, xIcon])
 
   const SidebarTopBar = ({ bg }) => {
     if (collapsed) {
