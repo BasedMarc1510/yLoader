@@ -17,13 +17,27 @@ const BACKEND_DATA_DIR = path.join(ROOT_DIR, 'backend-data')
 const LOCAL_TOOLS_DIR = path.join(ROOT_DIR, '.tools')
 const LOCAL_YTDLP_DIR = path.join(LOCAL_TOOLS_DIR, 'yt-dlp-bin')
 const LOCAL_NPM_CACHE_DIR = path.join(LOCAL_TOOLS_DIR, 'npm-cache')
+const LOCAL_FFMPEG_DIR = path.join(LOCAL_TOOLS_DIR, 'ffmpeg-bin')
 const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
+const FFMPEG_BINARY_NAME = IS_WINDOWS ? 'ffmpeg.exe' : 'ffmpeg'
+const FFPROBE_BINARY_NAME = IS_WINDOWS ? 'ffprobe.exe' : 'ffprobe'
 const YTDLP_URLS = {
   win32: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
   linuxX64: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux',
   linuxArm64: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64',
   darwin: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos',
+}
+const FFMPEG_URLS = {
+  win64Essentials: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
+  win64Git: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-master-latest-win64-gpl.zip',
+  linuxX64: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz',
+  linuxArm64: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz',
+  linuxArm64Fallback: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-lgpl.tar.xz',
+  macIntelBinary: 'https://evermeet.cx/ffmpeg/get',
+  macIntelZip: 'https://evermeet.cx/ffmpeg/get/zip',
+  macArm64Snapshot: 'https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/snapshot/ffmpeg.zip',
+  macArm64Release: 'https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip',
 }
 const DEFAULT_YTDLP_CANDIDATES = IS_WINDOWS
   ? ['yt-dlp.exe', 'yt-dlp']
@@ -107,14 +121,6 @@ function runCommand(command, args, options = {}) {
   })
 }
 
-function canRun(command, args = []) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: 'ignore' })
-    child.on('error', () => resolve(false))
-    child.on('close', (code) => resolve(code === 0))
-  })
-}
-
 function npmArgs(args) {
   return IS_WINDOWS ? ['/d', '/s', '/c', 'npm', ...args] : args
 }
@@ -127,6 +133,91 @@ function sanitizeEnv(rawEnv) {
     sanitized[key] = String(value)
   }
   return sanitized
+}
+
+function prependToPath(envObj, entryPath) {
+  if (!entryPath) return
+
+  const pathKey = Object.keys(envObj).find((k) => k.toLowerCase() === 'path') || 'PATH'
+  const current = String(envObj[pathKey] || '')
+  const nextValue = current ? `${entryPath}${path.delimiter}${current}` : entryPath
+
+  envObj[pathKey] = nextValue
+  if (pathKey !== 'PATH') envObj.PATH = nextValue
+  if (IS_WINDOWS && pathKey !== 'Path') envObj.Path = nextValue
+}
+
+function findFileByBasename(rootDir, candidateNames) {
+  const expected = new Set(candidateNames.map((n) => String(n).toLowerCase()))
+  const stack = [rootDir]
+
+  while (stack.length > 0) {
+    const current = stack.pop()
+    if (!current) continue
+
+    let entries = []
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(fullPath)
+        continue
+      }
+      if (expected.has(entry.name.toLowerCase())) {
+        return fullPath
+      }
+    }
+  }
+
+  return ''
+}
+
+async function extractArchive(archivePath, destinationPath, archiveType) {
+  fs.mkdirSync(destinationPath, { recursive: true })
+
+  if (archiveType === 'zip') {
+    try {
+      await runCommand('tar', ['-xf', archivePath, '-C', destinationPath], { prefix: 'ffmpeg:extract' })
+      return
+    } catch {
+      // continue to fallbacks
+    }
+
+    try {
+      await runCommand('unzip', ['-o', archivePath, '-d', destinationPath], { prefix: 'ffmpeg:extract' })
+      return
+    } catch {
+      // continue to fallbacks
+    }
+
+    try {
+      await runCommand('python3', ['-c', 'import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])', archivePath, destinationPath], {
+        prefix: 'ffmpeg:extract',
+      })
+      return
+    } catch {
+      // continue to error
+    }
+
+    throw new Error('Could not extract zip archive (requires tar, unzip, or python3).')
+  }
+
+  if (archiveType === 'tar.xz') {
+    try {
+      await runCommand('tar', ['-xJf', archivePath, '-C', destinationPath], { prefix: 'ffmpeg:extract' })
+      return
+    } catch {
+      await runCommand('tar', ['-xf', archivePath, '-C', destinationPath], { prefix: 'ffmpeg:extract' })
+      return
+    }
+  }
+
+  throw new Error(`Unsupported archive type: ${archiveType}`)
 }
 
 async function ensurePortFree(port, serviceName) {
@@ -223,32 +314,25 @@ async function downloadFile(url, destinationPath) {
 }
 
 async function ensureLocalYtDlp() {
-  const explicitYtDlpPath = String(process.env.YT_DLP_PATH || '').trim()
-  const candidates = explicitYtDlpPath
-    ? [explicitYtDlpPath, ...DEFAULT_YTDLP_CANDIDATES]
-    : DEFAULT_YTDLP_CANDIDATES
-
-  for (const candidate of candidates) {
-    try {
-      const { stdout } = await runCommand(candidate, ['--version'], { captureOutput: true })
-      const normalizedVersion = stdout.trim()
-      info(`yt-dlp: using existing binary at ${candidate}${normalizedVersion ? ` (version ${normalizedVersion})` : ''}.`)
-      return { ytDlpPath: candidate, suggestedUpdateMethod: 'disabled' }
-    } catch {
-      // try next candidate
-    }
-  }
+  info('yt-dlp: project-local mode enabled (.tools/yt-dlp-bin).')
 
   const asset = getYtDlpAsset()
   fs.mkdirSync(LOCAL_YTDLP_DIR, { recursive: true })
 
   const ytDlpPath = path.join(LOCAL_YTDLP_DIR, asset.fileName)
-  if (!fs.existsSync(ytDlpPath)) {
-    info(`yt-dlp: downloading binary for ${process.platform} because no existing installation was found...`)
-    await downloadFile(asset.url, ytDlpPath)
-  } else {
-    info('yt-dlp: local binary already present.')
+
+  if (fs.existsSync(ytDlpPath)) {
+    try {
+      const { stdout } = await runCommand(ytDlpPath, ['--version'], { captureOutput: true })
+      info(`yt-dlp: using local cached binary (version ${stdout.trim()}).`)
+      return { ytDlpPath, suggestedUpdateMethod: 'self' }
+    } catch {
+      warn('yt-dlp: local cached binary is invalid, re-downloading...')
+    }
   }
+
+  info(`yt-dlp: downloading binary for ${process.platform}/${process.arch}...`)
+  await downloadFile(asset.url, ytDlpPath)
 
   if (!IS_WINDOWS) {
     fs.chmodSync(ytDlpPath, 0o755)
@@ -258,6 +342,145 @@ async function ensureLocalYtDlp() {
   info(`yt-dlp: ready (version ${stdout.trim()}).`)
 
   return { ytDlpPath, suggestedUpdateMethod: 'self' }
+}
+
+function getLocalFfmpegPaths() {
+  const platformDir = path.join(LOCAL_FFMPEG_DIR, `${process.platform}-${process.arch}`)
+  const binDir = path.join(platformDir, 'bin')
+
+  return {
+    platformDir,
+    binDir,
+    ffmpegPath: path.join(binDir, FFMPEG_BINARY_NAME),
+    ffprobePath: path.join(binDir, FFPROBE_BINARY_NAME),
+  }
+}
+
+function getFfmpegAssets() {
+  if (process.platform === 'win32') {
+    return [
+      { url: FFMPEG_URLS.win64Essentials, type: 'zip' },
+      { url: FFMPEG_URLS.win64Git, type: 'zip' },
+    ]
+  }
+
+  if (process.platform === 'linux') {
+    if (process.arch === 'x64') {
+      return [{ url: FFMPEG_URLS.linuxX64, type: 'tar.xz' }]
+    }
+    if (process.arch === 'arm64') {
+      return [
+        { url: FFMPEG_URLS.linuxArm64, type: 'tar.xz' },
+        { url: FFMPEG_URLS.linuxArm64Fallback, type: 'tar.xz' },
+      ]
+    }
+    throw new Error(`Unsupported Linux architecture for automatic ffmpeg download: ${process.arch}`)
+  }
+
+  if (process.platform === 'darwin') {
+    if (process.arch === 'arm64') {
+      return [
+        { url: FFMPEG_URLS.macArm64Snapshot, type: 'zip' },
+        { url: FFMPEG_URLS.macArm64Release, type: 'zip' },
+      ]
+    }
+    if (process.arch === 'x64') {
+      return [
+        { url: FFMPEG_URLS.macIntelBinary, type: 'binary' },
+        { url: FFMPEG_URLS.macIntelZip, type: 'zip' },
+      ]
+    }
+    throw new Error(`Unsupported macOS architecture for automatic ffmpeg download: ${process.arch}`)
+  }
+
+  throw new Error(`Unsupported platform for automatic ffmpeg download: ${process.platform}`)
+}
+
+async function ensureLocalFfmpeg() {
+  info('ffmpeg: project-local mode enabled (.tools/ffmpeg-bin).')
+
+  const localPaths = getLocalFfmpegPaths()
+  fs.mkdirSync(localPaths.binDir, { recursive: true })
+
+  if (fs.existsSync(localPaths.ffmpegPath)) {
+    try {
+      const { stdout } = await runCommand(localPaths.ffmpegPath, ['-version'], { captureOutput: true })
+      const firstLine = String(stdout || '').split(/\r?\n/).find(Boolean) || 'ffmpeg'
+      info(`ffmpeg: using local cached binary (${firstLine}).`)
+      return {
+        ffmpegPath: localPaths.ffmpegPath,
+        ffprobePath: fs.existsSync(localPaths.ffprobePath) ? localPaths.ffprobePath : '',
+        pathEntry: localPaths.binDir,
+      }
+    } catch {
+      warn('ffmpeg: local cached binary is invalid, re-downloading...')
+    }
+  }
+
+  const assets = getFfmpegAssets()
+  let lastError = null
+
+  for (let i = 0; i < assets.length; i += 1) {
+    const asset = assets[i]
+    if (!asset) continue
+
+    const suffix = asset.type === 'binary'
+      ? '.bin'
+      : asset.type === 'zip'
+        ? '.zip'
+        : '.tar.xz'
+
+    const downloadPath = path.join(localPaths.platformDir, `ffmpeg-asset-${i}${suffix}`)
+    const extractDir = path.join(localPaths.platformDir, `extract-${i}`)
+
+    try {
+      fs.mkdirSync(localPaths.platformDir, { recursive: true })
+      info(`ffmpeg: downloading bundle from ${asset.url}`)
+      await downloadFile(asset.url, downloadPath)
+
+      if (asset.type === 'binary') {
+        fs.copyFileSync(downloadPath, localPaths.ffmpegPath)
+      } else {
+        fs.rmSync(extractDir, { recursive: true, force: true })
+        await extractArchive(downloadPath, extractDir, asset.type)
+
+        const discoveredFfmpeg = findFileByBasename(extractDir, [FFMPEG_BINARY_NAME, 'ffmpeg', 'ffmpeg.exe'])
+        if (!discoveredFfmpeg) {
+          throw new Error('ffmpeg executable not found in downloaded bundle')
+        }
+
+        fs.copyFileSync(discoveredFfmpeg, localPaths.ffmpegPath)
+
+        const discoveredFfprobe = findFileByBasename(extractDir, [FFPROBE_BINARY_NAME, 'ffprobe', 'ffprobe.exe'])
+        if (discoveredFfprobe) {
+          fs.copyFileSync(discoveredFfprobe, localPaths.ffprobePath)
+        }
+      }
+
+      if (!IS_WINDOWS) {
+        fs.chmodSync(localPaths.ffmpegPath, 0o755)
+        if (fs.existsSync(localPaths.ffprobePath)) {
+          fs.chmodSync(localPaths.ffprobePath, 0o755)
+        }
+      }
+
+      const { stdout } = await runCommand(localPaths.ffmpegPath, ['-version'], { captureOutput: true })
+      const firstLine = String(stdout || '').split(/\r?\n/).find(Boolean) || 'ffmpeg'
+      info(`ffmpeg: ready (${firstLine}).`)
+
+      return {
+        ffmpegPath: localPaths.ffmpegPath,
+        ffprobePath: fs.existsSync(localPaths.ffprobePath) ? localPaths.ffprobePath : '',
+        pathEntry: localPaths.binDir,
+      }
+    } catch (err) {
+      lastError = err
+      warn(`ffmpeg: failed using ${asset.url} (${err.message || err}).`)
+    }
+  }
+
+  const details = lastError?.message ? ` Last error: ${lastError.message}` : ''
+  throw new Error(`ffmpeg bootstrap failed on ${process.platform}/${process.arch}.${details}`)
 }
 
 async function waitForHttp(url, timeoutMs) {
@@ -311,11 +534,7 @@ async function main() {
   await ensureNodeDependencies(FRONTEND_DIR, 'frontend')
 
   const { ytDlpPath, suggestedUpdateMethod } = await ensureLocalYtDlp()
-
-  const hasFfmpeg = await canRun('ffmpeg', ['-version'])
-  if (!hasFfmpeg) {
-    warn('ffmpeg is not installed. Media merging/conversion features may be limited.')
-  }
+  const ffmpegSetup = await ensureLocalFfmpeg()
 
   const sharedEnv = sanitizeEnv({
     ...process.env,
@@ -324,9 +543,12 @@ async function main() {
   })
 
   sharedEnv.YT_DLP_PATH = ytDlpPath
-  if (!sharedEnv.YT_DLP_UPDATE_METHOD && suggestedUpdateMethod) {
-    sharedEnv.YT_DLP_UPDATE_METHOD = suggestedUpdateMethod
+  sharedEnv.YT_DLP_UPDATE_METHOD = suggestedUpdateMethod || 'self'
+  sharedEnv.FFMPEG_PATH = ffmpegSetup.ffmpegPath
+  if (ffmpegSetup.ffprobePath) {
+    sharedEnv.FFPROBE_PATH = ffmpegSetup.ffprobePath
   }
+  prependToPath(sharedEnv, ffmpegSetup.pathEntry)
 
   info('Starting backend and frontend...')
 

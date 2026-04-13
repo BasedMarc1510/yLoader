@@ -9,6 +9,8 @@ services:
     environment:
       - DOWNLOAD_DIR=/downloads
       - DB_PATH=/app/data/metadata.db
+      - FFMPEG_PATH=/usr/bin/ffmpeg
+      - FFPROBE_PATH=/usr/bin/ffprobe
     volumes:
       - ./downloads:/downloads
       - ./backend-data:/app/data

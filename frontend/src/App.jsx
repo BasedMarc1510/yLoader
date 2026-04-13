@@ -1,6 +1,7 @@
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
 import { Box, Stack, Typography, TextField, Paper, InputAdornment, IconButton } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import { ArrowRight } from 'lucide-react'
 import AppLayout from './layout/AppLayout'
 import Downloader from './pages/Downloader'
@@ -9,12 +10,14 @@ import { useI18n } from './providers/I18nProvider'
 
 function HomePage() {
   const { t } = useI18n()
+  const theme = useTheme()
   const navigate = useNavigate()
+  const genericIcon = theme.palette.mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
   const platforms = [
     { key: 'youtube', placeholder: t('placeholders.youtubeUrl'), icon: '/dl-icons/youtube-icon.svg' },
     { key: 'x', placeholder: t('placeholders.xUrl'), icon: '/dl-icons/x-icon.svg' },
     { key: 'reddit', placeholder: t('placeholders.redditUrl'), icon: '/dl-icons/reddit-icon.svg' },
-    { key: 'generic', placeholder: t('placeholders.genericUrl'), icon: '/dl-icons/generic-icon.svg' },
+    { key: 'generic', placeholder: t('placeholders.genericUrl'), icon: genericIcon },
   ]
 
   // Animation timing (slower than before)

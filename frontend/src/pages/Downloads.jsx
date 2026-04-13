@@ -35,6 +35,7 @@ export default function DownloadsPage() {
     const theme = useTheme()
     const navigate = useNavigate()
     const isDark = theme.palette.mode === 'dark'
+    const genericIcon = isDark ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
     const [downloads, setDownloads] = useState([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
@@ -110,7 +111,7 @@ export default function DownloadsPage() {
         { value: 'youtube', label: 'YouTube', icon: '/dl-icons/youtube-icon.svg' },
         { value: 'reddit', label: 'Reddit', icon: '/dl-icons/reddit-icon.svg' },
         { value: 'x', label: t('downloads.xService'), icon: '/dl-icons/x-icon.svg' },
-        { value: 'generic', label: t('downloads.genericService'), icon: '/dl-icons/generic-icon.svg' }
+        { value: 'generic', label: t('downloads.genericService'), icon: genericIcon }
     ]
 
     const getTypeIcon = (type) => {

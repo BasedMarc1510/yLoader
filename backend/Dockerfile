@@ -10,6 +10,8 @@ ENV NODE_ENV=production
 ENV DOWNLOAD_DIR=/downloads
 ENV YT_DLP_PATH=/usr/local/bin/yt-dlp
 ENV YT_DLP_UPDATE_METHOD=self
+ENV FFMPEG_PATH=/usr/bin/ffmpeg
+ENV FFPROBE_PATH=/usr/bin/ffprobe
 
 # Runtime dependencies: ffmpeg + standalone yt-dlp binary
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

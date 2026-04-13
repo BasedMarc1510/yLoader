@@ -12,6 +12,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
   const { t: i18nT } = useI18n()
   const t = useTheme()
   const mode = t.palette.mode
+  const genericIcon = mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
   const navigate = useNavigate()
   const inputRef = React.useRef(null)
 
@@ -59,7 +60,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
         'https://www.dailymotion.com/video/x8abc12',
         'https://www.twitch.tv/videos/1234567890',
       ],
-      icon: '/dl-icons/generic-icon.svg',
+      icon: genericIcon,
       yColor: '#6366f1',
     },
   }

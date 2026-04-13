@@ -62,8 +62,21 @@ export default function SettingsModal({ open, onClose }) {
   const [ytInfo, setYtInfo] = useState({
     currentVersion: '-',
     latestVersion: '-',
+    binaryPath: '-',
+    binarySize: '-',
     outdated: false,
     updateSupported: true,
+    loading: false,
+    error: '',
+  })
+  const [ffmpegInfo, setFfmpegInfo] = useState({
+    available: false,
+    version: '-',
+    ffprobeVersion: '-',
+    path: '-',
+    fileSize: '-',
+    ffprobeFileSize: '-',
+    projectManaged: true,
     loading: false,
     error: '',
   })
@@ -80,6 +93,8 @@ export default function SettingsModal({ open, onClose }) {
       setYtInfo({
         currentVersion: data.currentVersion || '-',
         latestVersion: data.latestVersion || data.currentVersion || '-',
+        binaryPath: data.binaryPath || '-',
+        binarySize: data.binarySizeHuman || '-',
         outdated: !!data.outdated,
         updateSupported: data.updateSupported !== false,
         loading: false,
@@ -90,8 +105,36 @@ export default function SettingsModal({ open, onClose }) {
     }
   }
 
+  const fetchFfmpegStatus = async () => {
+    setFfmpegInfo((s) => ({ ...s, loading: true, error: '' }))
+    try {
+      const resp = await fetch(`${API_BASE}/api/ffmpeg/status`)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+
+      setFfmpegInfo({
+        available: !!data.available,
+        version: data.version || '-',
+        ffprobeVersion: data.ffprobeVersion || '-',
+        path: data.path || '-',
+        fileSize: data.fileSizeHuman || '-',
+        ffprobeFileSize: data.ffprobeFileSizeHuman || '-',
+        projectManaged: data.projectManaged !== false,
+        loading: false,
+        error: data.error || '',
+      })
+    } catch (e) {
+      setFfmpegInfo((s) => ({
+        ...s,
+        loading: false,
+        error: t('settings.failedLoadFfmpegStatus', { message: e?.message || e }),
+      }))
+    }
+  }
+
   useEffect(() => {
     if (open && section === 'yt-dlp') fetchStatus()
+    if (open && section === 'ffmpeg') fetchFfmpegStatus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, section])
 
@@ -126,7 +169,14 @@ export default function SettingsModal({ open, onClose }) {
   const sections = useMemo(() => ([
     { key: 'general', label: t('settings.general') },
     { key: 'yt-dlp', label: t('settings.sectionYtDlp') },
+    { key: 'ffmpeg', label: t('settings.sectionFfmpeg') },
   ]), [t])
+
+  const sectionTitle = section === 'general'
+    ? t('settings.general')
+    : section === 'yt-dlp'
+      ? t('settings.ytDlpConfig')
+      : t('settings.ffmpegConfig')
 
   const selectSx = {
     fontSize: 13,
@@ -232,9 +282,7 @@ export default function SettingsModal({ open, onClose }) {
           })}>
             {/* Content header */}
             <Box sx={{ px: 3, height: 52, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-              <Typography sx={{ fontWeight: 700, fontSize: 18 }}>
-                {section === 'general' ? t('settings.general') : t('settings.ytDlpConfig')}
-              </Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: 18 }}>{sectionTitle}</Typography>
             </Box>
             <Divider />
 
@@ -279,6 +327,18 @@ export default function SettingsModal({ open, onClose }) {
                 <SettingRow label={t('settings.latestVersion')}>
                   <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
                     {ytInfo.loading ? '…' : ytInfo.latestVersion}
+                  </Typography>
+                </SettingRow>
+
+                <SettingRow label={t('settings.ytDlpPath')}>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', maxWidth: 380, textAlign: 'right', wordBreak: 'break-all' }}>
+                    {ytInfo.loading ? '…' : ytInfo.binaryPath}
+                  </Typography>
+                </SettingRow>
+
+                <SettingRow label={t('settings.ytDlpBinarySize')}>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
+                    {ytInfo.loading ? '…' : ytInfo.binarySize}
                   </Typography>
                 </SettingRow>
 
@@ -391,6 +451,106 @@ export default function SettingsModal({ open, onClose }) {
                     )}
                   </Box>
                 </Box>
+              </Box>
+            )}
+
+            {/* ── ffmpeg section ── */}
+            {section === 'ffmpeg' && (
+              <Box sx={{ px: 3, pt: 1, pb: 3 }}>
+                <SettingRow label={t('settings.ffmpegStatus')}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        bgcolor: ffmpegInfo.loading ? '#9ca3af' : ffmpegInfo.available ? '#22c55e' : '#ef4444',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      {ffmpegInfo.loading
+                        ? t('settings.checking')
+                        : ffmpegInfo.available
+                          ? t('settings.ffmpegAvailable')
+                          : t('settings.ffmpegMissing')}
+                    </Typography>
+                  </Box>
+                </SettingRow>
+
+                <SettingRow label={t('settings.ffmpegVersion')}>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
+                    {ffmpegInfo.loading ? '…' : ffmpegInfo.version}
+                  </Typography>
+                </SettingRow>
+
+                <SettingRow label={t('settings.ffprobeVersion')}>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
+                    {ffmpegInfo.loading ? '…' : ffmpegInfo.ffprobeVersion}
+                  </Typography>
+                </SettingRow>
+
+                <SettingRow label={t('settings.ffmpegPath')}>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', maxWidth: 380, textAlign: 'right', wordBreak: 'break-all' }}>
+                    {ffmpegInfo.loading ? '…' : ffmpegInfo.path}
+                  </Typography>
+                </SettingRow>
+
+                <SettingRow label={t('settings.ffmpegBinarySize')}>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
+                    {ffmpegInfo.loading ? '…' : ffmpegInfo.fileSize}
+                  </Typography>
+                </SettingRow>
+
+                <SettingRow label={t('settings.ffprobeBinarySize')}>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
+                    {ffmpegInfo.loading ? '…' : ffmpegInfo.ffprobeFileSize}
+                  </Typography>
+                </SettingRow>
+
+                <SettingRow label={t('settings.projectManagedFfmpeg')}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {ffmpegInfo.projectManaged ? t('settings.yes') : t('settings.no')}
+                  </Typography>
+                </SettingRow>
+
+                <SettingRow label={t('settings.refreshStatus')} noDivider>
+                  <Button
+                    onClick={fetchFfmpegStatus}
+                    disabled={ffmpegInfo.loading}
+                    variant="outlined"
+                    size="small"
+                    startIcon={<RefreshCw size={13} />}
+                    sx={{
+                      textTransform: 'none',
+                      fontSize: 13,
+                      borderRadius: '4px',
+                      height: 32,
+                      borderColor: 'divider',
+                      color: 'text.primary',
+                      '&:hover': { borderColor: 'text.disabled', bgcolor: 'action.hover' },
+                    }}
+                  >
+                    {ffmpegInfo.loading ? t('settings.checking') : t('settings.refreshStatus')}
+                  </Button>
+                </SettingRow>
+
+                {ffmpegInfo.error && (
+                  <Box
+                    sx={(th) => ({
+                      mt: 2,
+                      px: 2,
+                      py: 1.25,
+                      borderRadius: '4px',
+                      bgcolor: th.palette.mode === 'dark' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                    })}
+                  >
+                    <Typography variant="body2" sx={{ color: '#f87171', fontWeight: 500, fontSize: 13 }}>
+                      {ffmpegInfo.error}
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             )}
           </Box>
