@@ -275,16 +275,29 @@ export default function SettingsModal({ open, onClose }) {
           {/* ── Content ── */}
           <Box sx={(th) => ({
             flex: 1,
-            overflow: 'auto',
+            overflow: 'hidden',
             bgcolor: th.palette.mode === 'dark' ? '#1e1e1e' : '#ffffff',
             display: 'flex',
             flexDirection: 'column',
+            minHeight: 0,
           })}>
             {/* Content header */}
-            <Box sx={{ px: 3, height: 52, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+            <Box sx={(th) => ({
+              px: 3,
+              height: 52,
+              display: 'flex',
+              alignItems: 'center',
+              flexShrink: 0,
+              position: 'sticky',
+              top: 0,
+              zIndex: 1,
+              bgcolor: th.palette.mode === 'dark' ? '#1e1e1e' : '#ffffff',
+            })}>
               <Typography sx={{ fontWeight: 700, fontSize: 18 }}>{sectionTitle}</Typography>
             </Box>
             <Divider />
+
+            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
 
             {/* ── General section ── */}
             {section === 'general' && (
@@ -553,6 +566,7 @@ export default function SettingsModal({ open, onClose }) {
                 )}
               </Box>
             )}
+            </Box>
           </Box>
         </Box>
       </DialogContent>

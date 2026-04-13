@@ -251,8 +251,10 @@ export default function Downloader({ serviceKey = 'youtube' }) {
     }
   }, [meta, serviceKey, loading, fetchError])
 
+  const showLanding = !meta && !fetchError
+
   return (
-    <Box sx={{ position: 'relative', height: '100%' }}>
+    <Box sx={{ position: 'relative', height: '100%', overflowY: showLanding ? 'hidden' : 'auto' }}>
       {/* Centered input bar */}
       <Box sx={{
         position: 'absolute',
@@ -262,8 +264,8 @@ export default function Downloader({ serviceKey = 'youtube' }) {
         width: '100%',
         maxWidth: 780,
         px: 2,
-        opacity: (meta || fetchError) ? 0 : 1,
-        pointerEvents: (meta || fetchError) ? 'none' : 'auto',
+        opacity: showLanding ? 1 : 0,
+        pointerEvents: showLanding ? 'auto' : 'none',
         transition: 'opacity 220ms ease',
       }}>
         <TextField
@@ -394,8 +396,8 @@ export default function Downloader({ serviceKey = 'youtube' }) {
         width: '100%',
         maxWidth: 780,
         px: 2,
-        opacity: (meta || fetchError) ? 0 : 1,
-        pointerEvents: (meta || fetchError) ? 'none' : 'auto',
+        opacity: showLanding ? 1 : 0,
+        pointerEvents: showLanding ? 'auto' : 'none',
         transition: 'opacity 220ms ease',
       }}>
         <Typography variant="h1" component="h1" align="center" className="youtube-title" sx={{ fontSize: { xs: '3.5rem', sm: '5rem', md: '6rem' } }}>
@@ -407,22 +409,18 @@ export default function Downloader({ serviceKey = 'youtube' }) {
       </Stack>
 
       {/* Downloader UI (appears after metadata is loaded) */}
-      <Box
-        sx={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '50%',
-          transform: meta ? 'translateY(-50%)' : 'translateY(-42%)',
-          opacity: meta ? 1 : 0,
-          pointerEvents: meta ? 'auto' : 'none',
-          transition: 'opacity 220ms ease, transform 220ms ease',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-        }}
-      >
-        {meta && (
+      {meta && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            minHeight: '100%',
+            boxSizing: 'border-box',
+            py: { xs: 2, sm: 3 },
+          }}
+        >
           <DownloaderShell
             brand={cfg}
             meta={meta}
@@ -430,27 +428,23 @@ export default function Downloader({ serviceKey = 'youtube' }) {
             serviceKey={serviceKey}
             onFetchError={handleFetchError}
           />
-        )}
-      </Box>
+        </Box>
+      )}
 
       {/* Error panel (appears when format fetch fails) */}
-      <Box
-        sx={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '50%',
-          transform: fetchError ? 'translateY(-50%)' : 'translateY(-42%)',
-          opacity: fetchError ? 1 : 0,
-          pointerEvents: fetchError ? 'auto' : 'none',
-          transition: 'opacity 220ms ease, transform 220ms ease',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-        }}
-      >
-        {fetchError && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%', px: 2 }}>
+      {fetchError && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            minHeight: '100%',
+            boxSizing: 'border-box',
+            py: { xs: 2, sm: 3 },
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
             <Paper elevation={0} sx={(t) => ({
               width: '100%',
               maxWidth: 450,
@@ -529,8 +523,8 @@ export default function Downloader({ serviceKey = 'youtube' }) {
               </Box>
             </Paper>
           </Box>
-        )}
-      </Box>
+        </Box>
+      )}
     </Box>
   )
 }
