@@ -110,6 +110,11 @@ npm run docker:stop
 - `yt-dlp` availability
 - `ffmpeg` availability
 
+## Why use yLoader? (Use Cases)
+If you are looking for a way to **bulk download YouTube videos**, archive **Twitter/X media**, or save **Reddit videos with sound**, yLoader provides a clean interface for it. 
+Unlike cloud-based downloaders, yLoader is completely private. You avoid ads, tracking, and rate limits. Because it supports `yt-dlp` cookies, you can easily bypass login-walls or age-restrictions by passing your browser cookies directly to the backend.
+
+
 ## Support
 
 - Buy Me a Coffee: `https://buymeacoffee.com/michaelsant0s`

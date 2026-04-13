@@ -661,11 +661,11 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
               display: 'flex',
               alignItems: 'center',
               gap: 0.75,
-              cursor: (disabled || dur === 0) ? 'default' : 'pointer',
+              cursor: (disabled || dur === 0 || !canAddCut) ? 'default' : 'pointer',
               color: isDark ? '#777' : '#888',
-              opacity: (disabled || dur === 0) ? 0.5 : 1,
+              opacity: (disabled || dur === 0 || !canAddCut) ? 0.5 : 1,
               userSelect: 'none',
-              '&:hover': { color: (disabled || dur === 0) ? undefined : (isDark ? '#ccc' : '#444') },
+              '&:hover': { color: (disabled || dur === 0 || !canAddCut) ? undefined : (isDark ? '#ccc' : '#444') },
             }}
           >
             <Plus size={13} />

@@ -1231,7 +1231,7 @@ app.get('/api/proxy-image', async (req, res) => {
 })
 
 // POST /api/download/stream -> SSE with live yt-dlp download progress
-// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover? }
+// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover?, audioCuts?, videoCuts? }
 app.use(express.json({ limit: '25mb' }))
 app.post('/api/download/stream', async (req, res) => {
   const {
@@ -1340,6 +1340,9 @@ app.post('/api/download/stream', async (req, res) => {
     cuts = { enabled: true, mode, trimStart, trimEnd, segments }
   }
 
+  const audioCuts = type === 'audio' ? normalizeCutPayload(req.body.audioCuts) : null
+  const videoCuts = type === 'video' ? normalizeCutPayload(req.body.videoCuts) : null
+
   // Setup SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -1372,6 +1375,25 @@ app.post('/api/download/stream', async (req, res) => {
 
   try {
     // Generate unique hash for this download configuration
+    const hashPayload = {
+      url,
+      type,
+      format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
+      audioFormat: normalizedAudioFormatId || '',
+      videoFormat: normalizedVideoFormatId || '',
+      videoTitle: req.body.videoTitle || null,
+      metadata: metadata || null,
+      cover: {
+        enabled: coverEnabled,
+        source: coverSource,
+        upload: coverUploadHash || null,
+      },
+      audioCuts: audioCuts || null,
+    }
+    if (type === 'video' && videoCuts) {
+      hashPayload.videoCuts = videoCuts
+    }
+
     const downloadHash = crypto.createHash('sha256')
       .update(JSON.stringify({
         url,
@@ -1617,6 +1639,8 @@ app.post('/api/download/stream', async (req, res) => {
           if (contentFile) {
             const ext = path.extname(contentFile)
             let sourcePath = path.join(tempDir, contentFile)
+            const parsedDuration = Number(duration)
+            const mediaDuration = Number.isFinite(parsedDuration) ? parsedDuration : null
 
             // Apply media cuts (trim + remove/keep segments) if requested
             if ((type === 'audio' || type === 'video') && cuts?.enabled) {
@@ -1644,6 +1668,41 @@ app.post('/api/download/stream', async (req, res) => {
                   } catch (cutErr) {
                     console.error('Media cut failed:', cutErr)
                     send('message', 'Media cutting failed, continuing with original file')
+                  }
+                }
+              }
+            }
+
+            // Apply video cuts (trim + removals) if requested
+            if (type === 'video' && videoCuts?.enabled) {
+              if (!HAS_FFMPEG) {
+                send('message', '⚠️ ffmpeg required for video cutting – skipping cuts')
+              } else {
+                const keepSegments = computeKeepSegments(videoCuts, mediaDuration)
+                if (keepSegments) {
+                  const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
+                  send('progress', { percent: 99, stage: 'processing' })
+                  try {
+                    let hasAudio = await detectAudioStream(sourcePath)
+                    let ffArgs = buildVideoCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext, hasAudio)
+                    try {
+                      await runCmd(FFMPEG_BIN, ffArgs)
+                    } catch (ffErr) {
+                      const stderr = String(ffErr?.stderr || ffErr?.message || '')
+                      const noAudioHint = /matches no streams|Stream map .*a:0|Cannot find a matching stream/i.test(stderr)
+                      if (!hasAudio || !noAudioHint) throw ffErr
+
+                      hasAudio = false
+                      ffArgs = buildVideoCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext, false)
+                      await runCmd(FFMPEG_BIN, ffArgs)
+                    }
+
+                    if (fs.existsSync(cutOutputPath)) {
+                      sourcePath = cutOutputPath
+                    }
+                  } catch (cutErr) {
+                    console.error('Video cut failed:', cutErr)
+                    send('message', 'Video cutting failed, continuing with original video')
                   }
                 }
               }

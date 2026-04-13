@@ -501,6 +501,12 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
           trimEnd: cutsPayload.trimEnd,
           removals: cutsPayload.removals,
         } : undefined,
+        videoCuts: type === 'video' && videoCutsData?.enabled ? {
+          enabled: true,
+          trimStart: videoCutsData.trimStart ?? 0,
+          trimEnd: videoCutsData.trimEnd ?? (durationSeconds || 0),
+          removals: videoCutsData.removals ?? [],
+        } : undefined,
       }
 
       const response = await fetch(`${API_BASE}/api/download/stream`, {
@@ -793,6 +799,7 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
               brandColor={brandColor}
               isDark={isDark}
               disabled={downloading}
+              kind="audio"
               onChange={setAudioCutsData}
               mediaType="audio"
             />
