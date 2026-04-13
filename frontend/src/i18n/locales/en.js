@@ -143,6 +143,11 @@ const en = {
     emptyValue: '-',
     thumbnailAlt: 'thumbnail',
   },
+  fetchError: {
+    title: 'Could not load video',
+    closeAria: 'Close error panel',
+    retry: 'Try again',
+  },
   downloads: {
     title: 'Downloads',
     subtitle: 'Manage your download history and cache',

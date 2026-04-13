@@ -137,7 +137,12 @@ app.get('/health', async (_req, res) => {
 // Helper: run a command and return stdout as string
 function runCmd(cmd, args = [], opts = {}) {
   return new Promise((resolve, reject) => {
-    const options = { maxBuffer: 10 * 1024 * 1024, ...opts }
+    const { env: extraEnv, ...restOpts } = opts
+    const options = {
+      maxBuffer: 10 * 1024 * 1024,
+      ...restOpts,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', ...(extraEnv || {}) },
+    }
     execFile(cmd, args, options, (err, stdout, stderr) => {
       if (err) {
         err.stderr = stderr?.toString?.() || ''

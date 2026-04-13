@@ -143,6 +143,11 @@ const de = {
     emptyValue: '-',
     thumbnailAlt: 'Thumbnail',
   },
+  fetchError: {
+    title: 'Video konnte nicht geladen werden',
+    closeAria: 'Fehlerpanel schließen',
+    retry: 'Erneut versuchen',
+  },
   downloads: {
     title: 'Downloads',
     subtitle: 'Verwalte deinen Download-Verlauf und Cache',

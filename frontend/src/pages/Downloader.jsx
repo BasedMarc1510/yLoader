@@ -1,11 +1,20 @@
 import React from 'react'
-import { Box, Stack, Typography, TextField, InputAdornment, IconButton, CircularProgress } from '@mui/material'
-import { ArrowRight } from 'lucide-react'
+import { Box, Stack, Typography, TextField, InputAdornment, IconButton, CircularProgress, Paper, Button } from '@mui/material'
+import { ArrowRight, X, AlertTriangle } from 'lucide-react'
 import { useTheme } from '@mui/material/styles'
 import { useLocation, useNavigate } from 'react-router-dom'
 import DownloaderShell from '../components/downloader/DownloaderShell'
-import { fetchNoembed, toMetaModel, isLikelyValidUrlFor, fetchDuration } from '../utils/metadata'
+import { fetchNoembed, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchFormats } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
+
+function extractYtDlpError(msg) {
+  if (!msg) return ''
+  const lines = String(msg).split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  const errorLine = lines.find(l => l.startsWith('ERROR:'))
+  const raw = errorLine ? errorLine.replace(/^ERROR:\s*/, '') : (lines[0] || msg)
+  // Sanitize Windows-1252 bytes misread as UTF-8 replacement chars (e.g. curly apostrophe → ')
+  return raw.replace(/\ufffd/g, '\u2019')
+}
 
 // serviceKey: 'youtube' | 'reddit' | 'x'
 export default function Downloader({ serviceKey = 'youtube' }) {
@@ -69,6 +78,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
   const [value, setValue] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [meta, setMeta] = React.useState(null) // when set -> show downloader UI
+  const [fetchError, setFetchError] = React.useState(null) // { url, message } when set -> show error panel
 
   // Placeholder cycling (fade + hold)
   const FADE_MS = 400
@@ -107,6 +117,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
     if (!urlParam) {
       if (meta) setMeta(null)
       if (value) setValue('')
+      if (fetchError) setFetchError(null)
     }
     // We intentionally only depend on location.key and serviceKey to capture route clicks
     // without causing re-runs while typing
@@ -116,7 +127,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
   // Auto-fetch metadata when a valid URL is entered (like on the start page)
   React.useEffect(() => {
     // Don't auto-fetch if already loading, if meta is already set, or if value is empty
-    if (loading || meta || !value.trim()) return
+    if (loading || meta || fetchError || !value.trim()) return
 
     // Check if the current value is a valid URL for this service
     const trimmedValue = value.trim()
@@ -179,34 +190,51 @@ export default function Downloader({ serviceKey = 'youtube' }) {
     if (!isLikelyValidUrlFor(serviceKey, target) || loading) return
     setLoading(true)
     setMeta(null)
+    setFetchError(null)
     try {
-      // Start both in parallel to minimize wait time
+      // Start all three in parallel; formats is required - let it throw on error
       const noembedP = fetchNoembed(target).catch(() => ({}))
       const durationP = fetchDuration(target).catch(() => ({ duration: null, durationString: null }))
-      const [noembed, duration] = await Promise.all([noembedP, durationP])
+      const [noembed, duration, formats] = await Promise.all([noembedP, durationP, fetchFormats(target)])
       const model = toMetaModel(serviceKey, target, noembed)
       model.duration = duration?.durationString || null
       model.durationSeconds = duration?.duration || null
+      model.preloadedFormats = formats
       setMeta(model)
     } catch (e) {
-      const model = toMetaModel(serviceKey, target, {})
-      setMeta(model)
+      setFetchError({ url: target, message: e.message || String(e) })
     } finally {
       setLoading(false)
     }
   }
 
+  const basePath = serviceKey === 'youtube' ? '/youtube-downloader' : serviceKey === 'reddit' ? '/reddit-downloader' : serviceKey === 'x' ? '/x-downloader' : '/generic-downloader'
+
   const closeInterface = () => {
     setMeta(null)
     setValue('') // Clear input bar when closing
-    // remove query string and go back to service root
-    const basePath = serviceKey === 'youtube' ? '/youtube-downloader' : serviceKey === 'reddit' ? '/reddit-downloader' : serviceKey === 'x' ? '/x-downloader' : '/generic-downloader'
     navigate(basePath)
+  }
+
+  const handleFetchError = React.useCallback((url, message) => {
+    setMeta(null)
+    setFetchError({ url, message })
+  }, [])
+
+  const closeError = () => {
+    setFetchError(null)
+    navigate(basePath)
+  }
+
+  const retryError = () => {
+    const url = fetchError?.url
+    setFetchError(null)
+    navigate(`${basePath}?url=${encodeURIComponent(url)}`)
   }
 
   // Ensure the URL input gets focus when navigating here or after closing the interface
   React.useEffect(() => {
-    if (!meta && !loading) {
+    if (!meta && !loading && !fetchError) {
       // slight delay to ensure element is mounted and visible
       const id = setTimeout(() => {
         if (inputRef.current) {
@@ -221,7 +249,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
       }, 0)
       return () => clearTimeout(id)
     }
-  }, [meta, serviceKey, loading])
+  }, [meta, serviceKey, loading, fetchError])
 
   return (
     <Box sx={{ position: 'relative', height: '100%' }}>
@@ -234,8 +262,8 @@ export default function Downloader({ serviceKey = 'youtube' }) {
         width: '100%',
         maxWidth: 780,
         px: 2,
-        opacity: meta ? 0 : 1,
-        pointerEvents: meta ? 'none' : 'auto',
+        opacity: (meta || fetchError) ? 0 : 1,
+        pointerEvents: (meta || fetchError) ? 'none' : 'auto',
         transition: 'opacity 220ms ease',
       }}>
         <TextField
@@ -366,8 +394,8 @@ export default function Downloader({ serviceKey = 'youtube' }) {
         width: '100%',
         maxWidth: 780,
         px: 2,
-        opacity: meta ? 0 : 1,
-        pointerEvents: meta ? 'none' : 'auto',
+        opacity: (meta || fetchError) ? 0 : 1,
+        pointerEvents: (meta || fetchError) ? 'none' : 'auto',
         transition: 'opacity 220ms ease',
       }}>
         <Typography variant="h1" component="h1" align="center" className="youtube-title" sx={{ fontSize: { xs: '3.5rem', sm: '5rem', md: '6rem' } }}>
@@ -400,7 +428,107 @@ export default function Downloader({ serviceKey = 'youtube' }) {
             meta={meta}
             onClose={closeInterface}
             serviceKey={serviceKey}
+            onFetchError={handleFetchError}
           />
+        )}
+      </Box>
+
+      {/* Error panel (appears when format fetch fails) */}
+      <Box
+        sx={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: '50%',
+          transform: fetchError ? 'translateY(-50%)' : 'translateY(-42%)',
+          opacity: fetchError ? 1 : 0,
+          pointerEvents: fetchError ? 'auto' : 'none',
+          transition: 'opacity 220ms ease, transform 220ms ease',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        {fetchError && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%', px: 2 }}>
+            <Paper elevation={0} sx={(t) => ({
+              width: '100%',
+              maxWidth: 450,
+              borderRadius: 2,
+              border: 'none',
+              overflow: 'hidden',
+              bgcolor: t.palette.mode === 'dark' ? '#181818' : '#ffffff',
+              boxShadow: t.palette.mode === 'dark' ? '0 8px 16px rgba(0, 0, 0, 0.2)' : '0 4px 24px rgba(0, 0, 0, 0.06)',
+            })}>
+              {/* Header */}
+              <Box sx={(t) => ({
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 2,
+                py: 1.5,
+                borderBottom: `1px solid ${t.palette.mode === 'dark' ? '#2a2a2a' : '#f0f0f0'}`,
+              })}>
+                <AlertTriangle size={18} style={{ color: '#e8a420', flexShrink: 0 }} />
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, flexGrow: 1 }}>
+                  {i18nT('fetchError.title')}
+                </Typography>
+                <IconButton
+                  size="small"
+                  aria-label={i18nT('fetchError.closeAria')}
+                  onClick={closeError}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <X size={16} />
+                </IconButton>
+              </Box>
+              {/* Error details - full-bleed scrollable, scrollbar at panel edge, no padding gaps */}
+              <Box
+                sx={(t) => ({
+                  maxHeight: 160,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  bgcolor: t.palette.mode === 'dark' ? '#111' : '#f5f5f5',
+                })}
+              >
+                <Typography variant="body2" sx={(t) => ({
+                  display: 'block',
+                  pl: 2,
+                  pr: 1.5,
+                  py: 1.5,
+                  color: t.palette.text.secondary,
+                  wordBreak: 'break-word',
+                  fontFamily: 'monospace',
+                  fontSize: '0.78rem',
+                  lineHeight: 1.6,
+                })}>
+                  {extractYtDlpError(fetchError.message)}
+                </Typography>
+              </Box>
+              {/* Retry button */}
+              <Box sx={{ px: 2, pb: 2 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  disableElevation
+                  onClick={retryError}
+                  sx={(t) => ({
+                    borderRadius: 9999,
+                    fontWeight: 700,
+                    textTransform: 'none',
+                    bgcolor: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    color: t.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                    '&:hover': {
+                      bgcolor: t.palette.mode === 'dark' ? '#f0f0f0' : '#111111',
+                    },
+                    cursor: 'pointer',
+                  })}
+                >
+                  {i18nT('fetchError.retry')}
+                </Button>
+              </Box>
+            </Paper>
+          </Box>
         )}
       </Box>
     </Box>
