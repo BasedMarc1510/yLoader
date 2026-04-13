@@ -70,6 +70,21 @@ export async function fetchDuration(rawUrl) {
   return data // { duration, durationString }
 }
 
+export async function fetchFormats(rawUrl) {
+  const API_BASE = getApiBase()
+  const url = normalizeUrlForNoembed(rawUrl)
+  const res = await fetch(`${API_BASE}/api/meta/formats?url=${encodeURIComponent(url)}`)
+  if (!res.ok) {
+    let errMsg = `HTTP ${res.status}`
+    try {
+      const body = await res.json()
+      errMsg = body?.details || body?.error || errMsg
+    } catch { }
+    throw new Error(errMsg)
+  }
+  return res.json()
+}
+
 export function toMetaModel(service, rawUrl, noembed) {
   const common = {
     service,

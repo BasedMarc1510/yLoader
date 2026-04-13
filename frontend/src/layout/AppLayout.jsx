@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Box, Toolbar } from '@mui/material'
+import { useLocation } from 'react-router-dom'
 import Header from '../components/Header'
 import Sidebar, { drawerWidth as drawerWidthExpanded } from '../components/Sidebar'
 
@@ -12,6 +13,7 @@ const headerHeight = 48
 const sidebarHeaderHeight = 49
 
 export default function AppLayout({ children }) {
+  const location = useLocation()
   const { showNotification } = useNotification()
   const { t } = useI18n()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -56,6 +58,10 @@ export default function AppLayout({ children }) {
   const handleToggleCollapsed = () => setCollapsed((v) => !v)
 
   const sidebarWidth = collapsed ? drawerWidthCollapsed : drawerWidthExpanded
+  const isDownloaderRoute = location.pathname === '/youtube-downloader'
+    || location.pathname === '/reddit-downloader'
+    || location.pathname === '/x-downloader'
+    || location.pathname === '/generic-downloader'
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -72,7 +78,7 @@ export default function AppLayout({ children }) {
         component="main"
         sx={(t) => ({
           flexGrow: 1,
-          p: 3,
+          p: isDownloaderRoute ? 0 : 3,
           width: { sm: `calc(100% - ${sidebarWidth}px)` },
           // Ensure the app uses exactly the viewport height including padding to avoid stray scrollbars
           height: '100dvh',

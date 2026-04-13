@@ -55,6 +55,8 @@ const YT_DLP_JS_RUNTIME_ARGS = ['--js-runtimes', YT_DLP_JS_RUNTIMES]
 const YT_DLP_COOKIES_FILE = String(process.env.YT_DLP_COOKIES_FILE || '').trim()
 const YT_DLP_COOKIES_FROM_BROWSER = String(process.env.YT_DLP_COOKIES_FROM_BROWSER || '').trim()
 const YT_DLP_EXTRACTOR_ARGS = String(process.env.YT_DLP_EXTRACTOR_ARGS || '').trim()
+const FFMPEG_BIN = String(process.env.FFMPEG_PATH || '').trim()
+const FFPROBE_BIN = String(process.env.FFPROBE_PATH || '').trim()
 
 // Basic CORS to allow browser access from other origins
 app.use((req, res, next) => {
@@ -135,7 +137,12 @@ app.get('/health', async (_req, res) => {
 // Helper: run a command and return stdout as string
 function runCmd(cmd, args = [], opts = {}) {
   return new Promise((resolve, reject) => {
-    const options = { maxBuffer: 10 * 1024 * 1024, ...opts }
+    const { env: extraEnv, ...restOpts } = opts
+    const options = {
+      maxBuffer: 10 * 1024 * 1024,
+      ...restOpts,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', ...(extraEnv || {}) },
+    }
     execFile(cmd, args, options, (err, stdout, stderr) => {
       if (err) {
         err.stderr = stderr?.toString?.() || ''
@@ -145,6 +152,75 @@ function runCmd(cmd, args = [], opts = {}) {
     })
   })
 }
+
+// ── Audio cut helpers ──────────────────────────────────────────────────────
+
+/** Compute the keep segments from trimStart/trimEnd and removal zones */
+function computeAudioKeepSegments(audioCuts, mediaDuration) {
+  if (!audioCuts || !audioCuts.enabled) return null
+  const { trimStart = 0, removals = [] } = audioCuts
+  const trimEnd =
+    audioCuts.trimEnd != null && audioCuts.trimEnd > 0
+      ? (mediaDuration != null ? Math.min(audioCuts.trimEnd, mediaDuration) : audioCuts.trimEnd)
+      : mediaDuration
+  if (trimEnd == null || trimEnd <= trimStart) return null
+
+  const sorted = [...removals]
+    .filter(r => typeof r.start === 'number' && typeof r.end === 'number' && r.end > r.start)
+    .sort((a, b) => a.start - b.start)
+
+  const segs = []
+  let cur = trimStart
+  for (const r of sorted) {
+    const rs = Math.max(r.start, trimStart)
+    const re = Math.min(r.end, trimEnd)
+    if (re <= rs) continue
+    if (rs > cur) segs.push({ start: cur, end: rs })
+    cur = Math.max(cur, re)
+  }
+  if (cur < trimEnd) segs.push({ start: cur, end: trimEnd })
+
+  // Check if result is a no-op (identical to entire media)
+  if (
+    segs.length === 1 &&
+    segs[0].start === 0 &&
+    mediaDuration != null &&
+    Math.abs(segs[0].end - mediaDuration) < 1
+  ) {
+    return null
+  }
+  return segs.length > 0 ? segs : null
+}
+
+/** FFmpeg audio codec args for a given file extension */
+function getAudioCodecArgs(extWithDot) {
+  switch ((extWithDot || '').replace('.', '').toLowerCase()) {
+    case 'mp3':  return ['-c:a', 'libmp3lame', '-q:a', '2']
+    case 'm4a':  return ['-c:a', 'aac', '-b:a', '192k']
+    case 'ogg':  return ['-c:a', 'libvorbis', '-q:a', '6']
+    case 'opus': return ['-c:a', 'libopus', '-b:a', '128k']
+    case 'flac': return ['-c:a', 'flac']
+    case 'wav':  return ['-c:a', 'pcm_s16le']
+    default:     return []
+  }
+}
+
+/** Build ffmpeg args to cut audio to the supplied keep segments */
+function buildAudioCutFfmpegArgs(inputPath, outputPath, keepSegments, ext) {
+  const codecArgs = getAudioCodecArgs(ext)
+  if (keepSegments.length === 1) {
+    const seg = keepSegments[0]
+    return ['-y', '-i', inputPath, '-ss', String(seg.start), '-to', String(seg.end), ...codecArgs, outputPath]
+  }
+  const filterParts = keepSegments.map(
+    (seg, i) => `[0:a]atrim=${seg.start}:${seg.end},asetpts=PTS-STARTPTS[a${i}]`
+  )
+  const concatInputs = keepSegments.map((_, i) => `[a${i}]`).join('')
+  const filter = [...filterParts, `${concatInputs}concat=n=${keepSegments.length}:v=0:a=1[out]`].join(';')
+  return ['-y', '-i', inputPath, '-filter_complex', filter, '-map', '[out]', ...codecArgs, outputPath]
+}
+
+// ── End audio cut helpers ─────────────────────────────────────────────────
 
 function buildYtDlpNetworkArgs(baseArgs = []) {
   const args = [...YT_DLP_JS_RUNTIME_ARGS]
@@ -273,16 +349,31 @@ const YT_PIP = process.env.YT_PIP_PATH || ''
 const YT_DLP_UPDATE_METHOD = (process.env.YT_DLP_UPDATE_METHOD || (YT_PIP ? 'pip' : 'self')).toLowerCase()
 const DISABLED_UPDATE_METHODS = new Set(['disabled', 'none', 'system'])
 
+function isProjectManagedYtDlpBinary() {
+  const normalizedBinaryPath = path.normalize(String(YT_DLP || '')).toLowerCase()
+  const marker = path.normalize(path.join('.tools', 'yt-dlp-bin')).toLowerCase()
+  return normalizedBinaryPath.includes(marker)
+}
+
+function getEffectiveYtDlpUpdateMethod() {
+  if (isProjectManagedYtDlpBinary() && DISABLED_UPDATE_METHODS.has(YT_DLP_UPDATE_METHOD)) {
+    return 'self'
+  }
+  return YT_DLP_UPDATE_METHOD
+}
+
 function isYtDlpUpdateDisabled() {
-  return DISABLED_UPDATE_METHODS.has(YT_DLP_UPDATE_METHOD)
+  return DISABLED_UPDATE_METHODS.has(getEffectiveYtDlpUpdateMethod())
 }
 
 function getYtDlpUpdateCommand() {
+  const effectiveMethod = getEffectiveYtDlpUpdateMethod()
+
   if (isYtDlpUpdateDisabled()) {
     return null
   }
 
-  if (YT_DLP_UPDATE_METHOD === 'pip') {
+  if (effectiveMethod === 'pip') {
     if (!YT_PIP) {
       throw new Error('YT_DLP_UPDATE_METHOD is set to "pip" but YT_PIP_PATH is missing')
     }
@@ -318,25 +409,34 @@ try {
 
 // Check if ffmpeg is available (required for merging)
 let HAS_FFMPEG = false
-try {
-  execFile('ffmpeg', ['-version'], (err, stdout) => {
-    if (err) {
-      console.error('⚠️  ffmpeg not found - video/audio merging will fail!')
-      HAS_FFMPEG = false
-    } else {
-      const firstLine = stdout.split('\n')[0]
-      console.log('✅ ffmpeg found:', firstLine)
-      HAS_FFMPEG = true
-    }
-  })
-} catch (e) {
-  console.error('⚠️  ffmpeg check failed:', e.message)
+if (!FFMPEG_BIN) {
+  console.error('⚠️  FFMPEG_PATH is not configured - video/audio merging features are disabled!')
   HAS_FFMPEG = false
+} else {
+  try {
+    execFile(FFMPEG_BIN, ['-version'], (err, stdout) => {
+      if (err) {
+        console.error(`⚠️  ffmpeg not found at "${FFMPEG_BIN}" - video/audio merging will fail!`)
+        HAS_FFMPEG = false
+      } else {
+        const firstLine = stdout.split('\n')[0]
+        console.log('✅ ffmpeg found:', firstLine)
+        HAS_FFMPEG = true
+      }
+    })
+  } catch (e) {
+    console.error('⚠️  ffmpeg check failed:', e.message)
+    HAS_FFMPEG = false
+  }
 }
 
 console.log(`Using yt-dlp: ${YT_DLP}`)
+console.log(`Using ffmpeg: ${FFMPEG_BIN || '(not configured)'}`)
+if (FFPROBE_BIN) {
+  console.log(`Using ffprobe: ${FFPROBE_BIN}`)
+}
 console.log(`yt-dlp JS runtimes: ${YT_DLP_JS_RUNTIMES}`)
-console.log(`yt-dlp update method: ${YT_DLP_UPDATE_METHOD}`)
+console.log(`yt-dlp update method: ${getEffectiveYtDlpUpdateMethod()}${getEffectiveYtDlpUpdateMethod() !== YT_DLP_UPDATE_METHOD ? ` (configured: ${YT_DLP_UPDATE_METHOD})` : ''}`)
 if (YT_DLP_COOKIES_FILE) {
   console.log(`yt-dlp cookies file: ${YT_DLP_COOKIES_FILE}`)
 }
@@ -460,15 +560,64 @@ function normalizeVersion(v) {
   return (v || '').trim().split('.').map(x => parseInt(x, 10)).join('.')
 }
 
+function extractVersionToken(rawValue) {
+  const line = String(rawValue || '').trim()
+  if (!line) return ''
+
+  // ffmpeg/ffprobe commonly output: "ffmpeg version X ..."
+  const match = line.match(/\bversion\s+([^\s]+)/i)
+  if (match && match[1]) return match[1].trim()
+
+  // yt-dlp --version commonly outputs only the version token.
+  return line.split(/\s+/)[0] || line
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let idx = 0
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024
+    idx += 1
+  }
+  const digits = idx === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2
+  return `${value.toFixed(digits)} ${units[idx]}`
+}
+
+function getFileSizeInfo(filePath) {
+  const target = String(filePath || '').trim()
+  if (!target) return { bytes: null, human: '' }
+
+  try {
+    if (!fs.existsSync(target)) return { bytes: null, human: '' }
+    const stat = fs.statSync(target)
+    if (!stat.isFile()) return { bytes: null, human: '' }
+    return { bytes: stat.size, human: formatBytes(stat.size) }
+  } catch {
+    return { bytes: null, human: '' }
+  }
+}
+
+async function readBinaryVersionLine(binaryPath) {
+  if (!binaryPath) return ''
+  const raw = await runCmd(binaryPath, ['-version'], { timeout: 5000, maxBuffer: 512 * 1024 })
+  return String(raw || '').split(/\r?\n/).find(Boolean) || ''
+}
+
 // GET /api/yt-dlp/status -> { currentVersion, latestVersion, outdated }
 app.get('/api/yt-dlp/status', async (_req, res) => {
   try {
     // Current version from configured yt-dlp binary path
     const currentRaw = await runCmd(YT_DLP, ['--version'])
-    const currentVersion = currentRaw.trim()
+    const firstLine = String(currentRaw || '').split(/\r?\n/).find(Boolean) || ''
+    const currentVersion = extractVersionToken(firstLine)
 
     let latestVersion = currentVersion
     let outdated = false
+
+    const ytDlpPath = YT_DLP
+    const ytDlpFileSize = getFileSizeInfo(ytDlpPath)
 
     try {
       // Fetch latest version directly from PyPI (faster & more reliable than pip list --outdated)
@@ -491,11 +640,90 @@ app.get('/api/yt-dlp/status', async (_req, res) => {
       latestVersion,
       outdated,
       platform: os.platform(),
-      updateMethod: YT_DLP_UPDATE_METHOD,
+      updateMethod: getEffectiveYtDlpUpdateMethod(),
       updateSupported: !isYtDlpUpdateDisabled(),
+      binaryPath: ytDlpPath,
+      binarySizeBytes: ytDlpFileSize.bytes,
+      binarySizeHuman: ytDlpFileSize.human,
     })
   } catch (err) {
     res.status(500).json({ error: 'Failed to query yt-dlp status', details: String(err?.message || err) })
+  }
+})
+
+// GET /api/ffmpeg/status -> { available, version, path, ffprobeVersion }
+app.get('/api/ffmpeg/status', async (_req, res) => {
+  const projectManaged = true
+
+  if (!FFMPEG_BIN) {
+    return res.json({
+      available: false,
+      projectManaged,
+      path: '',
+      version: '',
+      fileSizeBytes: null,
+      fileSizeHuman: '',
+      ffprobePath: '',
+      ffprobeVersion: '',
+      ffprobeFileSizeBytes: null,
+      ffprobeFileSizeHuman: '',
+      error: 'FFMPEG_PATH is not configured',
+    })
+  }
+
+  try {
+    const versionLine = await readBinaryVersionLine(FFMPEG_BIN)
+    const version = extractVersionToken(versionLine)
+    const ffmpegFileSize = getFileSizeInfo(FFMPEG_BIN)
+
+    let ffprobePath = FFPROBE_BIN
+    if (!ffprobePath) {
+      const fallbackName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
+      const siblingPath = path.join(path.dirname(FFMPEG_BIN), fallbackName)
+      if (fs.existsSync(siblingPath)) {
+        ffprobePath = siblingPath
+      }
+    }
+
+    let ffprobeVersion = ''
+    let ffprobeFileSize = { bytes: null, human: '' }
+    if (ffprobePath) {
+      try {
+        const ffprobeVersionLine = await readBinaryVersionLine(ffprobePath)
+        ffprobeVersion = extractVersionToken(ffprobeVersionLine)
+        ffprobeFileSize = getFileSizeInfo(ffprobePath)
+      } catch {
+        ffprobeVersion = ''
+      }
+    }
+
+    return res.json({
+      available: true,
+      projectManaged,
+      path: FFMPEG_BIN,
+      version,
+      fileSizeBytes: ffmpegFileSize.bytes,
+      fileSizeHuman: ffmpegFileSize.human,
+      ffprobePath,
+      ffprobeVersion,
+      ffprobeFileSizeBytes: ffprobeFileSize.bytes,
+      ffprobeFileSizeHuman: ffprobeFileSize.human,
+      error: '',
+    })
+  } catch (err) {
+    return res.json({
+      available: false,
+      projectManaged,
+      path: FFMPEG_BIN,
+      version: '',
+      fileSizeBytes: null,
+      fileSizeHuman: '',
+      ffprobePath: FFPROBE_BIN,
+      ffprobeVersion: '',
+      ffprobeFileSizeBytes: null,
+      ffprobeFileSizeHuman: '',
+      error: String(err?.message || err),
+    })
   }
 })
 
@@ -796,7 +1024,7 @@ app.get('/api/proxy-image', async (req, res) => {
     try {
       fs.writeFileSync(tempInput, imageBuffer)
 
-      await runCmd('ffmpeg', ['-y', '-i', tempInput, tempOutput])
+      await runCmd(FFMPEG_BIN, ['-y', '-i', tempInput, tempOutput])
 
       if (fs.existsSync(tempOutput)) {
         const outData = fs.readFileSync(tempOutput)
@@ -937,6 +1165,20 @@ app.post('/api/download/stream', async (req, res) => {
     coverUploadHash = crypto.createHash('sha256').update(buffer).digest('hex').substring(0, 12)
   }
 
+  // Parse and validate audioCuts
+  let audioCuts = null
+  const rawAudioCuts = req.body.audioCuts
+  if (type === 'audio' && rawAudioCuts && typeof rawAudioCuts === 'object' && rawAudioCuts.enabled) {
+    const acTrimStart = typeof rawAudioCuts.trimStart === 'number' ? Math.max(0, rawAudioCuts.trimStart) : 0
+    const acTrimEnd   = typeof rawAudioCuts.trimEnd   === 'number' ? Math.max(0, rawAudioCuts.trimEnd) : null
+    const acRemovals  = Array.isArray(rawAudioCuts.removals)
+      ? rawAudioCuts.removals
+          .filter(r => typeof r.start === 'number' && typeof r.end === 'number' && r.end > r.start)
+          .map(r => ({ start: Math.max(0, r.start), end: Math.max(0, r.end) }))
+      : []
+    audioCuts = { enabled: true, trimStart: acTrimStart, trimEnd: acTrimEnd, removals: acRemovals }
+  }
+
   // Setup SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -983,6 +1225,7 @@ app.post('/api/download/stream', async (req, res) => {
           source: coverSource,
           upload: coverUploadHash || null,
         },
+        audioCuts: audioCuts || null,
       }))
       .digest('hex')
       .substring(0, 16)
@@ -1214,13 +1457,36 @@ app.post('/api/download/stream', async (req, res) => {
             const ext = path.extname(contentFile)
             let sourcePath = path.join(tempDir, contentFile)
 
+            // Apply audio cuts (trim + removals) if requested
+            if (type === 'audio' && audioCuts?.enabled) {
+              if (!HAS_FFMPEG) {
+                send('message', '⚠️ ffmpeg required for audio cutting – skipping cuts')
+              } else {
+                const keepSegments = computeAudioKeepSegments(audioCuts, duration || null)
+                if (keepSegments) {
+                  const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
+                  send('progress', { percent: 99, stage: 'processing' })
+                  try {
+                    const ffArgs = buildAudioCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext)
+                    await runCmd(FFMPEG_BIN, ffArgs)
+                    if (fs.existsSync(cutOutputPath)) {
+                      sourcePath = cutOutputPath
+                    }
+                  } catch (cutErr) {
+                    console.error('Audio cut failed:', cutErr)
+                    send('message', 'Audio cutting failed, continuing with original audio')
+                  }
+                }
+              }
+            }
+
             if (type === 'audio' && coverEnabled && coverSource === 'upload' && coverUpload) {
               try {
                 const coverPath = path.join(tempDir, `cover${coverUpload.ext}`)
                 fs.writeFileSync(coverPath, coverUpload.buffer)
                 const withCoverPath = path.join(tempDir, `content_cover${ext}`)
                 send('progress', { percent: 99, stage: 'processing' })
-                await runCmd('ffmpeg', [
+                await runCmd(FFMPEG_BIN, [
                   '-y',
                   '-i', sourcePath,
                   '-i', coverPath,
@@ -1268,6 +1534,7 @@ app.post('/api/download/stream', async (req, res) => {
                   source: coverSource,
                   upload: coverUploadHash || null,
                 },
+                audioCuts: audioCuts || null,
               }
               fs.writeFileSync(metaPath, JSON.stringify(meta))
             } catch (err) {

@@ -4,6 +4,7 @@ import { Image as ImageIcon, Music2, Video, Tag, Scissors, TrendingUp, Download,
 import MetadataInput from './MetadataInput'
 import CustomSelect from './CustomSelect'
 import CombinedFilenameInput from './CombinedFilenameInput'
+import AudioCutSection from './AudioCutSection'
 import { useNotification } from '../../providers/NotificationProvider'
 import { parseVideoTitle } from '../../utils/metadataParser'
 import { getApiBase, normalizeUrlForNoembed, detectService, extractYouTubeId, youtubeThumb, fetchNoembed } from '../../utils/metadata'
@@ -42,7 +43,7 @@ const ChevronIcon = ({ isOpen = false, theme }) => (
   </Box>
 )
 
-export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', videoAuthor = '', videoUrl = '', durationSeconds = null, serviceKey = null }) {
+export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', videoAuthor = '', videoUrl = '', durationSeconds = null, serviceKey = null, initialFormats = null, onFetchError = null }) {
   const theme = useTheme()
   const { t: i18nT } = useI18n()
   const { showNotification } = useNotification()
@@ -77,6 +78,9 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
   const [selectedThumbValue, setSelectedThumbValue] = React.useState('')
   const [selectedThumbFormat, setSelectedThumbFormat] = React.useState('jpg')
   const [loadingThumbs, setLoadingThumbs] = React.useState(false)
+
+  // Audio cut states
+  const [audioCutsData, setAudioCutsData] = React.useState(null)
 
   // Album cover states (audio)
   const [coverEmbedEnabled, setCoverEmbedEnabled] = React.useState(true)
@@ -168,6 +172,36 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
     }
   }, [videoTitle, videoAuthor])
 
+  // Shared helper: apply backend thumbnail list into dropdown options
+  const applyBackendThumbnails = React.useCallback((thumbnails) => {
+    const valid = (thumbnails || []).filter(t => t.width && t.height && t.width > 0 && t.height > 0)
+    valid.sort((a, b) => (b.height || 0) - (a.height || 0))
+    const seen = new Set()
+    const opts = []
+    const friendlyMap = {
+      'maxresdefault': i18nT('downloader.maxResolution'),
+      'sddefault': i18nT('downloader.sd'),
+      'hqdefault': i18nT('downloader.hq'),
+      'mqdefault': i18nT('downloader.mq'),
+      'default': i18nT('downloader.default'),
+    }
+    for (const t of valid) {
+      const dimLabel = `${t.width}x${t.height}`
+      if (seen.has(dimLabel)) continue
+      seen.add(dimLabel)
+      const label = (t.id && friendlyMap[t.id]) ? `${friendlyMap[t.id]} (${dimLabel})` : dimLabel
+      opts.push({ value: t.id || `thumb-${opts.length}`, label, description: undefined, url: t.url, width: t.width, height: t.height })
+    }
+    if (opts.length > 0) {
+      setThumbOptions(opts)
+      setSelectedThumbValue(opts[0]?.value || '')
+    } else {
+      setThumbOptions([])
+      setSelectedThumbValue('')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [i18nT])
+
   // Load available formats when videoUrl changes
   React.useEffect(() => {
     const load = async () => {
@@ -181,72 +215,43 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
         setSelectedThumbValue('')
         return
       }
+      // Use pre-loaded formats if provided (avoids a second round-trip and prevents UI flash)
+      if (initialFormats != null) {
+        setAudioFormats(initialFormats.audioFormats || [])
+        setVideoFormats(initialFormats.videoFormats || [])
+        const isYouTube = !!extractYouTubeId(videoUrl)
+        if (!isYouTube && Array.isArray(initialFormats.thumbnails) && initialFormats.thumbnails.length) {
+          applyBackendThumbnails(initialFormats.thumbnails)
+        } else {
+          setThumbOptions([])
+          setSelectedThumbValue('')
+        }
+        return
+      }
       try {
         const API_BASE = getApiBase()
         const normalized = normalizeUrlForNoembed(videoUrl)
         console.log('Loading formats for URL:', normalized)
         setLoadingFormats(true)
         const res = await fetch(`${API_BASE}/api/meta/formats?url=${encodeURIComponent(normalized)}`)
-        if (!res.ok) throw new Error(`formats HTTP ${res.status}`)
+        if (!res.ok) {
+          let errMsg = `HTTP ${res.status}`
+          try {
+            const body = await res.json()
+            errMsg = body?.details || body?.error || errMsg
+          } catch { }
+          throw new Error(errMsg)
+        }
         const data = await res.json()
         console.log('Formats received:', data)
         setAudioFormats(data.audioFormats || [])
         setVideoFormats(data.videoFormats || [])
 
         // If backend supplied thumbnails, prefer those over client probing.
-        // Exception: For YouTube, backend often claims 1080p (1920x1080) for maxresdefault,
-        // but it is actually 720p (1280x720). checking availability and real dimensions via client probe is safer.
+        // Exception: For YouTube, use client-side probing for accurate dimensions.
         const isYouTube = !!extractYouTubeId(videoUrl)
         if (!isYouTube && Array.isArray(data.thumbnails) && data.thumbnails.length) {
-
-          // Filter out thumbnails without dimensions and deduplicate by resolution
-          const validThumbnails = data.thumbnails.filter(t => t.width && t.height && t.width > 0 && t.height > 0)
-
-          // Sort by height descending to prioritize higher quality
-          validThumbnails.sort((a, b) => (b.height || 0) - (a.height || 0))
-
-          const seen = new Set()
-          const opts = []
-
-          // Detect if it's YouTube to potentialy filter strictly for common sizes if needed
-          // But generic dedup + unknown removal is usually enough
-          const friendlyMap = {
-            'maxresdefault': i18nT('downloader.maxResolution'),
-            'sddefault': i18nT('downloader.sd'),
-            'hqdefault': i18nT('downloader.hq'),
-            'mqdefault': i18nT('downloader.mq'),
-            'default': i18nT('downloader.default')
-          }
-
-          for (const t of validThumbnails) {
-            const dimLabel = `${t.width}x${t.height}`
-            if (seen.has(dimLabel)) continue
-
-            seen.add(dimLabel)
-
-            let label = dimLabel
-            // If we have a friendly mapping for the ID, use it alongside the resolution
-            if (t.id && friendlyMap[t.id]) {
-              label = `${friendlyMap[t.id]} (${dimLabel})`
-            }
-
-            opts.push({
-              value: t.id || `thumb-${opts.length}`,
-              label: label,
-              description: undefined,
-              url: t.url,
-              width: t.width,
-              height: t.height,
-            })
-          }
-
-          if (opts.length > 0) {
-            setThumbOptions(opts)
-            setSelectedThumbValue(opts[0]?.value || '')
-          } else {
-            setThumbOptions([])
-            setSelectedThumbValue('')
-          }
+          applyBackendThumbnails(data.thumbnails)
         } else {
           // Ensure cleared if none
           setThumbOptions([])
@@ -258,12 +263,14 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
         setVideoFormats([])
         setThumbOptions([])
         setSelectedThumbValue('')
+        onFetchError?.(videoUrl, err.message || String(err))
       } finally {
         setLoadingFormats(false)
       }
     }
     load()
-  }, [videoUrl])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoUrl, initialFormats])
 
   // Load available thumbnails when videoUrl changes
   React.useEffect(() => {
@@ -464,6 +471,12 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
             type: coverUpload.type || '',
             dataUrl: coverUpload.dataUrl,
           } : undefined,
+        } : undefined,
+        audioCuts: type === 'audio' && audioCutsData?.enabled ? {
+          enabled: true,
+          trimStart: audioCutsData.trimStart ?? 0,
+          trimEnd: audioCutsData.trimEnd ?? (durationSeconds || 0),
+          removals: audioCutsData.removals ?? [],
         } : undefined,
       }
 
@@ -752,28 +765,13 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
               borderRadius: '0 0 12px 12px',
             }}
           >
-            <Select
-              size="small"
-              value="none"
+            <AudioCutSection
+              duration={durationSeconds}
+              brandColor={brandColor}
+              isDark={isDark}
               disabled={downloading}
-              sx={{
-                width: 220,
-                bgcolor: selectBg,
-                color: textColor,
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: isDark ? '#3a3a3a' : '#d0d0d0',
-                },
-                '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: isDark ? '#4a4a4a' : '#b0b0b0',
-                },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                  borderColor: isDark ? '#5a5a5a' : '#909090',
-                },
-              }}
-            >
-              <MenuItem value="none" sx={{ bgcolor: selectBg, color: textColor }}>{i18nT('downloader.noCut')}</MenuItem>
-              <MenuItem value="range" sx={{ bgcolor: selectBg, color: textColor }}>{i18nT('downloader.selectRange')}</MenuItem>
-            </Select>
+              onChange={setAudioCutsData}
+            />
           </Box>
         </Collapse>
 

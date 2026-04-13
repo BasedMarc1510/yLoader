@@ -5,10 +5,10 @@ import MediaSummary from './MediaSummary'
 import OptionsTabs from './OptionsTabs'
 import { useI18n } from '../../providers/I18nProvider'
 
-export default function DownloaderShell({ brand, meta, onClose, serviceKey }) {
+export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFetchError }) {
   const { t } = useI18n()
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%', px: 2 }}>
+    <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
       <Paper elevation={0} sx={(t) => ({
         width: '100%',
         maxWidth: 450,
@@ -31,6 +31,8 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey }) {
               videoUrl={meta.url}
               durationSeconds={meta.durationSeconds}
               serviceKey={serviceKey}
+              initialFormats={meta.preloadedFormats}
+              onFetchError={onFetchError}
             />
           </Box>
         </Box>

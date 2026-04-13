@@ -42,6 +42,8 @@ export default function Header({ onMenuClick, sidebarWidth = 240 }) {
         bgcolor: t.palette.mode === 'dark' ? '#212121' : '#ffffff',
         backdropFilter: 'saturate(180%) blur(4px)',
         borderBottom: `1px solid ${t.palette.divider}`,
+        borderLeft: '0 !important',
+        boxShadow: 'none',
       })}
     >
       <Toolbar variant="dense" sx={{ minHeight: 48 }}>

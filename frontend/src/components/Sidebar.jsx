@@ -24,10 +24,22 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
   const { t: i18nT } = useI18n()
   const t = useTheme()
   const location = useLocation()
+  const sidebarBg = t.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
+  const genericIcon = t.palette.mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
   const ICON_SIZE = 20
   const logoLeftOffset = Math.max(0, (collapsedWidth - ICON_SIZE) / 2)
   const [openDownloaders, setOpenDownloaders] = React.useState(true)
   const [openSettings, setOpenSettings] = React.useState(false)
+
+  const withCollapsedTooltip = (node, title) => (
+    collapsed
+      ? (
+        <Tooltip title={title} placement="right" enterDelay={200}>
+          {node}
+        </Tooltip>
+        )
+      : node
+  )
 
   const handleNavClick = React.useCallback(() => {
     if (typeof onClose === 'function') onClose()
@@ -42,8 +54,8 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
     { label: 'YouTube', to: '/youtube-downloader', icon: '/dl-icons/youtube-icon.svg' },
     { label: 'X/Twitter', to: '/x-downloader', icon: '/dl-icons/x-icon.svg' },
     { label: 'Reddit', to: '/reddit-downloader', icon: '/dl-icons/reddit-icon.svg' },
-    { label: 'Generic', to: '/generic-downloader', icon: '/dl-icons/generic-icon.svg' },
-  ]), [])
+    { label: 'Generic', to: '/generic-downloader', icon: genericIcon },
+  ]), [genericIcon])
 
   const SidebarTopBar = ({ bg }) => {
     if (collapsed) {
@@ -58,6 +70,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
             justifyContent: 'center',
             px: 0,
             borderBottom: (t) => `1px solid ${t.palette.divider}`,
+            borderRight: 'none',
           }}
         >
           <Tooltip title={i18nT('sidebar.expand')}>
@@ -83,6 +96,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
           alignItems: 'center',
           px: 0,
           borderBottom: (t) => `1px solid ${t.palette.divider}`,
+          borderRight: 'none',
         }}
       >
         {/* Brand: favicon + yLoader */}
@@ -104,12 +118,12 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
           <Typography
             variant="h6"
             className="youtube-title"
-            sx={{ fontWeight: 600, fontFamily: '"YouTube Sans Bold", sans-serif' }}
+            sx={{ fontWeight: 600 }}
           >
             yLoader
           </Typography>
         </Box>
-  <Tooltip title={i18nT('sidebar.collapse')}>
+        <Tooltip title={i18nT('sidebar.collapse')}>
           <IconButton size="small" onClick={onToggleCollapsed} aria-label={i18nT('sidebar.collapse')} sx={{ mr: 1 }}>
             <ChevronLeft size={18} />
           </IconButton>
@@ -121,7 +135,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Invisible-looking top bar inside sidebar */}
-  <SidebarTopBar bg={t.palette.mode === 'dark' ? '#181818' : '#f9f9f9'} />
+      <SidebarTopBar bg={sidebarBg} />
 
       {/* Navigation list */}
       <List sx={{ px: 1, py: 1 }}>
@@ -129,62 +143,65 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
           const isActive = location.pathname === item.to
           return (
             <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
-              <ListItemButton 
-                component={Link}
-                to={item.to}
-                selected={isActive}
-                onClick={handleNavClick}
-                sx={{
-                  borderRadius: 1,
+              {withCollapsedTooltip(
+                <ListItemButton
+                  component={Link}
+                  to={item.to}
+                  selected={isActive}
+                  onClick={handleNavClick}
+                  sx={{
+                    borderRadius: 1,
                     minHeight: 28,
                     px: collapsed ? 1 : 0.5,
                     // Compact but comfortable height in expanded state (match collapsed feel)
                     py: collapsed ? undefined : 0.75,
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                  transition: 'none',
-                  '@media (hover: hover) and (pointer: fine)': {
-                    '&:hover': {
-                      bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
-                    },
-                  },
-                  '&.Mui-selected': {
-                    bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    transition: 'none',
                     '@media (hover: hover) and (pointer: fine)': {
                       '&:hover': {
-                        bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)',
+                        bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
                       },
                     },
-                  },
-                }}
-              >
-              <ListItemIcon 
-                sx={{ 
-                  minWidth: collapsed ? 'auto' : 36,
-                  justifyContent: 'center',
-                  color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                  display: 'flex',
-                  alignItems: 'center',
-                  height: '100%',
-                }}
-              >
-                {item.icon}
-              </ListItemIcon>
-              {!collapsed && (
-                <ListItemText 
-                  primary={item.label}
-                  sx={{
-                    '& .MuiListItemText-primary': {
-                      fontSize: '0.875rem',
-                      fontWeight: 400,
-                      lineHeight: 1.2,
-                      color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    '&.Mui-selected': {
+                      bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
+                      '@media (hover: hover) and (pointer: fine)': {
+                        '&:hover': {
+                          bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)',
+                        },
+                      },
                     },
                   }}
-                />
+                >
+                  <ListItemIcon
+                    sx={{
+                      minWidth: collapsed ? 'auto' : 36,
+                      justifyContent: 'center',
+                      color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                      display: 'flex',
+                      alignItems: 'center',
+                      height: '100%',
+                    }}
+                  >
+                    {item.icon}
+                  </ListItemIcon>
+                  {!collapsed && (
+                    <ListItemText
+                      primary={item.label}
+                      sx={{
+                        '& .MuiListItemText-primary': {
+                          fontSize: '0.875rem',
+                          fontWeight: 400,
+                          lineHeight: 1.2,
+                          color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                        },
+                      }}
+                    />
+                  )}
+                </ListItemButton>,
+                item.label,
               )}
-            </ListItemButton>
-          </ListItem>
+            </ListItem>
           )
         })}
 
@@ -220,59 +237,62 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
               const isActive = location.pathname === dl.to
               return (
                 <ListItem key={dl.label} disablePadding sx={{ mb: 0.25 }}>
-                  <ListItemButton
-                    component={Link}
-                    to={dl.to}
-                    selected={isActive}
-                    onClick={handleNavClick}
-                    sx={{
-                      borderRadius: 1,
-                      minHeight: 28,
-                      px: collapsed ? 1 : 0.5,
-                      py: collapsed ? undefined : 0.5,
-                      justifyContent: collapsed ? 'center' : 'flex-start',
-                      color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                      transition: 'none',
-                      '@media (hover: hover) and (pointer: fine)': {
-                        '&:hover': {
-                          bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
-                        },
-                      },
-                      '&.Mui-selected': {
-                        bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
+                  {withCollapsedTooltip(
+                    <ListItemButton
+                      component={Link}
+                      to={dl.to}
+                      selected={isActive}
+                      onClick={handleNavClick}
+                      sx={{
+                        borderRadius: 1,
+                        minHeight: 28,
+                        px: collapsed ? 1 : 0.5,
+                        py: collapsed ? undefined : 0.5,
+                        justifyContent: collapsed ? 'center' : 'flex-start',
+                        color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                        transition: 'none',
                         '@media (hover: hover) and (pointer: fine)': {
                           '&:hover': {
-                            bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)',
+                            bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
                           },
                         },
-                      },
-                    }}
-                  >
-                    <ListItemIcon
-                      sx={{
-                        minWidth: collapsed ? 'auto' : 36,
-                        justifyContent: 'center',
-                        display: 'flex',
-                        alignItems: 'center',
-                        height: '100%',
+                        '&.Mui-selected': {
+                          bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
+                          '@media (hover: hover) and (pointer: fine)': {
+                            '&:hover': {
+                              bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)',
+                            },
+                          },
+                        },
                       }}
                     >
-                      <Box component="img" src={dl.icon} alt={i18nT('sidebar.iconAlt', { name: dl.label })} sx={{ width: 18, height: 18, display: 'block' }} />
-                    </ListItemIcon>
-                    {!collapsed && (
-                      <ListItemText
-                        primary={dl.label}
+                      <ListItemIcon
                         sx={{
-                          '& .MuiListItemText-primary': {
-                            fontSize: '0.85rem',
-                            fontWeight: 400,
-                            lineHeight: 1.2,
-                            color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                          },
+                          minWidth: collapsed ? 'auto' : 36,
+                          justifyContent: 'center',
+                          display: 'flex',
+                          alignItems: 'center',
+                          height: '100%',
                         }}
-                      />
-                    )}
-                  </ListItemButton>
+                      >
+                        <Box component="img" src={dl.icon} alt={i18nT('sidebar.iconAlt', { name: dl.label })} sx={{ width: 18, height: 18, display: 'block' }} />
+                      </ListItemIcon>
+                      {!collapsed && (
+                        <ListItemText
+                          primary={dl.label}
+                          sx={{
+                            '& .MuiListItemText-primary': {
+                              fontSize: '0.85rem',
+                              fontWeight: 400,
+                              lineHeight: 1.2,
+                              color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                            },
+                          }}
+                        />
+                      )}
+                    </ListItemButton>,
+                    dl.label,
+                  )}
                 </ListItem>
               )
             })}
@@ -284,48 +304,51 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
       <Box sx={{ mt: 'auto', px: 1, pb: 1, pt: 1.25, borderTop: (t) => `1px solid ${t.palette.divider}` }}>
         <List sx={{ p: 0 }}>
           <ListItem disablePadding>
-            <ListItemButton
-              onClick={() => setOpenSettings(true)}
-              sx={{
-                borderRadius: 1,
-                minHeight: 28,
-                px: collapsed ? 1 : 0.5,
-                py: collapsed ? undefined : 0.75,
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                '@media (hover: hover) and (pointer: fine)': {
-                  '&:hover': {
-                    bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
-                  },
-                },
-              }}
-            >
-              <ListItemIcon
+            {withCollapsedTooltip(
+              <ListItemButton
+                onClick={() => setOpenSettings(true)}
                 sx={{
-                  minWidth: collapsed ? 'auto' : 36,
-                  justifyContent: 'center',
+                  borderRadius: 1,
+                  minHeight: 28,
+                  px: collapsed ? 1 : 0.5,
+                  py: collapsed ? undefined : 0.75,
+                  justifyContent: collapsed ? 'center' : 'flex-start',
                   color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                  display: 'flex',
-                  alignItems: 'center',
-                  height: '100%',
+                  '@media (hover: hover) and (pointer: fine)': {
+                    '&:hover': {
+                      bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
+                    },
+                  },
                 }}
               >
-                <Settings size={16} />
-              </ListItemIcon>
-              {!collapsed && (
-                <ListItemText
-                  primary={i18nT('sidebar.settings')}
+                <ListItemIcon
                   sx={{
-                    '& .MuiListItemText-primary': {
-                      fontSize: '0.875rem',
-                      fontWeight: 400,
-                      lineHeight: 1.2,
-                      color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                    },
+                    minWidth: collapsed ? 'auto' : 36,
+                    justifyContent: 'center',
+                    color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    display: 'flex',
+                    alignItems: 'center',
+                    height: '100%',
                   }}
-                />
-              )}
-            </ListItemButton>
+                >
+                  <Settings size={16} />
+                </ListItemIcon>
+                {!collapsed && (
+                  <ListItemText
+                    primary={i18nT('sidebar.settings')}
+                    sx={{
+                      '& .MuiListItemText-primary': {
+                        fontSize: '0.875rem',
+                        fontWeight: 400,
+                        lineHeight: 1.2,
+                        color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                      },
+                    }}
+                  />
+                )}
+              </ListItemButton>,
+              i18nT('sidebar.settings'),
+            )}
           </ListItem>
         </List>
       </Box>
@@ -342,11 +365,15 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: 'block', sm: 'none' },
-          '& .MuiDrawer-paper': (t) => ({
+          '& .MuiDrawer-paper': {
             boxSizing: 'border-box',
             width: drawerWidth,
-            bgcolor: t.palette.mode === 'dark' ? '#181818' : '#f9f9f9',
-          }),
+            bgcolor: sidebarBg,
+            borderRight: '0 !important',
+          },
+          '& .MuiDrawer-paperAnchorLeft': {
+            borderRight: '0 !important',
+          },
         }}
       >
         {drawerContent}
@@ -356,13 +383,16 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
         variant="permanent"
         sx={{
           display: { xs: 'none', sm: 'block' },
-          '& .MuiDrawer-paper': (t) => ({
+          '& .MuiDrawer-paper': {
             boxSizing: 'border-box',
             width: collapsed ? collapsedWidth : drawerWidth,
-            bgcolor: t.palette.mode === 'dark' ? '#181818' : '#f9f9f9',
-            borderRight: 'none',
+            bgcolor: sidebarBg,
+            borderRight: '0 !important',
             overflow: 'visible',
-          }),
+          },
+          '& .MuiDrawer-paperAnchorDockedLeft': {
+            borderRight: '0 !important',
+          },
         }}
         open
       >
