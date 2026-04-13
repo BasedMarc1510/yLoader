@@ -6,7 +6,6 @@ import {
   Typography,
   CircularProgress,
   Toolbar,
-  Tooltip,
 } from '@mui/material'
 import { Menu, Home, Download, Heart, Plus, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Box as ImageBox } from '@mui/material'
@@ -50,11 +49,12 @@ function getPanelDomId(tabId) {
 // Chrome-style pointer-drag hook
 // ---------------------------------------------------------------------------
 function useTabDrag({ tabs, onTabsReorder, scrollContainerRef }) {
+  const DRAG_START_THRESHOLD_PX = 2
   const dragRef = React.useRef(null)
   const [draggingId, setDraggingId] = React.useState(null)
   // offsets: per-tabId translateX px value during drag
   const [offsets, setOffsets] = React.useState({})
-  // didDrag ref: true once pointer moved >4px, used to suppress click
+  // didDrag ref: true once pointer moved past threshold, used to suppress click
   const didDragRef = React.useRef(false)
 
   const cancelDrag = React.useCallback(() => {
@@ -72,6 +72,7 @@ function useTabDrag({ tabs, onTabsReorder, scrollContainerRef }) {
   const startDrag = React.useCallback((event, tabId) => {
     if (event.button !== 0) return
     if (event.target.closest('.yl-tab-close')) return
+    event.preventDefault()
 
     const container = scrollContainerRef.current
     if (!container) return
@@ -108,8 +109,8 @@ function useTabDrag({ tabs, onTabsReorder, scrollContainerRef }) {
     if (!state || state.tabId !== tabId) return
 
     const deltaX = event.clientX - state.startClientX
-    // Activate visual drag only after 4px threshold
-    if (!didDragRef.current && Math.abs(deltaX) < 4) return
+    // Activate visual drag with a small threshold so dragging feels immediate.
+    if (!didDragRef.current && Math.abs(deltaX) < DRAG_START_THRESHOLD_PX) return
 
     if (!didDragRef.current) {
       didDragRef.current = true
@@ -202,10 +203,9 @@ function useTabDrag({ tabs, onTabsReorder, scrollContainerRef }) {
       })
 
       state.currentOrder = newOrder
-      setDisplayOrder(newOrder)
       setOffsets(newOffsets)
     })
-  }, [scrollContainerRef])
+  }, [DRAG_START_THRESHOLD_PX, scrollContainerRef, cancelDrag])
 
   const endDrag = React.useCallback((tabId) => {
     const state = dragRef.current
@@ -608,23 +608,20 @@ export default function Header({
 
                       <span className="yl-tab-fade" aria-hidden="true" />
 
-                      <Tooltip title={closeTooltipLabel} enterDelay={250}>
-                        <span>
-                          <IconButton
-                            size="small"
-                            className="yl-tab-close"
-                            aria-label={closeTooltipLabel}
-                            disabled={isClosing}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onTabClose?.(tab.id)
-                            }}
-                          >
-                            <X size={12} />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
+                      <IconButton
+                        size="small"
+                        className="yl-tab-close"
+                        aria-label={closeTooltipLabel}
+                        title={closeTooltipLabel}
+                        disabled={isClosing}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onTabClose?.(tab.id)
+                        }}
+                      >
+                        <X size={12} />
+                      </IconButton>
                     </Box>
                   )
                 })}
