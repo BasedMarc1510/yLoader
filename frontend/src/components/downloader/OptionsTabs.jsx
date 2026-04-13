@@ -81,6 +81,7 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
 
   // Audio cut states
   const [audioCutsData, setAudioCutsData] = React.useState(null)
+  const [videoCutsData, setVideoCutsData] = React.useState(null)
 
   // Album cover states (audio)
   const [coverEmbedEnabled, setCoverEmbedEnabled] = React.useState(true)
@@ -448,6 +449,26 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
     try {
       const API_BASE = getApiBase()
       const normalized = normalizeUrlForNoembed(videoUrl)
+      const selectedCuts = type === 'audio' ? audioCutsData : videoCutsData
+      const normalizedSegments = Array.isArray(selectedCuts?.segments)
+        ? selectedCuts.segments
+            .filter(s => typeof s?.start === 'number' && typeof s?.end === 'number' && s.end > s.start)
+            .map(s => ({ start: Math.max(0, s.start), end: Math.max(0, s.end) }))
+        : []
+      const normalizedRemovals = Array.isArray(selectedCuts?.removals)
+        ? selectedCuts.removals
+            .filter(s => typeof s?.start === 'number' && typeof s?.end === 'number' && s.end > s.start)
+            .map(s => ({ start: Math.max(0, s.start), end: Math.max(0, s.end) }))
+        : []
+
+      const cutsPayload = selectedCuts?.enabled ? {
+        enabled: true,
+        mode: selectedCuts?.mode === 'keep' ? 'keep' : 'remove',
+        trimStart: selectedCuts?.trimStart ?? 0,
+        trimEnd: selectedCuts?.trimEnd ?? (durationSeconds || 0),
+        segments: normalizedSegments,
+        removals: normalizedRemovals,
+      } : undefined
 
       const payload = {
         url: normalized,
@@ -472,11 +493,13 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
             dataUrl: coverUpload.dataUrl,
           } : undefined,
         } : undefined,
-        audioCuts: type === 'audio' && audioCutsData?.enabled ? {
+        cuts: cutsPayload,
+        // Keep legacy field for older backend compatibility.
+        audioCuts: type === 'audio' && cutsPayload && cutsPayload.mode !== 'keep' ? {
           enabled: true,
-          trimStart: audioCutsData.trimStart ?? 0,
-          trimEnd: audioCutsData.trimEnd ?? (durationSeconds || 0),
-          removals: audioCutsData.removals ?? [],
+          trimStart: cutsPayload.trimStart,
+          trimEnd: cutsPayload.trimEnd,
+          removals: cutsPayload.removals,
         } : undefined,
       }
 
@@ -771,6 +794,7 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
               isDark={isDark}
               disabled={downloading}
               onChange={setAudioCutsData}
+              mediaType="audio"
             />
           </Box>
         </Collapse>
@@ -1228,6 +1252,52 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
               label={i18nT('downloader.quality')}
               isDark={isDark}
               disabled={loadingFormats}
+            />
+          </Box>
+        </Collapse>
+
+        {/* Cut Video Dropdown */}
+        <Button
+          fullWidth
+          disabled={downloading}
+          onClick={() => toggleSection('video-cut')}
+          endIcon={<ChevronIcon isOpen={activeSection === 'video-cut'} theme={theme} />}
+          sx={{
+            bgcolor: getButtonBg(activeSection === 'video-cut'),
+            color: textColor,
+            borderRadius: activeSection === 'video-cut' ? '12px 12px 0 0' : '12px',
+            padding: '8px 16px',
+            textTransform: 'none',
+            justifyContent: 'space-between',
+            minHeight: 'auto',
+            mb: activeSection === 'video-cut' ? 0 : 0.75,
+            opacity: downloading ? 0.6 : 1,
+            '&:hover': {
+              bgcolor: getButtonHover(activeSection === 'video-cut'),
+            },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Scissors size={18} />
+            <Typography sx={{ fontWeight: 600 }}>{i18nT('downloader.cutVideo')}</Typography>
+          </Box>
+        </Button>
+        <Collapse in={activeSection === 'video-cut'} timeout={250}>
+          <Box
+            sx={{
+              padding: 1.5,
+              mb: 1.25,
+              bgcolor: collapseBg,
+              borderRadius: '0 0 12px 12px',
+            }}
+          >
+            <AudioCutSection
+              duration={durationSeconds}
+              brandColor={brandColor}
+              isDark={isDark}
+              disabled={downloading}
+              onChange={setVideoCutsData}
+              mediaType="video"
             />
           </Box>
         </Collapse>
