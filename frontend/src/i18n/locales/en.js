@@ -29,6 +29,7 @@ const en = {
   tabs: {
     listAria: 'Open tabs',
     tabAria: 'Tab: {title}',
+    closeTooltip: 'Close',
     newTabAria: 'Open new tab',
     closeAria: 'Close tab',
     closeWithTitleAria: 'Close tab "{title}"',

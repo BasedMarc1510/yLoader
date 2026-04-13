@@ -154,8 +154,7 @@ body,
   overflow: visible;
 }
 
-.yl-tab.is-active .yl-tab-hit::before,
-.yl-tab.is-active .yl-tab-hit::after {
+.yl-tab.is-active .yl-tab-hit::before {
   content: "";
   position: absolute;
   top: 10px;
@@ -170,8 +169,16 @@ body,
   left: 0;
 }
 
-.yl-tab.is-active .yl-tab-hit::after {
+.yl-tab.is-active::before {
+  content: "";
+  position: absolute;
   right: 0;
+  top: 10px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--yl-border, transparent);
+  pointer-events: none;
+  z-index: 34;
 }
 
 /* Cover the bottom 1px of the tabbar bottom line */
@@ -259,6 +266,26 @@ body,
   cursor: pointer;
 }
 
+.yl-tab:not(.is-active) .yl-tab-hit::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 8px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 1;
+  transition: background 0.12s ease;
+}
+
+.yl-tab:not(.is-active) .yl-tab-fade {
+  top: 3px;
+  bottom: 3px;
+  border-radius: 0 8px 8px 0;
+}
+
 .yl-tab:focus-visible {
   outline: none;
 }
@@ -269,16 +296,22 @@ body,
 
 .yl-tab:not(.is-active):hover {
   --yl-tab-bg: color-mix(in srgb, var(--yl-foreground, #fff) 10%, var(--yl-surface, #181818));
-  background: color-mix(in srgb, var(--yl-foreground, #fff) 10%, var(--yl-surface, #181818));
   color: var(--yl-foreground, inherit);
   transition: background 0.12s ease, color 0.12s ease;
+}
+
+.yl-tab:not(.is-active):hover .yl-tab-hit::after {
+  background: var(--yl-tab-bg);
 }
 
 /* :active on the container won't reach through ButtonBase pointer capture;
    target the hit area's active state instead and bubble up via :has() */
 .yl-tab:not(.is-active):has(.yl-tab-hit:active) {
   --yl-tab-bg: color-mix(in srgb, var(--yl-foreground, #fff) 18%, var(--yl-surface, #181818));
-  background: color-mix(in srgb, var(--yl-foreground, #fff) 18%, var(--yl-surface, #181818));
+}
+
+.yl-tab:not(.is-active):has(.yl-tab-hit:active) .yl-tab-hit::after {
+  background: var(--yl-tab-bg);
 }
 
 .yl-tab-content {
@@ -330,7 +363,7 @@ body,
   height: 20px !important;
   min-width: 20px !important;
   min-height: 20px !important;
-  border-radius: 4px !important;
+  border-radius: 999px !important;
   color: var(--yl-muted-foreground, inherit);
   opacity: 0;
   transition: background 0.15s ease, color 0.15s ease;
@@ -419,7 +452,7 @@ body,
 }
 
 .yl-add-btn {
-  margin-left: 1px !important;
+  margin-left: 2px !important;
   margin-bottom: 0;
   width: 32px !important;
   height: 32px !important;

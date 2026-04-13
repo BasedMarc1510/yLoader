@@ -6,6 +6,7 @@ import {
   Typography,
   CircularProgress,
   Toolbar,
+  Tooltip,
 } from '@mui/material'
 import { Menu, Home, Download, Heart, Plus, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Box as ImageBox } from '@mui/material'
@@ -534,6 +535,7 @@ export default function Header({
                   const isEntering = enteringTabIds.has(tab.id)
                   const iconKey = getRouteIconKey(tab.path)
                   const displayTitle = tab.displayTitle || getRouteTitle(tab.path, t)
+                  const closeTooltipLabel = t('tabs.closeTooltip')
                   const progress = clampProgress(tab?.download?.progress)
                   const isDownloading = Boolean(tab?.download?.active)
                   const showDivider = !isActive
@@ -606,19 +608,23 @@ export default function Header({
 
                       <span className="yl-tab-fade" aria-hidden="true" />
 
-                      <IconButton
-                        size="small"
-                        className="yl-tab-close"
-                        aria-label={t('tabs.closeWithTitleAria', { title: displayTitle })}
-                        disabled={isClosing}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onTabClose?.(tab.id)
-                        }}
-                      >
-                        <X size={12} />
-                      </IconButton>
+                      <Tooltip title={closeTooltipLabel} enterDelay={250}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            className="yl-tab-close"
+                            aria-label={closeTooltipLabel}
+                            disabled={isClosing}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onTabClose?.(tab.id)
+                            }}
+                          >
+                            <X size={12} />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </Box>
                   )
                 })}
