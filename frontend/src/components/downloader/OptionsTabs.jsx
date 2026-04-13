@@ -81,6 +81,7 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
 
   // Audio cut states
   const [audioCutsData, setAudioCutsData] = React.useState(null)
+  const [videoCutsData, setVideoCutsData] = React.useState(null)
 
   // Album cover states (audio)
   const [coverEmbedEnabled, setCoverEmbedEnabled] = React.useState(true)
@@ -478,6 +479,12 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
           trimEnd: audioCutsData.trimEnd ?? (durationSeconds || 0),
           removals: audioCutsData.removals ?? [],
         } : undefined,
+        videoCuts: type === 'video' && videoCutsData?.enabled ? {
+          enabled: true,
+          trimStart: videoCutsData.trimStart ?? 0,
+          trimEnd: videoCutsData.trimEnd ?? (durationSeconds || 0),
+          removals: videoCutsData.removals ?? [],
+        } : undefined,
       }
 
       const response = await fetch(`${API_BASE}/api/download/stream`, {
@@ -770,6 +777,7 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
               brandColor={brandColor}
               isDark={isDark}
               disabled={downloading}
+              kind="audio"
               onChange={setAudioCutsData}
             />
           </Box>
@@ -1228,6 +1236,52 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
               label={i18nT('downloader.quality')}
               isDark={isDark}
               disabled={loadingFormats}
+            />
+          </Box>
+        </Collapse>
+
+        {/* Cut Video Dropdown */}
+        <Button
+          fullWidth
+          disabled={downloading}
+          onClick={() => toggleSection('cutVideo')}
+          endIcon={<ChevronIcon isOpen={activeSection === 'cutVideo'} theme={theme} />}
+          sx={{
+            bgcolor: getButtonBg(activeSection === 'cutVideo'),
+            color: textColor,
+            borderRadius: activeSection === 'cutVideo' ? '12px 12px 0 0' : '12px',
+            padding: '8px 16px',
+            textTransform: 'none',
+            justifyContent: 'space-between',
+            minHeight: 'auto',
+            mb: activeSection === 'cutVideo' ? 0 : 0.75,
+            opacity: downloading ? 0.6 : 1,
+            '&:hover': {
+              bgcolor: getButtonHover(activeSection === 'cutVideo'),
+            },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Scissors size={18} />
+            <Typography sx={{ fontWeight: 600 }}>{i18nT('downloader.cutVideo')}</Typography>
+          </Box>
+        </Button>
+        <Collapse in={activeSection === 'cutVideo'} timeout={250}>
+          <Box
+            sx={{
+              padding: 1.5,
+              mb: 1.25,
+              bgcolor: collapseBg,
+              borderRadius: '0 0 12px 12px',
+            }}
+          >
+            <AudioCutSection
+              duration={durationSeconds}
+              brandColor={brandColor}
+              isDark={isDark}
+              disabled={downloading}
+              kind="video"
+              onChange={setVideoCutsData}
             />
           </Box>
         </Collapse>

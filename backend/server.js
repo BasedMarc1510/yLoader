@@ -153,15 +153,15 @@ function runCmd(cmd, args = [], opts = {}) {
   })
 }
 
-// ── Audio cut helpers ──────────────────────────────────────────────────────
+// ── Media cut helpers ──────────────────────────────────────────────────────
 
 /** Compute the keep segments from trimStart/trimEnd and removal zones */
-function computeAudioKeepSegments(audioCuts, mediaDuration) {
-  if (!audioCuts || !audioCuts.enabled) return null
-  const { trimStart = 0, removals = [] } = audioCuts
+function computeKeepSegments(cutConfig, mediaDuration) {
+  if (!cutConfig || !cutConfig.enabled) return null
+  const { trimStart = 0, removals = [] } = cutConfig
   const trimEnd =
-    audioCuts.trimEnd != null && audioCuts.trimEnd > 0
-      ? (mediaDuration != null ? Math.min(audioCuts.trimEnd, mediaDuration) : audioCuts.trimEnd)
+    cutConfig.trimEnd != null && cutConfig.trimEnd > 0
+      ? (mediaDuration != null ? Math.min(cutConfig.trimEnd, mediaDuration) : cutConfig.trimEnd)
       : mediaDuration
   if (trimEnd == null || trimEnd <= trimStart) return null
 
@@ -220,7 +220,116 @@ function buildAudioCutFfmpegArgs(inputPath, outputPath, keepSegments, ext) {
   return ['-y', '-i', inputPath, '-filter_complex', filter, '-map', '[out]', ...codecArgs, outputPath]
 }
 
-// ── End audio cut helpers ─────────────────────────────────────────────────
+function getVideoCodecArgs(extWithDot, hasAudio = true) {
+  const ext = (extWithDot || '').replace('.', '').toLowerCase()
+
+  if (ext === 'webm') {
+    return [
+      '-c:v', 'libvpx-vp9',
+      '-crf', '33',
+      '-b:v', '0',
+      ...(hasAudio ? ['-c:a', 'libopus', '-b:a', '128k'] : ['-an']),
+    ]
+  }
+
+  if (ext === 'mkv') {
+    return [
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '20',
+      ...(hasAudio ? ['-c:a', 'aac', '-b:a', '192k'] : ['-an']),
+    ]
+  }
+
+  return [
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '20',
+    ...(hasAudio ? ['-c:a', 'aac', '-b:a', '192k'] : ['-an']),
+    ...(ext === 'mp4' ? ['-movflags', '+faststart'] : []),
+  ]
+}
+
+function buildVideoCutFfmpegArgs(inputPath, outputPath, keepSegments, ext, hasAudio = true) {
+  const codecArgs = getVideoCodecArgs(ext, hasAudio)
+
+  if (keepSegments.length === 1) {
+    const seg = keepSegments[0]
+    return [
+      '-y',
+      '-i', inputPath,
+      '-ss', String(seg.start),
+      '-to', String(seg.end),
+      '-map', '0:v:0',
+      ...(hasAudio ? ['-map', '0:a:0'] : []),
+      ...codecArgs,
+      outputPath,
+    ]
+  }
+
+  if (hasAudio) {
+    const filterParts = []
+    for (let i = 0; i < keepSegments.length; i += 1) {
+      const seg = keepSegments[i]
+      filterParts.push(`[0:v]trim=${seg.start}:${seg.end},setpts=PTS-STARTPTS[v${i}]`)
+      filterParts.push(`[0:a]atrim=${seg.start}:${seg.end},asetpts=PTS-STARTPTS[a${i}]`)
+    }
+    const concatInputs = keepSegments.map((_, i) => `[v${i}][a${i}]`).join('')
+    const filter = [...filterParts, `${concatInputs}concat=n=${keepSegments.length}:v=1:a=1[outv][outa]`].join(';')
+    return [
+      '-y',
+      '-i', inputPath,
+      '-filter_complex', filter,
+      '-map', '[outv]',
+      '-map', '[outa]',
+      ...codecArgs,
+      outputPath,
+    ]
+  }
+
+  const filterParts = keepSegments.map(
+    (seg, i) => `[0:v]trim=${seg.start}:${seg.end},setpts=PTS-STARTPTS[v${i}]`
+  )
+  const concatInputs = keepSegments.map((_, i) => `[v${i}]`).join('')
+  const filter = [...filterParts, `${concatInputs}concat=n=${keepSegments.length}:v=1:a=0[outv]`].join(';')
+  return [
+    '-y',
+    '-i', inputPath,
+    '-filter_complex', filter,
+    '-map', '[outv]',
+    ...codecArgs,
+    outputPath,
+  ]
+}
+
+function resolveFfprobePath() {
+  if (FFPROBE_BIN) return FFPROBE_BIN
+  if (!FFMPEG_BIN) return ''
+  const fallbackName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
+  const siblingPath = path.join(path.dirname(FFMPEG_BIN), fallbackName)
+  return fs.existsSync(siblingPath) ? siblingPath : ''
+}
+
+async function detectAudioStream(inputPath) {
+  const ffprobePath = resolveFfprobePath()
+  if (!ffprobePath) return true
+
+  try {
+    const out = await runCmd(ffprobePath, [
+      '-v', 'error',
+      '-select_streams', 'a:0',
+      '-show_entries', 'stream=index',
+      '-of', 'csv=p=0',
+      inputPath,
+    ], { timeout: 10000 })
+    return Boolean(String(out || '').trim())
+  } catch {
+    // Assume audio exists if probing fails, then fall back to ffmpeg error handling later.
+    return true
+  }
+}
+
+// ── End media cut helpers ─────────────────────────────────────────────────
 
 function buildYtDlpNetworkArgs(baseArgs = []) {
   const args = [...YT_DLP_JS_RUNTIME_ARGS]
@@ -1078,7 +1187,7 @@ app.get('/api/proxy-image', async (req, res) => {
 })
 
 // POST /api/download/stream -> SSE with live yt-dlp download progress
-// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover? }
+// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover?, audioCuts?, videoCuts? }
 app.use(express.json({ limit: '25mb' }))
 app.post('/api/download/stream', async (req, res) => {
   const {
@@ -1165,19 +1274,22 @@ app.post('/api/download/stream', async (req, res) => {
     coverUploadHash = crypto.createHash('sha256').update(buffer).digest('hex').substring(0, 12)
   }
 
-  // Parse and validate audioCuts
-  let audioCuts = null
-  const rawAudioCuts = req.body.audioCuts
-  if (type === 'audio' && rawAudioCuts && typeof rawAudioCuts === 'object' && rawAudioCuts.enabled) {
-    const acTrimStart = typeof rawAudioCuts.trimStart === 'number' ? Math.max(0, rawAudioCuts.trimStart) : 0
-    const acTrimEnd   = typeof rawAudioCuts.trimEnd   === 'number' ? Math.max(0, rawAudioCuts.trimEnd) : null
-    const acRemovals  = Array.isArray(rawAudioCuts.removals)
-      ? rawAudioCuts.removals
+  const normalizeCutPayload = (rawCuts) => {
+    if (!rawCuts || typeof rawCuts !== 'object' || !rawCuts.enabled) return null
+
+    const trimStart = typeof rawCuts.trimStart === 'number' ? Math.max(0, rawCuts.trimStart) : 0
+    const trimEnd = typeof rawCuts.trimEnd === 'number' ? Math.max(0, rawCuts.trimEnd) : null
+    const removals = Array.isArray(rawCuts.removals)
+      ? rawCuts.removals
           .filter(r => typeof r.start === 'number' && typeof r.end === 'number' && r.end > r.start)
           .map(r => ({ start: Math.max(0, r.start), end: Math.max(0, r.end) }))
       : []
-    audioCuts = { enabled: true, trimStart: acTrimStart, trimEnd: acTrimEnd, removals: acRemovals }
+
+    return { enabled: true, trimStart, trimEnd, removals }
   }
+
+  const audioCuts = type === 'audio' ? normalizeCutPayload(req.body.audioCuts) : null
+  const videoCuts = type === 'video' ? normalizeCutPayload(req.body.videoCuts) : null
 
   // Setup SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
@@ -1211,22 +1323,27 @@ app.post('/api/download/stream', async (req, res) => {
 
   try {
     // Generate unique hash for this download configuration
+    const hashPayload = {
+      url,
+      type,
+      format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
+      audioFormat: normalizedAudioFormatId || '',
+      videoFormat: normalizedVideoFormatId || '',
+      videoTitle: req.body.videoTitle || null,
+      metadata: metadata || null,
+      cover: {
+        enabled: coverEnabled,
+        source: coverSource,
+        upload: coverUploadHash || null,
+      },
+      audioCuts: audioCuts || null,
+    }
+    if (type === 'video' && videoCuts) {
+      hashPayload.videoCuts = videoCuts
+    }
+
     const downloadHash = crypto.createHash('sha256')
-      .update(JSON.stringify({
-        url,
-        type,
-        format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
-        audioFormat: normalizedAudioFormatId || '',
-        videoFormat: normalizedVideoFormatId || '',
-        videoTitle: req.body.videoTitle || null,
-        metadata: metadata || null,
-        cover: {
-          enabled: coverEnabled,
-          source: coverSource,
-          upload: coverUploadHash || null,
-        },
-        audioCuts: audioCuts || null,
-      }))
+      .update(JSON.stringify(hashPayload))
       .digest('hex')
       .substring(0, 16)
 
@@ -1456,13 +1573,15 @@ app.post('/api/download/stream', async (req, res) => {
           if (contentFile) {
             const ext = path.extname(contentFile)
             let sourcePath = path.join(tempDir, contentFile)
+            const parsedDuration = Number(duration)
+            const mediaDuration = Number.isFinite(parsedDuration) ? parsedDuration : null
 
             // Apply audio cuts (trim + removals) if requested
             if (type === 'audio' && audioCuts?.enabled) {
               if (!HAS_FFMPEG) {
                 send('message', '⚠️ ffmpeg required for audio cutting – skipping cuts')
               } else {
-                const keepSegments = computeAudioKeepSegments(audioCuts, duration || null)
+                const keepSegments = computeKeepSegments(audioCuts, mediaDuration)
                 if (keepSegments) {
                   const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
                   send('progress', { percent: 99, stage: 'processing' })
@@ -1475,6 +1594,41 @@ app.post('/api/download/stream', async (req, res) => {
                   } catch (cutErr) {
                     console.error('Audio cut failed:', cutErr)
                     send('message', 'Audio cutting failed, continuing with original audio')
+                  }
+                }
+              }
+            }
+
+            // Apply video cuts (trim + removals) if requested
+            if (type === 'video' && videoCuts?.enabled) {
+              if (!HAS_FFMPEG) {
+                send('message', '⚠️ ffmpeg required for video cutting – skipping cuts')
+              } else {
+                const keepSegments = computeKeepSegments(videoCuts, mediaDuration)
+                if (keepSegments) {
+                  const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
+                  send('progress', { percent: 99, stage: 'processing' })
+                  try {
+                    let hasAudio = await detectAudioStream(sourcePath)
+                    let ffArgs = buildVideoCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext, hasAudio)
+                    try {
+                      await runCmd(FFMPEG_BIN, ffArgs)
+                    } catch (ffErr) {
+                      const stderr = String(ffErr?.stderr || ffErr?.message || '')
+                      const noAudioHint = /matches no streams|Stream map .*a:0|Cannot find a matching stream/i.test(stderr)
+                      if (!hasAudio || !noAudioHint) throw ffErr
+
+                      hasAudio = false
+                      ffArgs = buildVideoCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext, false)
+                      await runCmd(FFMPEG_BIN, ffArgs)
+                    }
+
+                    if (fs.existsSync(cutOutputPath)) {
+                      sourcePath = cutOutputPath
+                    }
+                  } catch (cutErr) {
+                    console.error('Video cut failed:', cutErr)
+                    send('message', 'Video cutting failed, continuing with original video')
                   }
                 }
               }
@@ -1535,6 +1689,7 @@ app.post('/api/download/stream', async (req, res) => {
                   upload: coverUploadHash || null,
                 },
                 audioCuts: audioCuts || null,
+                ...(type === 'video' && videoCuts ? { videoCuts } : {}),
               }
               fs.writeFileSync(metaPath, JSON.stringify(meta))
             } catch (err) {

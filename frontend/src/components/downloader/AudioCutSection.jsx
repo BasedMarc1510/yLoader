@@ -125,9 +125,10 @@ const makeSliderSx = (brandColor, railGradient) => ({
  *   brandColor   – accent color string
  *   isDark       – boolean
  *   disabled     – boolean
+ *   kind         – 'audio' | 'video' (affects helper text)
  *   onChange     – callback({ enabled, trimStart, trimEnd, removals: [{start, end}] })
  */
-export default function AudioCutSection({ duration: durationProp, brandColor, isDark, disabled, onChange }) {
+export default function AudioCutSection({ duration: durationProp, brandColor, isDark, disabled, kind = 'audio', onChange }) {
   const { t } = useI18n()
   const dur = durationProp || 0
 
@@ -147,6 +148,9 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
   const [trimStartStr, setTrimStartStr] = React.useState('0:00')
   const [trimEndStr, setTrimEndStr] = React.useState(formatTime(dur))
   const [cutStrs, setCutStrs] = React.useState({}) // { [id]: { startStr, endStr } }
+
+  const MIN_CUT_LENGTH = 1
+  const cutDescriptionKey = kind === 'video' ? 'downloader.cutEnabledDescVideo' : 'downloader.cutEnabledDesc'
 
   // Sync trimEnd when duration first becomes available / changes
   React.useEffect(() => {
@@ -173,12 +177,64 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     )
   }
 
-  const clampCutsToTrim = (c, ts, te) =>
-    c.map(x => ({
-      ...x,
-      start: Math.max(ts, Math.min(x.start, te - 1)),
-      end: Math.max(ts + 1, Math.min(x.end, te)),
-    }))
+  const normalizeCuts = (inputCuts, ts, te) => {
+    if (!Array.isArray(inputCuts) || te - ts < MIN_CUT_LENGTH) return []
+
+    const sorted = [...inputCuts]
+      .filter(x => x && typeof x.start === 'number' && typeof x.end === 'number')
+      .map(x => ({
+        ...x,
+        start: Math.max(ts, Math.min(Math.round(x.start), te - MIN_CUT_LENGTH)),
+        end: Math.max(ts + MIN_CUT_LENGTH, Math.min(Math.round(x.end), te)),
+      }))
+      .sort((a, b) => a.start - b.start || a.end - b.end || String(a.id).localeCompare(String(b.id)))
+
+    const out = []
+    let cursor = ts
+    for (const c of sorted) {
+      let start = Math.max(c.start, cursor)
+      let end = Math.max(start + MIN_CUT_LENGTH, c.end)
+
+      if (end > te) {
+        end = te
+        start = Math.max(cursor, te - MIN_CUT_LENGTH)
+      }
+
+      if (end - start < MIN_CUT_LENGTH) continue
+      out.push({ ...c, start, end })
+      cursor = end
+    }
+    return out
+  }
+
+  const findCutInsertionSlot = (existingCuts, ts, te) => {
+    if (te - ts < MIN_CUT_LENGTH) return null
+
+    const gaps = []
+    const sorted = normalizeCuts(existingCuts, ts, te)
+    let cursor = ts
+
+    for (const c of sorted) {
+      if (c.start - cursor >= MIN_CUT_LENGTH) {
+        gaps.push({ start: cursor, end: c.start })
+      }
+      cursor = Math.max(cursor, c.end)
+    }
+
+    if (te - cursor >= MIN_CUT_LENGTH) {
+      gaps.push({ start: cursor, end: te })
+    }
+
+    if (!gaps.length) return null
+
+    const prefLen = Math.max(MIN_CUT_LENGTH, Math.round((te - ts) * 0.1))
+    const gap = gaps.find(g => (g.end - g.start) >= prefLen) || gaps[0]
+    const span = gap.end - gap.start
+    return {
+      start: gap.start,
+      end: gap.start + Math.min(prefLen, span),
+    }
+  }
 
   // ── Toggle ─────────────────────────────────────────────────────────────────
   const toggleEnabled = () => {
@@ -194,7 +250,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     setTrimEndState(e)
     setTrimStartStr(formatTime(s))
     setTrimEndStr(formatTime(e))
-    const newCuts = clampCutsToTrim(cuts, s, e)
+    const newCuts = normalizeCuts(cuts, s, e)
     setCutsState(newCuts)
     syncCutStrs(newCuts)
     report(enabled, s, e, newCuts)
@@ -205,7 +261,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     const clamped = Math.min(v, trimEnd - 1)
     setTrimStartState(clamped)
     setTrimStartStr(formatTime(clamped))
-    const newCuts = clampCutsToTrim(cuts, clamped, trimEnd)
+    const newCuts = normalizeCuts(cuts, clamped, trimEnd)
     setCutsState(newCuts)
     syncCutStrs(newCuts)
     report(enabled, clamped, trimEnd, newCuts)
@@ -216,63 +272,89 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     const clamped = Math.max(v, trimStart + 1)
     setTrimEndState(clamped)
     setTrimEndStr(formatTime(clamped))
-    const newCuts = clampCutsToTrim(cuts, trimStart, clamped)
+    const newCuts = normalizeCuts(cuts, trimStart, clamped)
     setCutsState(newCuts)
     syncCutStrs(newCuts)
     report(enabled, trimStart, clamped, newCuts)
   }
 
-  // ── Cut sliders ────────────────────────────────────────────────────────────
-  const handleCutSlider = (id, _, val) => {
-    const [s, e] = val
-    const newCuts = cuts.map(c => c.id === id ? { ...c, start: s, end: e } : c)
-    setCutsState(newCuts)
-    setCutStrs(prev => ({ ...prev, [id]: { startStr: formatTime(s), endStr: formatTime(e) } }))
-    report(enabled, trimStart, trimEnd, newCuts)
+  // ── Multi-range cut slider ─────────────────────────────────────────────────
+  const handleCutsSlider = (_, val, activeThumb) => {
+    if (!Array.isArray(val) || cuts.length === 0) return
+
+    const next = [...val]
+    if (next.length !== cuts.length * 2) return
+
+    if (typeof activeThumb === 'number') {
+      const leftNeighbor = activeThumb > 0 ? next[activeThumb - 1] : trimStart
+      const rightNeighbor = activeThumb < next.length - 1 ? next[activeThumb + 1] : trimEnd
+      const isStartThumb = activeThumb % 2 === 0
+
+      if (isStartThumb) {
+        next[activeThumb] = Math.max(leftNeighbor, Math.min(next[activeThumb], rightNeighbor - MIN_CUT_LENGTH))
+      } else {
+        next[activeThumb] = Math.max(leftNeighbor + MIN_CUT_LENGTH, Math.min(next[activeThumb], rightNeighbor))
+      }
+    }
+
+    const mapped = cuts.map((c, i) => ({ ...c, start: next[i * 2], end: next[i * 2 + 1] }))
+    const normalized = normalizeCuts(mapped, trimStart, trimEnd)
+    setCutsState(normalized)
+    syncCutStrs(normalized)
+    report(enabled, trimStart, trimEnd, normalized)
   }
 
   const commitCutStart = (id, str) => {
-    const cut = cuts.find(c => c.id === id)
-    if (!cut) return
+    const idx = cuts.findIndex(c => c.id === id)
+    if (idx < 0) return
+
+    const cut = cuts[idx]
+    const leftNeighbor = idx > 0 ? cuts[idx - 1].end : trimStart
     const v = parseTime(str, trimEnd)
-    const clamped = Math.max(trimStart, Math.min(v, cut.end - 1))
-    const newCuts = cuts.map(c => c.id === id ? { ...c, start: clamped } : c)
+    const clamped = Math.max(leftNeighbor, Math.min(v, cut.end - MIN_CUT_LENGTH))
+    const newCuts = normalizeCuts(cuts.map(c => c.id === id ? { ...c, start: clamped } : c), trimStart, trimEnd)
     setCutsState(newCuts)
-    setCutStrs(prev => ({ ...prev, [id]: { ...prev[id], startStr: formatTime(clamped) } }))
+    syncCutStrs(newCuts)
     report(enabled, trimStart, trimEnd, newCuts)
   }
 
   const commitCutEnd = (id, str) => {
-    const cut = cuts.find(c => c.id === id)
-    if (!cut) return
+    const idx = cuts.findIndex(c => c.id === id)
+    if (idx < 0) return
+
+    const cut = cuts[idx]
+    const rightNeighbor = idx < cuts.length - 1 ? cuts[idx + 1].start : trimEnd
     const v = parseTime(str, trimEnd)
-    const clamped = Math.max(cut.start + 1, Math.min(v, trimEnd))
-    const newCuts = cuts.map(c => c.id === id ? { ...c, end: clamped } : c)
+    const clamped = Math.max(cut.start + MIN_CUT_LENGTH, Math.min(v, rightNeighbor))
+    const newCuts = normalizeCuts(cuts.map(c => c.id === id ? { ...c, end: clamped } : c), trimStart, trimEnd)
     setCutsState(newCuts)
-    setCutStrs(prev => ({ ...prev, [id]: { ...prev[id], endStr: formatTime(clamped) } }))
+    syncCutStrs(newCuts)
     report(enabled, trimStart, trimEnd, newCuts)
   }
 
   const addCut = () => {
-    const span = trimEnd - trimStart
-    const newStart = trimStart
-    const newEnd = Math.min(trimStart + Math.max(1, Math.round(span * 0.1)), trimEnd)
-    const id = Date.now()
-    const newCuts = [...cuts, { id, start: newStart, end: newEnd }]
+    const slot = findCutInsertionSlot(cuts, trimStart, trimEnd)
+    if (!slot) return
+    const { start: newStart, end: newEnd } = slot
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+    const newCuts = normalizeCuts([...cuts, { id, start: newStart, end: newEnd }], trimStart, trimEnd)
     setCutsState(newCuts)
-    setCutStrs(prev => ({ ...prev, [id]: { startStr: formatTime(newStart), endStr: formatTime(newEnd) } }))
+    syncCutStrs(newCuts)
     report(enabled, trimStart, trimEnd, newCuts)
   }
 
   const removeCut = (id) => {
     const newCuts = cuts.filter(c => c.id !== id)
     setCutsState(newCuts)
-    setCutStrs(prev => { const n = { ...prev }; delete n[id]; return n })
+    syncCutStrs(newCuts)
     report(enabled, trimStart, trimEnd, newCuts)
   }
 
   // ── Gradients ──────────────────────────────────────────────────────────────
   const trimRailGradient = buildRailGradient(cuts, 0, Math.max(dur, 1), railBase, cutZoneColor)
+  const cutsRailGradient = buildRailGradient(cuts, trimStart, Math.max(trimEnd, trimStart + 1), railBase, cutZoneColor)
+  const cutsSliderValue = cuts.flatMap(c => [c.start, c.end])
+  const canAddCut = Boolean(findCutInsertionSlot(cuts, trimStart, trimEnd))
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -284,7 +366,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
             {t('downloader.cutEnabled')}
           </Typography>
           <Typography variant="caption" sx={{ color: mutedColor, lineHeight: 1 }}>
-            {t('downloader.cutEnabledDesc')}
+            {t(cutDescriptionKey)}
           </Typography>
         </Box>
         <Box
@@ -353,17 +435,31 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
           </Box>
 
           {/* ── Individual removal cuts ── */}
+          {cuts.length > 0 && (
+            <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${dividerColor}` }}>
+              <Box sx={{ px: 0.5 }}>
+                <Slider
+                  value={cutsSliderValue}
+                  min={trimStart}
+                  max={Math.max(trimEnd, trimStart + 1)}
+                  step={1}
+                  disabled={disabled || dur === 0}
+                  disableSwap
+                  track={false}
+                  onChange={handleCutsSlider}
+                  sx={makeSliderSx(brandColor, cutsRailGradient)}
+                />
+              </Box>
+            </Box>
+          )}
+
           {cuts.map((cut, idx) => {
-            const otherCuts = cuts.filter(c => c.id !== cut.id)
-            const cutRailGradient = buildRailGradient(
-              otherCuts, trimStart, Math.max(trimEnd, trimStart + 1), railBase, cutZoneColor
-            )
             const strs = cutStrs[cut.id] || { startStr: formatTime(cut.start), endStr: formatTime(cut.end) }
 
             return (
               <Box
                 key={cut.id}
-                sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${dividerColor}` }}
+                sx={{ mt: 1.25, pt: 1.25, borderTop: `1px solid ${dividerColor}` }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
                   <Typography variant="caption" sx={{
@@ -384,19 +480,6 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
                   >
                     <X size={13} />
                   </Box>
-                </Box>
-
-                <Box sx={{ px: 0.5 }}>
-                  <Slider
-                    value={[cut.start, cut.end]}
-                    min={trimStart}
-                    max={Math.max(trimEnd, trimStart + 1)}
-                    step={1}
-                    disabled={disabled || dur === 0}
-                    disableSwap
-                    onChange={(e, val) => handleCutSlider(cut.id, e, val)}
-                    sx={makeSliderSx(brandColor, cutRailGradient)}
-                  />
                 </Box>
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.25 }}>
@@ -433,11 +516,11 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
               display: 'flex',
               alignItems: 'center',
               gap: 0.75,
-              cursor: (disabled || dur === 0) ? 'default' : 'pointer',
+              cursor: (disabled || dur === 0 || !canAddCut) ? 'default' : 'pointer',
               color: isDark ? '#777' : '#888',
-              opacity: (disabled || dur === 0) ? 0.5 : 1,
+              opacity: (disabled || dur === 0 || !canAddCut) ? 0.5 : 1,
               userSelect: 'none',
-              '&:hover': { color: (disabled || dur === 0) ? undefined : (isDark ? '#ccc' : '#444') },
+              '&:hover': { color: (disabled || dur === 0 || !canAddCut) ? undefined : (isDark ? '#ccc' : '#444') },
             }}
           >
             <Plus size={13} />
