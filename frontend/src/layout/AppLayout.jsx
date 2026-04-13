@@ -1,19 +1,29 @@
 import React, { useEffect, useState } from 'react'
 import { Box, Toolbar } from '@mui/material'
-import { useLocation } from 'react-router-dom'
 import Header from '../components/Header'
 import Sidebar, { drawerWidth as drawerWidthExpanded } from '../components/Sidebar'
+import { isDownloaderPath } from '../utils/tabRoutes'
 
 import { useNotification } from '../providers/NotificationProvider'
 import { getApiBase } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 
 const drawerWidthCollapsed = 56
-const headerHeight = 48
+const headerHeight = 49
 const sidebarHeaderHeight = 49
 
-export default function AppLayout({ children }) {
-  const location = useLocation()
+export default function AppLayout({
+  children,
+  activePath = '/',
+  tabs = [],
+  closingTabIds = [],
+  activeTabId = '',
+  onTabSelect,
+  onTabClose,
+  onAddTab,
+  onTabsReorder,
+  onNavigateActiveTab,
+}) {
   const { showNotification } = useNotification()
   const { t } = useI18n()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -27,7 +37,6 @@ export default function AppLayout({ children }) {
   })
 
   useEffect(() => {
-    // Check for backend updates (yt-dlp auto-update)
     const checkUpdate = async () => {
       try {
         const API_BASE = getApiBase()
@@ -38,7 +47,7 @@ export default function AppLayout({ children }) {
             showNotification(t('app.notify.ytDlpUpdated', { version: data.version }), 'success')
           }
         }
-      } catch (e) {
+      } catch {
         // ignore quietly
       }
     }
@@ -58,14 +67,21 @@ export default function AppLayout({ children }) {
   const handleToggleCollapsed = () => setCollapsed((v) => !v)
 
   const sidebarWidth = collapsed ? drawerWidthCollapsed : drawerWidthExpanded
-  const isDownloaderRoute = location.pathname === '/youtube-downloader'
-    || location.pathname === '/reddit-downloader'
-    || location.pathname === '/x-downloader'
-    || location.pathname === '/generic-downloader'
+  const isDownloaderRoute = isDownloaderPath(activePath)
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <Header onMenuClick={handleDrawerToggle} sidebarWidth={sidebarWidth} />
+      <Header
+        onMenuClick={handleDrawerToggle}
+        sidebarWidth={sidebarWidth}
+        tabs={tabs}
+        closingTabIds={closingTabIds}
+        activeTabId={activeTabId}
+        onTabSelect={onTabSelect}
+        onTabClose={onTabClose}
+        onAddTab={onAddTab}
+        onTabsReorder={onTabsReorder}
+      />
       <Sidebar
         mobileOpen={mobileOpen}
         onClose={handleClose}
@@ -73,23 +89,22 @@ export default function AppLayout({ children }) {
         onToggleCollapsed={handleToggleCollapsed}
         headerHeight={sidebarHeaderHeight}
         collapsedWidth={drawerWidthCollapsed}
+        activePath={activePath}
+        onNavigate={onNavigateActiveTab}
       />
       <Box
         component="main"
-        sx={(t) => ({
+        sx={(muiTheme) => ({
           flexGrow: 1,
           p: isDownloaderRoute ? 0 : 3,
           width: { sm: `calc(100% - ${sidebarWidth}px)` },
-          // Ensure the app uses exactly the viewport height including padding to avoid stray scrollbars
           height: '100dvh',
           boxSizing: 'border-box',
           overflow: 'hidden',
-          bgcolor: t.palette.mode === 'dark' ? '#212121' : '#ffffff',
+          bgcolor: muiTheme.palette.mode === 'dark' ? '#212121' : '#ffffff',
         })}
       >
-        {/* Push content below AppBar (match dense height) */}
-        <Toolbar variant="dense" sx={{ minHeight: headerHeight }} />
-        {/* Provide a stable, non-scrolling viewport for page content (below the header) */}
+        <Toolbar variant="dense" sx={{ minHeight: `${headerHeight}px !important`, height: headerHeight }} />
         <Box sx={{ position: 'relative', height: `calc(100% - ${headerHeight}px)` }}>
           {children}
         </Box>

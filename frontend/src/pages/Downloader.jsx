@@ -2,7 +2,6 @@ import React from 'react'
 import { Box, Stack, Typography, TextField, InputAdornment, IconButton, CircularProgress, Paper, Button } from '@mui/material'
 import { ArrowRight, X, AlertTriangle } from 'lucide-react'
 import { useTheme } from '@mui/material/styles'
-import { useLocation, useNavigate } from 'react-router-dom'
 import DownloaderShell from '../components/downloader/DownloaderShell'
 import { fetchNoembed, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchFormats } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
@@ -17,13 +16,18 @@ function extractYtDlpError(msg) {
 }
 
 // serviceKey: 'youtube' | 'reddit' | 'x'
-export default function Downloader({ serviceKey = 'youtube' }) {
+export default function Downloader({
+  serviceKey = 'youtube',
+  routeSearch = '',
+  routeToken = 0,
+  onNavigate,
+  onTabStateChange,
+}) {
   const { t: i18nT } = useI18n()
   const t = useTheme()
   const mode = t.palette.mode
   const genericIcon = mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
   const xIcon = mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
-  const navigate = useNavigate()
   const inputRef = React.useRef(null)
 
   const services = {
@@ -95,9 +99,8 @@ export default function Downloader({ serviceKey = 'youtube' }) {
   }, [serviceKey])
 
   // Read ?url= param and prefill
-  const location = useLocation()
   React.useEffect(() => {
-    const params = new URLSearchParams(location.search)
+    const params = new URLSearchParams(routeSearch)
     const urlParam = params.get('url')
     if (urlParam && typeof urlParam === 'string') {
       setValue(urlParam)
@@ -108,22 +111,22 @@ export default function Downloader({ serviceKey = 'youtube' }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.key, serviceKey])
+  }, [routeSearch, routeToken, serviceKey])
 
   // Reset to input bar when navigating to the downloader base route (no ?url)
   // This also covers clicking the same downloader again in the sidebar.
   React.useEffect(() => {
-    const params = new URLSearchParams(location.search)
+    const params = new URLSearchParams(routeSearch)
     const urlParam = params.get('url')
     if (!urlParam) {
       if (meta) setMeta(null)
       if (value) setValue('')
       if (fetchError) setFetchError(null)
     }
-    // We intentionally only depend on location.key and serviceKey to capture route clicks
+    // We intentionally only depend on route token and service key to capture repeated route clicks
     // without causing re-runs while typing
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.key, serviceKey])
+  }, [routeToken, serviceKey, routeSearch])
 
   // Auto-fetch metadata when a valid URL is entered (like on the start page)
   React.useEffect(() => {
@@ -214,7 +217,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
   const closeInterface = () => {
     setMeta(null)
     setValue('') // Clear input bar when closing
-    navigate(basePath)
+    onNavigate?.(basePath, '')
   }
 
   const handleFetchError = React.useCallback((url, message) => {
@@ -224,14 +227,49 @@ export default function Downloader({ serviceKey = 'youtube' }) {
 
   const closeError = () => {
     setFetchError(null)
-    navigate(basePath)
+    onNavigate?.(basePath, '')
   }
 
   const retryError = () => {
     const url = fetchError?.url
     setFetchError(null)
-    navigate(`${basePath}?url=${encodeURIComponent(url)}`)
+    onNavigate?.(basePath, `?url=${encodeURIComponent(url)}`)
   }
+
+  const handleDownloadStateChange = React.useCallback((state) => {
+    const fallbackTitle = String(meta?.title || '').trim().slice(0, 180)
+    const progressRaw = Number(state?.progress)
+    const progress = Number.isFinite(progressRaw)
+      ? Math.max(0, Math.min(100, Math.round(progressRaw)))
+      : 0
+
+    onTabStateChange?.({
+      pageTitle: fallbackTitle,
+      download: {
+        active: Boolean(state?.active),
+        progress,
+        stage: String(state?.stage || '').trim(),
+        title: String(state?.title || fallbackTitle).trim().slice(0, 180),
+      },
+    })
+  }, [meta?.title, onTabStateChange])
+
+  React.useEffect(() => {
+    onTabStateChange?.({
+      pageTitle: String(meta?.title || '').trim().slice(0, 180),
+    })
+  }, [meta?.title, onTabStateChange])
+
+  React.useEffect(() => () => {
+    onTabStateChange?.({
+      download: {
+        active: false,
+        progress: 0,
+        stage: '',
+        title: '',
+      },
+    })
+  }, [onTabStateChange])
 
   // Ensure the URL input gets focus when navigating here or after closing the interface
   React.useEffect(() => {
@@ -428,6 +466,7 @@ export default function Downloader({ serviceKey = 'youtube' }) {
             onClose={closeInterface}
             serviceKey={serviceKey}
             onFetchError={handleFetchError}
+            onDownloadStateChange={handleDownloadStateChange}
           />
         </Box>
       )}

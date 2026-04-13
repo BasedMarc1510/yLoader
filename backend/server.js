@@ -50,6 +50,17 @@ const ALLOWED_VIDEO_CONTAINERS = new Set(['mp4', 'webm', 'mkv'])
 const ALLOWED_IMAGE_CONTAINERS = new Set(['jpg', 'png', 'webp'])
 const FORMAT_ID_REGEX = /^[A-Za-z0-9_.,:+\-\/=~*]+$/
 const MAX_PROXY_IMAGE_SIZE_BYTES = 15 * 1024 * 1024
+const TAB_STATE_SETTINGS_KEY = 'ui.tabs.state.v1'
+const MAX_PERSISTED_TABS = 30
+const ALLOWED_TAB_PATHS = new Set([
+  '/',
+  '/downloads',
+  '/support',
+  '/youtube-downloader',
+  '/reddit-downloader',
+  '/x-downloader',
+  '/generic-downloader',
+])
 const YT_DLP_JS_RUNTIMES = String(process.env.YT_DLP_JS_RUNTIMES || 'node').trim() || 'node'
 const YT_DLP_JS_RUNTIME_ARGS = ['--js-runtimes', YT_DLP_JS_RUNTIMES]
 const YT_DLP_COOKIES_FILE = String(process.env.YT_DLP_COOKIES_FILE || '').trim()
@@ -61,10 +72,124 @@ const FFPROBE_BIN = String(process.env.FFPROBE_PATH || '').trim()
 // Basic CORS to allow browser access from other origins
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*')
-  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.sendStatus(204)
   next()
+})
+
+app.use(express.json({ limit: '25mb' }))
+
+function normalizeTabPath(value) {
+  const raw = String(value || '').trim()
+  return ALLOWED_TAB_PATHS.has(raw) ? raw : '/'
+}
+
+function normalizeTabSearch(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  const prefixed = raw.startsWith('?') ? raw : `?${raw}`
+  if (prefixed.length > 1024) return prefixed.slice(0, 1024)
+  return prefixed
+}
+
+function normalizeTabTitle(value) {
+  const raw = String(value || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!raw) return ''
+  return raw.slice(0, 180)
+}
+
+function createFallbackTab() {
+  return {
+    id: 'tab-home',
+    path: '/',
+    search: '',
+    pageTitle: '',
+  }
+}
+
+function normalizeTabsStatePayload(value) {
+  const inputTabs = Array.isArray(value?.tabs) ? value.tabs : []
+  const normalizedTabs = []
+  const seenIds = new Set()
+
+  for (let i = 0; i < inputTabs.length && normalizedTabs.length < MAX_PERSISTED_TABS; i += 1) {
+    const tab = inputTabs[i] || {}
+    const rawId = String(tab.id || '').trim().slice(0, 80)
+    const id = rawId || `tab-${i + 1}`
+    if (seenIds.has(id)) continue
+    seenIds.add(id)
+
+    normalizedTabs.push({
+      id,
+      path: normalizeTabPath(tab.path),
+      search: normalizeTabSearch(tab.search),
+      pageTitle: normalizeTabTitle(tab.pageTitle),
+    })
+  }
+
+  if (!normalizedTabs.length) {
+    normalizedTabs.push(createFallbackTab())
+  }
+
+  const requestedActiveId = String(value?.activeTabId || '').trim()
+  const activeTabId = normalizedTabs.some((tab) => tab.id === requestedActiveId)
+    ? requestedActiveId
+    : normalizedTabs[0].id
+
+  return { tabs: normalizedTabs, activeTabId }
+}
+
+function readSettingValue(key) {
+  return new Promise((resolve, reject) => {
+    db.get(`SELECT value FROM settings WHERE key = ?`, [key], (err, row) => {
+      if (err) return reject(err)
+      resolve(row?.value ?? null)
+    })
+  })
+}
+
+function writeSettingValue(key, value) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [key, value],
+      (err) => {
+        if (err) return reject(err)
+        resolve()
+      }
+    )
+  })
+}
+
+app.get('/api/tabs/state', async (_req, res) => {
+  try {
+    const raw = await readSettingValue(TAB_STATE_SETTINGS_KEY)
+    let parsed = {}
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        parsed = {}
+      }
+    }
+    const normalized = normalizeTabsStatePayload(parsed)
+    return res.json(normalized)
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to read tab state', details: String(err?.message || err) })
+  }
+})
+
+app.put('/api/tabs/state', async (req, res) => {
+  try {
+    const normalized = normalizeTabsStatePayload(req.body || {})
+    await writeSettingValue(TAB_STATE_SETTINGS_KEY, JSON.stringify(normalized))
+    return res.json(normalized)
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to save tab state', details: String(err?.message || err) })
+  }
 })
 
 app.get('/api/downloads', (req, res) => {
@@ -1232,7 +1357,6 @@ app.get('/api/proxy-image', async (req, res) => {
 
 // POST /api/download/stream -> SSE with live yt-dlp download progress
 // Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover?, audioCuts?, videoCuts? }
-app.use(express.json({ limit: '25mb' }))
 app.post('/api/download/stream', async (req, res) => {
   const {
     url: rawUrl,

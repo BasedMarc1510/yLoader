@@ -18,7 +18,6 @@ import {
 } from '@mui/material'
 import { Search, Trash2, Download, RefreshCw, Music, Video, Image as ImageIcon, Filter } from 'lucide-react'
 import { getApiBase, youtubeThumb } from '../utils/metadata'
-import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../providers/I18nProvider'
 
 function getVideoSourceUrl(item) {
@@ -30,10 +29,9 @@ function getVideoSourceUrl(item) {
     return null
 }
 
-export default function DownloadsPage() {
+export default function DownloadsPage({ onOpenDownloader }) {
     const { t, language } = useI18n()
     const theme = useTheme()
-    const navigate = useNavigate()
     const isDark = theme.palette.mode === 'dark'
     const genericIcon = isDark ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
     const xIcon = isDark ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
@@ -89,13 +87,9 @@ export default function DownloadsPage() {
     }
 
     const handleRedownload = (item) => {
-        let url = ''
-        if (item.service === 'youtube' && item.video_id) {
-            url = `https://www.youtube.com/watch?v=${item.video_id}`
-        }
-        if (url) {
-            navigate(`/youtube-downloader?url=${encodeURIComponent(url)}`)
-        }
+        const url = getVideoSourceUrl(item)
+        const service = ['youtube', 'reddit', 'x', 'generic'].includes(item.service) ? item.service : 'generic'
+        if (url) onOpenDownloader?.(service, url)
     }
 
     const formatDuration = (sec) => {

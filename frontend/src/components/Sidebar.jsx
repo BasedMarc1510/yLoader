@@ -14,21 +14,29 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import { useTheme } from '@mui/material/styles'
 import Typography from '@mui/material/Typography'
-import { useLocation, Link } from 'react-router-dom'
 import SettingsModal from './SettingsModal'
 import { useI18n } from '../providers/I18nProvider'
 
 const drawerWidth = 240
 
-export default function Sidebar({ mobileOpen, onClose, collapsed = false, onToggleCollapsed, headerHeight = 49, collapsedWidth = 56 }) {
+export default function Sidebar({
+  mobileOpen,
+  onClose,
+  collapsed = false,
+  onToggleCollapsed,
+  headerHeight = 49,
+  collapsedWidth = 56,
+  activePath = '/',
+  onNavigate,
+}) {
   const { t: i18nT } = useI18n()
   const t = useTheme()
-  const location = useLocation()
   const sidebarBg = t.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
   const genericIcon = t.palette.mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
   const xIcon = t.palette.mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
   const ICON_SIZE = 20
   const logoLeftOffset = Math.max(0, (collapsedWidth - ICON_SIZE) / 2)
+  const expandedLeftInset = 1
   const [openDownloaders, setOpenDownloaders] = React.useState(true)
   const [openSettings, setOpenSettings] = React.useState(false)
 
@@ -38,13 +46,19 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
         <Tooltip title={title} placement="right" enterDelay={200}>
           {node}
         </Tooltip>
-        )
+      )
       : node
   )
 
   const handleNavClick = React.useCallback(() => {
     if (typeof onClose === 'function') onClose()
   }, [onClose])
+
+  const handleNavigate = React.useCallback((to) => {
+    onNavigate?.(to, '')
+    handleNavClick()
+  }, [handleNavClick, onNavigate])
+
   const items = React.useMemo(() => ([
     { label: i18nT('routes.home'), icon: <Home size={16} />, to: '/' },
     { label: i18nT('routes.downloads'), icon: <Download size={16} />, to: '/downloads' },
@@ -60,7 +74,6 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
 
   const SidebarTopBar = ({ bg }) => {
     if (collapsed) {
-      // Collapsed: center favicon horizontally in collapsed sidebar
       return (
         <Box
           sx={{
@@ -70,7 +83,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
             alignItems: 'center',
             justifyContent: 'center',
             px: 0,
-            borderBottom: (t) => `1px solid ${t.palette.divider}`,
+            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
             borderRight: 'none',
           }}
         >
@@ -87,7 +100,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
         </Box>
       )
     }
-    // Expanded: favicon at same position as collapsed state, then text, then collapse button
+
     return (
       <Box
         sx={{
@@ -96,14 +109,14 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
           display: 'flex',
           alignItems: 'center',
           px: 0,
-          borderBottom: (t) => `1px solid ${t.palette.divider}`,
+          borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
           borderRight: 'none',
         }}
       >
-        {/* Brand: favicon + yLoader */}
         <Box
-          component="a"
-          href="/"
+          component="button"
+          type="button"
+          onClick={() => handleNavigate('/')}
           sx={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -112,7 +125,12 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
             gap: 1,
             flexGrow: 1,
             justifyContent: 'flex-start',
-            pl: `${logoLeftOffset}px`,
+            pl: `calc(${logoLeftOffset}px + 8px)`,
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            py: 0,
+            pr: 0,
           }}
         >
           <Box component="img" src="/favicon.svg" alt="yLoader" sx={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block' }} />
@@ -135,26 +153,21 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Invisible-looking top bar inside sidebar */}
       <SidebarTopBar bg={sidebarBg} />
 
-      {/* Navigation list */}
       <List sx={{ px: 1, py: 1 }}>
         {items.map((item) => {
-          const isActive = location.pathname === item.to
+          const isActive = activePath === item.to
           return (
             <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
               {withCollapsedTooltip(
                 <ListItemButton
-                  component={Link}
-                  to={item.to}
                   selected={isActive}
-                  onClick={handleNavClick}
+                  onClick={() => handleNavigate(item.to)}
                   sx={{
                     borderRadius: 1,
                     minHeight: 28,
-                    px: collapsed ? 1 : 0.5,
-                    // Compact but comfortable height in expanded state (match collapsed feel)
+                    px: collapsed ? 1 : expandedLeftInset,
                     py: collapsed ? undefined : 0.75,
                     justifyContent: collapsed ? 'center' : 'flex-start',
                     color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
@@ -206,7 +219,6 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
           )
         })}
 
-        {/* Downloaders dropdown header (hidden when collapsed) */}
         {!collapsed && (
           <ListItem disablePadding sx={{ mb: 0.5, mt: 1 }}>
             <ListItemButton
@@ -215,7 +227,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
               sx={{
                 borderRadius: 0,
                 minHeight: 24,
-                px: 0.5,
+                px: expandedLeftInset,
                 py: 0,
                 justifyContent: 'flex-start',
                 color: t.palette.text.secondary,
@@ -235,19 +247,17 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
         <Collapse in={collapsed ? true : openDownloaders} timeout="auto" unmountOnExit>
           <List component="div" disablePadding sx={{ pl: 0 }}>
             {downloaders.map((dl) => {
-              const isActive = location.pathname === dl.to
+              const isActive = activePath === dl.to
               return (
                 <ListItem key={dl.label} disablePadding sx={{ mb: 0.25 }}>
                   {withCollapsedTooltip(
                     <ListItemButton
-                      component={Link}
-                      to={dl.to}
                       selected={isActive}
-                      onClick={handleNavClick}
+                      onClick={() => handleNavigate(dl.to)}
                       sx={{
                         borderRadius: 1,
                         minHeight: 28,
-                        px: collapsed ? 1 : 0.5,
+                        px: collapsed ? 1 : expandedLeftInset,
                         py: collapsed ? undefined : 0.5,
                         justifyContent: collapsed ? 'center' : 'flex-start',
                         color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
@@ -301,8 +311,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
         </Collapse>
       </List>
 
-      {/* Footer with Settings button */}
-      <Box sx={{ mt: 'auto', px: 1, pb: 1, pt: 1.25, borderTop: (t) => `1px solid ${t.palette.divider}` }}>
+      <Box sx={{ mt: 'auto', px: 1, pb: 1, pt: 1.25, borderTop: (theme) => `1px solid ${theme.palette.divider}` }}>
         <List sx={{ p: 0 }}>
           <ListItem disablePadding>
             {withCollapsedTooltip(
@@ -311,7 +320,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
                 sx={{
                   borderRadius: 1,
                   minHeight: 28,
-                  px: collapsed ? 1 : 0.5,
+                  px: collapsed ? 1 : expandedLeftInset,
                   py: collapsed ? undefined : 0.75,
                   justifyContent: collapsed ? 'center' : 'flex-start',
                   color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
@@ -358,7 +367,6 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
 
   return (
     <Box component="nav" sx={{ width: { sm: collapsed ? collapsedWidth : drawerWidth }, flexShrink: { sm: 0 } }} aria-label={i18nT('sidebar.navigationAria')}>
-      {/* Temporary drawer on mobile */}
       <Drawer
         variant="temporary"
         open={mobileOpen}
@@ -379,7 +387,7 @@ export default function Sidebar({ mobileOpen, onClose, collapsed = false, onTogg
       >
         {drawerContent}
       </Drawer>
-      {/* Permanent drawer on desktop */}
+
       <Drawer
         variant="permanent"
         sx={{

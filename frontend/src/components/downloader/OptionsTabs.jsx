@@ -43,7 +43,7 @@ const ChevronIcon = ({ isOpen = false, theme }) => (
   </Box>
 )
 
-export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', videoAuthor = '', videoUrl = '', durationSeconds = null, serviceKey = null, initialFormats = null, onFetchError = null }) {
+export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', videoAuthor = '', videoUrl = '', durationSeconds = null, serviceKey = null, initialFormats = null, onFetchError = null, onDownloadStateChange = null }) {
   const theme = useTheme()
   const { t: i18nT } = useI18n()
   const { showNotification } = useNotification()
@@ -94,6 +94,28 @@ export default function OptionsTabs({ brandColor = '#df2f2f', videoTitle = '', v
   const [downloadProgress, setDownloadProgress] = React.useState(0)
   const [downloadStage, setDownloadStage] = React.useState('')
   const [downloadError, setDownloadError] = React.useState(null)
+
+  const resolvedDownloadTitle = React.useMemo(() => {
+    return String(filenameValue || titleValue || videoTitle || '').trim().slice(0, 180)
+  }, [filenameValue, titleValue, videoTitle])
+
+  React.useEffect(() => {
+    onDownloadStateChange?.({
+      active: downloading,
+      progress: downloading ? Math.round(downloadProgress || 0) : 0,
+      stage: downloadStage || '',
+      title: resolvedDownloadTitle,
+    })
+  }, [downloading, downloadProgress, downloadStage, resolvedDownloadTitle, onDownloadStateChange])
+
+  React.useEffect(() => () => {
+    onDownloadStateChange?.({
+      active: false,
+      progress: 0,
+      stage: '',
+      title: '',
+    })
+  }, [onDownloadStateChange])
 
   // Helpers: format sizes and build compact, deduped option lists
   const formatMB = (bytes) => {
