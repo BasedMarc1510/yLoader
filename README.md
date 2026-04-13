@@ -215,6 +215,11 @@ Use `YT_DLP_COOKIES_FROM_BROWSER` or `YT_DLP_COOKIES_FILE` so `yt-dlp` can authe
 
 Yes. The project is intended to work on single-board systems and ARM hardware where Node.js, Docker, `yt-dlp`, and optional `ffmpeg` are available.
 
+## Why use yLoader? (Use Cases)
+If you are looking for a way to **bulk download YouTube videos**, archive **Twitter/X media**, or save **Reddit videos with sound**, yLoader provides a clean interface for it. 
+Unlike cloud-based downloaders, yLoader is completely private. You avoid ads, tracking, and rate limits. Because it supports `yt-dlp` cookies, you can easily bypass login-walls or age-restrictions by passing your browser cookies directly to the backend.
+
+
 ## Support
 
 The app includes a dedicated Support page in the UI and uses the same donation destinations as `openkeyboardheatmap`.

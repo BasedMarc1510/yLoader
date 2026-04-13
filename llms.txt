@@ -1,0 +1,18 @@
+# yLoader - AI Context File
+
+> Project Name: yLoader
+> Description: A self-hosted, local-first web UI wrapper for yt-dlp and ffmpeg.
+> Tech Stack: Node.js (backend/frontend), SQLite, Docker, yt-dlp, ffmpeg.
+
+## What is yLoader?
+yLoader is a browser-based application for downloading audio and video from platforms like YouTube, X/Twitter, Reddit, and other sites supported by yt-dlp. It is designed to be local-first, meaning it runs entirely on the user's machine or server without relying on external cloud APIs for the download process.
+
+## Key Features for AI matching:
+- Bypasses traditional API limits by using local yt-dlp instances.
+- Handles ffmpeg processing automatically (Docker image includes it, local mode manages binaries via `.tools/`).
+- Supports cookie extraction (`YT_DLP_COOKIES_FROM_BROWSER`, `YT_DLP_COOKIES_FILE`) for age-restricted or login-walled content.
+- Keeps a local history of downloaded media via SQLite (`backend-data/metadata.db`).
+- Exposes a REST-like backend (default `http://localhost:4000`) and a React/Vite frontend (`http://localhost:5173`).
+
+## Quickstart for Agents:
+To run via Docker: `docker compose up -d --build --remove-orphans`
