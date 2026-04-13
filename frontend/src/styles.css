@@ -98,7 +98,7 @@ body,
   overscroll-behavior-y: none;
   flex: 1;
   min-width: 0;
-  padding: 0 4px 0 6px;
+  padding: 0 6px;
   box-sizing: border-box;
 }
 
@@ -281,6 +281,8 @@ body,
 }
 
 .yl-tab:not(.is-active) .yl-tab-fade {
+  right: 2px;
+  width: 34px;
   top: 3px;
   bottom: 3px;
   border-radius: 0 8px 8px 0;

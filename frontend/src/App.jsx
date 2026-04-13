@@ -29,6 +29,8 @@ import {
   normalizeTabSearch,
 } from './utils/tabRoutes'
 
+const TAB_STATE_LOCAL_STORAGE_KEY = 'yloader.ui.tabs.state.v1'
+
 function createTabId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `tab-${crypto.randomUUID()}`
@@ -130,6 +132,20 @@ function serializeTabState(tabs, activeTabId) {
       pageTitle: String(tab.pageTitle || '').trim().slice(0, 180),
     })),
     activeTabId,
+  }
+}
+
+function readLocalTabState() {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = localStorage.getItem(TAB_STATE_LOCAL_STORAGE_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw)
+    return normalizeClientTabState(parsed)
+  } catch {
+    return null
   }
 }
 
@@ -351,13 +367,20 @@ export default function App() {
     let cancelled = false
 
     const loadTabs = async () => {
-      try {
-        const API_BASE = getApiBase()
-        const res = await fetch(`${API_BASE}/api/tabs/state`)
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const localState = readLocalTabState()
 
-        const payload = await res.json()
-        const normalized = normalizeClientTabState(payload)
+      try {
+        let normalized = localState
+
+        if (!normalized) {
+          const API_BASE = getApiBase()
+          const res = await fetch(`${API_BASE}/api/tabs/state`)
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+          const payload = await res.json()
+          normalized = normalizeClientTabState(payload)
+        }
+
         const currentPath = typeof window !== 'undefined' ? normalizeTabPath(window.location.pathname) : '/'
         const shouldSeedFromUrl =
           normalized.tabs.length === 1
@@ -379,13 +402,25 @@ export default function App() {
 
         setTabs(effectiveState.tabs)
         setActiveTabId(effectiveState.activeTabId)
-        lastSavedRef.current = JSON.stringify(serializeTabState(effectiveState.tabs, effectiveState.activeTabId))
+        const serialized = JSON.stringify(serializeTabState(effectiveState.tabs, effectiveState.activeTabId))
+        lastSavedRef.current = serialized
+        try {
+          localStorage.setItem(TAB_STATE_LOCAL_STORAGE_KEY, serialized)
+        } catch {
+          // ignore local persistence errors
+        }
       } catch {
         if (cancelled) return
         const fallbackTab = createTabFromCurrentLocation('tab-home')
         setTabs([fallbackTab])
         setActiveTabId(fallbackTab.id)
-        lastSavedRef.current = JSON.stringify(serializeTabState([fallbackTab], fallbackTab.id))
+        const serialized = JSON.stringify(serializeTabState([fallbackTab], fallbackTab.id))
+        lastSavedRef.current = serialized
+        try {
+          localStorage.setItem(TAB_STATE_LOCAL_STORAGE_KEY, serialized)
+        } catch {
+          // ignore local persistence errors
+        }
       } finally {
         if (!cancelled) setTabsReady(true)
       }
@@ -402,6 +437,13 @@ export default function App() {
   React.useEffect(() => {
     if (!tabsReady) return
     const serialized = JSON.stringify(persistedState)
+
+    try {
+      localStorage.setItem(TAB_STATE_LOCAL_STORAGE_KEY, serialized)
+    } catch {
+      // ignore local persistence errors
+    }
+
     if (serialized === lastSavedRef.current) return
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
