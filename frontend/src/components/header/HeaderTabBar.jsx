@@ -125,7 +125,7 @@ export default function HeaderTabBar({
   }, [activeTabId, tabs.length])
 
   React.useEffect(() => {
-    const nextIds = tabs.map((tab) => tab.id)
+    const nextIds = tabOrderSignature ? tabOrderSignature.split('|').filter(Boolean) : []
     const previousIds = previousTabIdsRef.current
     const previousSet = new Set(previousIds)
     const addedIds = nextIds.filter((id) => !previousSet.has(id))
@@ -149,7 +149,7 @@ export default function HeaderTabBar({
             next.delete(id)
             return next
           })
-        }, 220)
+        }, 250)
 
         enterAnimationTimersRef.current.set(id, timer)
       })
@@ -177,7 +177,7 @@ export default function HeaderTabBar({
     })
 
     previousTabIdsRef.current = nextIds
-  }, [tabOrderSignature, tabs])
+  }, [tabOrderSignature])
 
   React.useEffect(() => () => {
     enterAnimationTimersRef.current.forEach((timer) => clearTimeout(timer))
@@ -405,13 +405,28 @@ export default function HeaderTabBar({
                   >
                     <X size={12} />
                   </IconButton>
+
+                  {isDragging && (
+                    <IconButton
+                      size="small"
+                      className="yl-add-btn yl-add-btn-drag-proxy"
+                      aria-label={t('tabs.newTabAria')}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onAddTab?.()
+                      }}
+                    >
+                      <Plus size={16} />
+                    </IconButton>
+                  )}
                 </Box>
               )
             })}
 
             <IconButton
               size="small"
-              className="yl-add-btn"
+              className={`yl-add-btn ${draggingId ? 'is-hidden-while-drag' : ''}`}
               onClick={onAddTab}
               aria-label={t('tabs.newTabAria')}
             >

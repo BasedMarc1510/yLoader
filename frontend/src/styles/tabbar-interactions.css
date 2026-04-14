@@ -8,21 +8,6 @@
   opacity: 0.92;
 }
 
-.yl-tab.is-entering {
-  animation: yl-tab-open-pop 240ms cubic-bezier(0.2, 0.88, 0.2, 1) both;
-}
-
-@keyframes yl-tab-open-pop {
-  0% {
-    opacity: 0.2;
-    transform: translateY(5px) scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 .yl-tab-hit {
   position: relative;
   width: 100%;
@@ -228,7 +213,7 @@
 }
 
 .yl-add-btn {
-  margin-left: 4px !important;
+  margin-left: 2px !important;
   margin-right: 4px !important;
   margin-top: 0;
   margin-bottom: 0;
@@ -245,6 +230,20 @@
   flex-shrink: 0;
   padding: 0 !important;
   align-self: center;
+}
+
+.yl-add-btn.is-hidden-while-drag {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.yl-add-btn.yl-add-btn-drag-proxy {
+  position: absolute !important;
+  right: -36px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0 !important;
+  z-index: 45;
 }
 
 .yl-add-btn:hover {

@@ -218,6 +218,26 @@
   z-index: 50;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
   opacity: 0.96;
+  overflow: visible;
+}
+
+.yl-tab.is-entering {
+  animation: yl-tab-enter-width 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes yl-tab-enter-width {
+  0% {
+    width: 0;
+    margin-left: 0;
+    margin-right: 0;
+    opacity: 0;
+  }
+  100% {
+    width: var(--yl-tab-width);
+    margin-left: 0;
+    margin-right: 0;
+    opacity: 1;
+  }
 }
 
 .yl-tab.is-closing {
