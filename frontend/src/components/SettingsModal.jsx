@@ -26,7 +26,7 @@ const AUTO_DOWNLOAD_DEFAULTS = {
   useMetadata: true,
   embedCoverArt: true,
   maxAudioBitrateKbps: 0,
-  maxVideoHeight: 1080,
+  maxVideoHeight: 0,
 }
 
 function normalizeAutoDownloadSettings(value) {
@@ -246,6 +246,23 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
   if (section === 'yt-dlp') sectionTitle = t('settings.ytDlpConfig')
   if (section === 'ffmpeg') sectionTitle = t('settings.ffmpegConfig')
 
+  const canResetSection = section === 'general' || section === 'auto-download'
+  const resetDisabled = section === 'auto-download' ? (autoDownloadLoading || autoDownloadSaving) : false
+
+  const handleResetSection = React.useCallback(() => {
+    if (section === 'general') {
+      setLanguage('en')
+      setPreference(null)
+      return
+    }
+
+    if (section === 'auto-download') {
+      const defaults = { ...AUTO_DOWNLOAD_DEFAULTS }
+      setAutoDownloadSettings(defaults)
+      saveAutoDownloadSettings(defaults)
+    }
+  }, [section, saveAutoDownloadSettings, setLanguage, setPreference])
+
   const selectSx = {
     fontSize: 13,
     height: 32,
@@ -355,6 +372,7 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
               height: 52,
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'space-between',
               flexShrink: 0,
               position: 'sticky',
               top: 0,
@@ -362,6 +380,21 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
               bgcolor: th.palette.mode === 'dark' ? '#1e1e1e' : '#ffffff',
             })}>
               <Typography sx={{ fontWeight: 700, fontSize: 18 }}>{sectionTitle}</Typography>
+              {canResetSection && (
+                <Button
+                  variant="text"
+                  size="small"
+                  disabled={resetDisabled}
+                  onClick={handleResetSection}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    borderRadius: '4px',
+                  }}
+                >
+                  {t('settings.resetToDefaults')}
+                </Button>
+              )}
             </Box>
             <Divider />
 

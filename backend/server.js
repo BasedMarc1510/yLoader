@@ -59,7 +59,7 @@ const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
   useMetadata: true,
   embedCoverArt: true,
   maxAudioBitrateKbps: 0,
-  maxVideoHeight: 1080,
+  maxVideoHeight: 0,
 })
 const ALLOWED_TAB_PATHS = new Set([
   '/',

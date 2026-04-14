@@ -17,6 +17,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Tooltip,
 } from '@mui/material'
 import { ArrowRight, Plus, List, Zap, X, AlertTriangle, ChevronRight } from 'lucide-react'
 import AppLayout from './layout/AppLayout'
@@ -41,7 +42,7 @@ const AUTO_DOWNLOAD_SETTINGS_DEFAULTS = Object.freeze({
   useMetadata: true,
   embedCoverArt: true,
   maxAudioBitrateKbps: 0,
-  maxVideoHeight: 1080,
+  maxVideoHeight: 0,
 })
 
 function readHomeAutoDownloadPrefs() {
@@ -713,7 +714,7 @@ function HomePage({ onOpenDownloader }) {
     >
       <MenuItem
         onClick={() => requestToggleMultiMode(!multiModeEnabled)}
-        disabled={isResolving}
+        disabled={isResolving || autoDownloadEnabled}
         sx={{
           py: 1.05,
           px: 1.25,
@@ -722,6 +723,7 @@ function HomePage({ onOpenDownloader }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           minHeight: 42,
+          opacity: autoDownloadEnabled ? 0.52 : 1,
         }}
       >
         <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.15 }}>
@@ -736,6 +738,7 @@ function HomePage({ onOpenDownloader }) {
         <Switch
           size="small"
           checked={multiModeEnabled}
+          disabled={isResolving || autoDownloadEnabled}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => requestToggleMultiMode(event.target.checked)}
           inputProps={{ 'aria-label': t('home.quickActions.multiDownloadSwitchAria') }}
@@ -900,38 +903,42 @@ function HomePage({ onOpenDownloader }) {
         height: 36,
       }}
     >
-      <IconButton
-        size="small"
-        aria-label={t('home.quickActions.openAria')}
-        onClick={openQuickActions}
-        disabled={isResolving}
-        sx={(theme) => ({
-          width: 36,
-          height: 36,
-          p: 0,
-          borderRadius: '50%',
-          color: isResolving
-            ? theme.palette.text.disabled
-            : (quickActionsOpen ? theme.palette.text.primary : theme.palette.text.secondary),
-          bgcolor: quickActionsOpen
-            ? (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')
-            : 'transparent',
-          opacity: 1,
-          cursor: isResolving ? 'default' : 'pointer',
-          '&:hover': {
-            bgcolor: isResolving
-              ? 'transparent'
-              : (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'),
-            opacity: 1,
-          },
-          '&.Mui-disabled': {
-            opacity: 1,
-            color: theme.palette.text.disabled,
-          },
-        })}
-      >
-        {autoDownloadEnabled ? <Zap size={18} /> : <Plus size={20} />}
-      </IconButton>
+      <Tooltip title={autoDownloadEnabled ? t('home.quickActions.autoDownloadActiveTooltip') : ''}>
+        <Box component="span" sx={{ display: 'inline-flex' }}>
+          <IconButton
+            size="small"
+            aria-label={t('home.quickActions.openAria')}
+            onClick={openQuickActions}
+            disabled={isResolving}
+            sx={(theme) => ({
+              width: 36,
+              height: 36,
+              p: 0,
+              borderRadius: '50%',
+              color: isResolving
+                ? theme.palette.text.disabled
+                : (quickActionsOpen ? theme.palette.text.primary : theme.palette.text.secondary),
+              bgcolor: quickActionsOpen
+                ? (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')
+                : 'transparent',
+              opacity: 1,
+              cursor: isResolving ? 'default' : 'pointer',
+              '&:hover': {
+                bgcolor: isResolving
+                  ? 'transparent'
+                  : (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'),
+                opacity: 1,
+              },
+              '&.Mui-disabled': {
+                opacity: 1,
+                color: theme.palette.text.disabled,
+              },
+            })}
+          >
+            {autoDownloadEnabled ? <Zap size={18} /> : <Plus size={20} />}
+          </IconButton>
+        </Box>
+      </Tooltip>
       {quickActionsMenu}
     </Box>
   )
