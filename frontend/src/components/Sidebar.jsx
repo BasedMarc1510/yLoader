@@ -37,6 +37,7 @@ export default function Sidebar({
   const MAC_TRAFFIC_LIGHTS_LEFT_GUTTER = 72
   const MAC_TRAFFIC_LIGHTS_TOP_OFFSET = 8
   const [openSettings, setOpenSettings] = React.useState(false)
+  const [settingsSection, setSettingsSection] = React.useState('general')
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const isElectron = Boolean(
     runtime
@@ -45,6 +46,19 @@ export default function Sidebar({
   const isMacElectron = Boolean(runtime?.platform === 'darwin')
   const showMacInlineExpand = collapsed && isMacElectron
   const brandLeftPadding = logoLeftOffset + 8
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const onOpenSettings = (event) => {
+      const requestedSection = String(event?.detail?.section || 'general').trim() || 'general'
+      setSettingsSection(requestedSection)
+      setOpenSettings(true)
+    }
+
+    window.addEventListener('yloader:open-settings', onOpenSettings)
+    return () => window.removeEventListener('yloader:open-settings', onOpenSettings)
+  }, [])
 
   const withCollapsedTooltip = (node, title) => (
     collapsed
@@ -307,7 +321,10 @@ export default function Sidebar({
           <ListItem disablePadding>
             {withCollapsedTooltip(
               <ListItemButton
-                onClick={() => setOpenSettings(true)}
+                onClick={() => {
+                  setSettingsSection('general')
+                  setOpenSettings(true)
+                }}
                 sx={{
                   borderRadius: 1,
                   minHeight: 28,
@@ -398,7 +415,11 @@ export default function Sidebar({
       >
         {drawerContent}
       </Drawer>
-      <SettingsModal open={openSettings} onClose={() => setOpenSettings(false)} />
+      <SettingsModal
+        open={openSettings}
+        onClose={() => setOpenSettings(false)}
+        requestedSection={settingsSection}
+      />
     </Box>
   )
 }

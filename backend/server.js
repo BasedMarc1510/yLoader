@@ -51,7 +51,16 @@ const ALLOWED_IMAGE_CONTAINERS = new Set(['jpg', 'png', 'webp'])
 const FORMAT_ID_REGEX = /^[A-Za-z0-9_.,:+\-\/=~*]+$/
 const MAX_PROXY_IMAGE_SIZE_BYTES = 15 * 1024 * 1024
 const TAB_STATE_SETTINGS_KEY = 'ui.tabs.state.v1'
+const AUTO_DOWNLOAD_SETTINGS_KEY = 'ui.autoDownload.settings.v1'
 const MAX_PERSISTED_TABS = 30
+const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
+const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
+const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
+  useMetadata: true,
+  embedCoverArt: true,
+  maxAudioBitrateKbps: 0,
+  maxVideoHeight: 1080,
+})
 const ALLOWED_TAB_PATHS = new Set([
   '/',
   '/downloads',
@@ -106,6 +115,35 @@ function createFallbackTab() {
     path: '/',
     search: '',
     pageTitle: '',
+  }
+}
+
+function normalizeAutoDownloadSettingsPayload(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+
+  const useMetadata = input.useMetadata !== undefined
+    ? Boolean(input.useMetadata)
+    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.useMetadata
+
+  const embedCoverArt = input.embedCoverArt !== undefined
+    ? Boolean(input.embedCoverArt)
+    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.embedCoverArt
+
+  const bitrateRaw = Number(input.maxAudioBitrateKbps)
+  const maxAudioBitrateKbps = AUTO_DOWNLOAD_BITRATE_OPTIONS.has(bitrateRaw)
+    ? bitrateRaw
+    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.maxAudioBitrateKbps
+
+  const heightRaw = Number(input.maxVideoHeight)
+  const maxVideoHeight = AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS.has(heightRaw)
+    ? heightRaw
+    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.maxVideoHeight
+
+  return {
+    useMetadata,
+    embedCoverArt,
+    maxAudioBitrateKbps,
+    maxVideoHeight,
   }
 }
 
@@ -189,6 +227,45 @@ app.put('/api/tabs/state', async (req, res) => {
     return res.json(normalized)
   } catch (err) {
     return res.status(500).json({ error: 'Failed to save tab state', details: String(err?.message || err) })
+  }
+})
+
+app.get('/api/auto-download/settings', async (_req, res) => {
+  try {
+    const raw = await readSettingValue(AUTO_DOWNLOAD_SETTINGS_KEY)
+    let parsed = {}
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        parsed = {}
+      }
+    }
+
+    return res.json(normalizeAutoDownloadSettingsPayload(parsed))
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to read auto-download settings', details: String(err?.message || err) })
+  }
+})
+
+app.put('/api/auto-download/settings', async (req, res) => {
+  try {
+    let existing = { ...DEFAULT_AUTO_DOWNLOAD_SETTINGS }
+    const raw = await readSettingValue(AUTO_DOWNLOAD_SETTINGS_KEY)
+    if (raw) {
+      try {
+        existing = normalizeAutoDownloadSettingsPayload(JSON.parse(raw))
+      } catch {
+        existing = { ...DEFAULT_AUTO_DOWNLOAD_SETTINGS }
+      }
+    }
+
+    const incoming = (req.body && typeof req.body === 'object') ? req.body : {}
+    const normalized = normalizeAutoDownloadSettingsPayload({ ...existing, ...incoming })
+    await writeSettingValue(AUTO_DOWNLOAD_SETTINGS_KEY, JSON.stringify(normalized))
+    return res.json(normalized)
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to save auto-download settings', details: String(err?.message || err) })
   }
 })
 

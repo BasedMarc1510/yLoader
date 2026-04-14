@@ -18,13 +18,14 @@ import {
   DialogActions,
   Button,
 } from '@mui/material'
-import { ArrowRight, Plus, List, Zap, X, AlertTriangle } from 'lucide-react'
+import { ArrowRight, Plus, List, Zap, X, AlertTriangle, ChevronRight } from 'lucide-react'
 import AppLayout from './layout/AppLayout'
 import Downloader from './pages/Downloader'
 import SupportPage from './pages/Support'
 import DownloadsPage from './pages/Downloads'
-import { detectService, fetchDuration, fetchFormats, fetchNoembed, getApiBase } from './utils/metadata'
+import { detectService, fetchDuration, fetchFormats, fetchNoembed, getApiBase, normalizeUrlForNoembed } from './utils/metadata'
 import { useI18n } from './providers/I18nProvider'
+import { useNotification } from './providers/NotificationProvider'
 import {
   getPathForService,
   getRouteTitle,
@@ -35,6 +36,127 @@ import {
 
 const TAB_STATE_LOCAL_STORAGE_KEY = 'yloader.ui.tabs.state.v1'
 const HOME_PREFETCH_CACHE_KEY = 'yloader.home.prefetch.v1'
+const HOME_AUTO_PREFS_KEY = 'yloader.home.autoDownload.prefs.v1'
+const AUTO_DOWNLOAD_SETTINGS_DEFAULTS = Object.freeze({
+  useMetadata: true,
+  embedCoverArt: true,
+  maxAudioBitrateKbps: 0,
+  maxVideoHeight: 1080,
+})
+
+function readHomeAutoDownloadPrefs() {
+  if (typeof window === 'undefined') {
+    return { enabled: false, format: 'mp4' }
+  }
+
+  try {
+    const raw = localStorage.getItem(HOME_AUTO_PREFS_KEY)
+    if (!raw) return { enabled: false, format: 'mp4' }
+
+    const parsed = JSON.parse(raw)
+    const format = parsed?.format === 'mp3' ? 'mp3' : 'mp4'
+    return {
+      enabled: Boolean(parsed?.enabled),
+      format,
+    }
+  } catch {
+    return { enabled: false, format: 'mp4' }
+  }
+}
+
+function normalizeAutoDownloadSettings(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+  const maxAudioBitrateKbps = Number(input.maxAudioBitrateKbps)
+  const maxVideoHeight = Number(input.maxVideoHeight)
+
+  return {
+    useMetadata: input.useMetadata !== undefined ? Boolean(input.useMetadata) : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.useMetadata,
+    embedCoverArt: input.embedCoverArt !== undefined ? Boolean(input.embedCoverArt) : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.embedCoverArt,
+    maxAudioBitrateKbps: Number.isFinite(maxAudioBitrateKbps) ? maxAudioBitrateKbps : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.maxAudioBitrateKbps,
+    maxVideoHeight: Number.isFinite(maxVideoHeight) ? maxVideoHeight : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.maxVideoHeight,
+  }
+}
+
+function openSettingsModal(section = 'general') {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
+  window.dispatchEvent(new CustomEvent('yloader:open-settings', { detail: { section } }))
+}
+
+function pickAudioFormatByMaxBitrate(formats, maxAudioBitrateKbps) {
+  const list = Array.isArray(formats) ? formats : []
+  if (!list.length) return 'best'
+
+  const normalizedCap = Number(maxAudioBitrateKbps)
+  const cap = Number.isFinite(normalizedCap) ? normalizedCap : 0
+
+  const candidates = list
+    .filter((fmt) => fmt && typeof fmt.formatId === 'string' && fmt.formatId.trim())
+    .map((fmt) => ({
+      formatId: fmt.formatId,
+      abr: Number(fmt.abr) || 0,
+      filesize: Number(fmt.filesize) || 0,
+    }))
+    .filter((fmt) => fmt.abr > 0)
+
+  if (!candidates.length) return 'best'
+
+  const bounded = cap > 0
+    ? candidates.filter((fmt) => fmt.abr <= cap)
+    : candidates
+  const pool = bounded.length ? bounded : candidates
+
+  pool.sort((a, b) => {
+    if (b.abr !== a.abr) return b.abr - a.abr
+    return (a.filesize || 0) - (b.filesize || 0)
+  })
+
+  return pool[0]?.formatId || 'best'
+}
+
+function readVideoFormatHeight(fmt) {
+  const direct = Number(fmt?.height)
+  if (Number.isFinite(direct) && direct > 0) return direct
+
+  const resolution = String(fmt?.resolution || '')
+  const pMatch = resolution.match(/(\d{3,4})p/i)
+  if (pMatch) return Number(pMatch[1])
+
+  const xMatch = resolution.match(/x(\d{3,4})$/i)
+  if (xMatch) return Number(xMatch[1])
+
+  return 0
+}
+
+function pickVideoFormatByMaxHeight(formats, maxVideoHeight) {
+  const list = Array.isArray(formats) ? formats : []
+  if (!list.length) return 'best'
+
+  const normalizedCap = Number(maxVideoHeight)
+  const cap = Number.isFinite(normalizedCap) ? normalizedCap : 0
+
+  const candidates = list
+    .filter((fmt) => fmt && typeof fmt.formatId === 'string' && fmt.formatId.trim())
+    .map((fmt) => ({
+      formatId: fmt.formatId,
+      height: readVideoFormatHeight(fmt),
+      filesize: Number(fmt.filesize) || 0,
+    }))
+    .filter((fmt) => fmt.height > 0)
+
+  if (!candidates.length) return 'best'
+
+  const bounded = cap > 0
+    ? candidates.filter((fmt) => fmt.height <= cap)
+    : candidates
+  const pool = bounded.length ? bounded : candidates
+
+  pool.sort((a, b) => {
+    if (b.height !== a.height) return b.height - a.height
+    return (b.filesize || 0) - (a.filesize || 0)
+  })
+
+  return pool[0]?.formatId || 'best'
+}
 
 function createTabId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -172,12 +294,13 @@ function extractYtDlpError(msg) {
 
 function HomePage({ onOpenDownloader }) {
   const { t } = useI18n()
+  const { showNotification } = useNotification()
   const [value, setValue] = React.useState('')
   const [menuAnchorEl, setMenuAnchorEl] = React.useState(null)
   const [multiModeEnabled, setMultiModeEnabled] = React.useState(false)
   const [confirmDisableMultiOpen, setConfirmDisableMultiOpen] = React.useState(false)
-  const [autoDownloadEnabled, setAutoDownloadEnabled] = React.useState(false)
-  const [autoDownloadFormat, setAutoDownloadFormat] = React.useState('mp4')
+  const [autoDownloadEnabled, setAutoDownloadEnabled] = React.useState(() => readHomeAutoDownloadPrefs().enabled)
+  const [autoDownloadFormat, setAutoDownloadFormat] = React.useState(() => readHomeAutoDownloadPrefs().format)
   const [isResolving, setIsResolving] = React.useState(false)
   const [fetchError, setFetchError] = React.useState(null)
 
@@ -247,6 +370,32 @@ function HomePage({ onOpenDownloader }) {
     setMenuAnchorEl(null)
   }, [])
 
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem(HOME_AUTO_PREFS_KEY, JSON.stringify({
+        enabled: autoDownloadEnabled,
+        format: autoDownloadFormat === 'mp3' ? 'mp3' : 'mp4',
+      }))
+    } catch {
+      // ignore local persistence errors
+    }
+  }, [autoDownloadEnabled, autoDownloadFormat])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const onStorage = (event) => {
+      if (event.key !== HOME_AUTO_PREFS_KEY) return
+      const next = readHomeAutoDownloadPrefs()
+      setAutoDownloadEnabled(next.enabled)
+      setAutoDownloadFormat(next.format)
+    }
+
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
   const disableMultiModeNow = React.useCallback(() => {
     setConfirmDisableMultiOpen(false)
     setMultiModeEnabled(false)
@@ -278,16 +427,243 @@ function HomePage({ onOpenDownloader }) {
     disableMultiModeNow()
   }, [disableMultiModeNow])
 
+  const fetchAutoDownloadSettingsFromServer = React.useCallback(async () => {
+    const API_BASE = getApiBase()
+    try {
+      const resp = await fetch(`${API_BASE}/api/auto-download/settings`)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      return normalizeAutoDownloadSettings(data)
+    } catch {
+      return { ...AUTO_DOWNLOAD_SETTINGS_DEFAULTS }
+    }
+  }, [])
+
+  const startAutoDownload = React.useCallback(async (rawUrl) => {
+    const target = String(rawUrl || '').trim()
+    const serviceKey = detectService(target)
+    if (!autoDownloadEnabled || !serviceKey || !target || multiModeEnabled || isResolving) return
+
+    setFetchError(null)
+    setIsResolving(true)
+
+    const API_BASE = getApiBase()
+    let didStart = false
+
+    const markStarted = () => {
+      if (didStart) return
+      didStart = true
+      setValue('')
+      setIsResolving(false)
+    }
+
+    const resolveSseErrorMessage = (value) => {
+      try {
+        const parsed = JSON.parse(value)
+        return parsed?.error || parsed?.message || String(value || '')
+      } catch {
+        return String(value || '')
+      }
+    }
+
+    try {
+      const normalized = normalizeUrlForNoembed(target)
+      const [autoSettings, formatsData, noembedData, durationData] = await Promise.all([
+        fetchAutoDownloadSettingsFromServer(),
+        fetchFormats(normalized).catch(() => ({ audioFormats: [], videoFormats: [] })),
+        fetchNoembed(normalized).catch(() => ({})),
+        fetchDuration(normalized).catch(() => ({ duration: null, durationString: null })),
+      ])
+
+      const isAudio = autoDownloadFormat === 'mp3'
+      const payload = {
+        url: normalized,
+        service: serviceKey || 'other',
+        type: isAudio ? 'audio' : 'video',
+        duration: durationData?.duration ?? null,
+        videoTitle: String(noembedData?.title || '').trim() || target,
+        format: isAudio ? 'mp3' : 'mp4',
+        audioFormat: isAudio
+          ? pickAudioFormatByMaxBitrate(formatsData?.audioFormats, autoSettings.maxAudioBitrateKbps)
+          : undefined,
+        videoFormat: !isAudio
+          ? pickVideoFormatByMaxHeight(formatsData?.videoFormats, autoSettings.maxVideoHeight)
+          : undefined,
+        metadata: isAudio && autoSettings.useMetadata
+          ? {
+              title: String(noembedData?.title || '').trim(),
+              artist: String(noembedData?.author_name || '').trim(),
+              album: '',
+            }
+          : undefined,
+        cover: isAudio
+          ? {
+              enabled: Boolean(autoSettings.embedCoverArt),
+              source: 'video',
+            }
+          : undefined,
+      }
+
+      const response = await fetch(`${API_BASE}/api/download/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`
+        try {
+          const body = await response.json()
+          message = body?.error || body?.details || message
+        } catch {
+          // keep fallback message
+        }
+        throw new Error(message)
+      }
+
+      if (!response.body) {
+        throw new Error(t('downloader.errorDownloadFailed'))
+      }
+
+      const processEvent = (eventName, rawData) => {
+        const dataStr = String(rawData || '')
+
+        if (eventName === 'info' || eventName === 'message' || eventName === 'progress') {
+          markStarted()
+          return
+        }
+
+        if (eventName === 'error') {
+          const msg = resolveSseErrorMessage(dataStr) || t('downloader.errorDownloadFailed')
+          if (!didStart) setIsResolving(false)
+          setFetchError({ url: target, message: msg })
+          showNotification(msg, 'error')
+          return
+        }
+
+        if (eventName === 'complete') {
+          markStarted()
+          try {
+            const data = JSON.parse(dataStr)
+            if (!data?.filename || !data?.url) return
+            const a = document.createElement('a')
+            a.href = `${API_BASE}${data.url}`
+            a.download = data.filename
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+          } catch {
+            // ignore malformed complete payload
+          }
+        }
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      const flushEvents = (force = false) => {
+        let delimiterIndex = buffer.indexOf('\n\n')
+        while (delimiterIndex !== -1) {
+          const block = buffer.slice(0, delimiterIndex)
+          buffer = buffer.slice(delimiterIndex + 2)
+
+          if (block.trim()) {
+            let eventName = 'message'
+            const dataLines = []
+            for (const rawLine of block.split('\n')) {
+              const line = rawLine.replace(/\r$/, '')
+              if (!line || line.startsWith(':')) continue
+              if (line.startsWith('event:')) {
+                eventName = line.slice(6).trim() || 'message'
+                continue
+              }
+              if (line.startsWith('data:')) {
+                dataLines.push(line.slice(5).trimStart())
+              }
+            }
+            processEvent(eventName, dataLines.join('\n'))
+          }
+
+          delimiterIndex = buffer.indexOf('\n\n')
+        }
+
+        if (force && buffer.trim()) {
+          let eventName = 'message'
+          const dataLines = []
+          for (const rawLine of buffer.split('\n')) {
+            const line = rawLine.replace(/\r$/, '')
+            if (!line || line.startsWith(':')) continue
+            if (line.startsWith('event:')) {
+              eventName = line.slice(6).trim() || 'message'
+              continue
+            }
+            if (line.startsWith('data:')) {
+              dataLines.push(line.slice(5).trimStart())
+            }
+          }
+          processEvent(eventName, dataLines.join('\n'))
+          buffer = ''
+        }
+      }
+
+      while (true) {
+        const { done, value: chunk } = await reader.read()
+        if (done) {
+          flushEvents(true)
+          break
+        }
+
+        buffer += decoder.decode(chunk, { stream: true }).replace(/\r\n/g, '\n')
+        flushEvents(false)
+      }
+    } catch (error) {
+      const message = error?.message || String(error || '')
+      if (!didStart) setIsResolving(false)
+      setFetchError({
+        url: target,
+        message,
+      })
+      showNotification(message, 'error')
+    } finally {
+      if (!didStart) setIsResolving(false)
+    }
+  }, [
+    autoDownloadEnabled,
+    autoDownloadFormat,
+    fetchAutoDownloadSettingsFromServer,
+    isResolving,
+    multiModeEnabled,
+    showNotification,
+    t,
+  ])
+
   const handleToggleAutoDownload = React.useCallback((nextEnabled) => {
-    if (isResolving || multiModeEnabled) return
+    if (isResolving) return
+    if (nextEnabled && multiModeEnabled) {
+      disableMultiModeNow()
+    }
     setAutoDownloadEnabled(nextEnabled)
-  }, [isResolving, multiModeEnabled])
+  }, [disableMultiModeNow, isResolving, multiModeEnabled])
 
   const handleSubmit = React.useCallback(() => {
     if (multiModeEnabled || isResolving) return
+
+    if (autoDownloadEnabled) {
+      startAutoDownload(value)
+      return
+    }
+
     const serviceKey = detectService(value)
     if (serviceKey) resolveAndOpenDownloader(value)
-  }, [isResolving, multiModeEnabled, resolveAndOpenDownloader, value])
+  }, [
+    autoDownloadEnabled,
+    isResolving,
+    multiModeEnabled,
+    resolveAndOpenDownloader,
+    startAutoDownload,
+    value,
+  ])
 
   const closeFetchError = React.useCallback(() => {
     setFetchError(null)
@@ -297,8 +673,12 @@ function HomePage({ onOpenDownloader }) {
     const url = String(fetchError?.url || '').trim()
     if (!url || isResolving) return
     setFetchError(null)
+    if (autoDownloadEnabled) {
+      startAutoDownload(url)
+      return
+    }
     resolveAndOpenDownloader(url)
-  }, [fetchError?.url, isResolving, resolveAndOpenDownloader])
+  }, [autoDownloadEnabled, fetchError?.url, isResolving, resolveAndOpenDownloader, startAutoDownload])
 
   const quickActionsMenu = (
     <Menu
@@ -366,7 +746,7 @@ function HomePage({ onOpenDownloader }) {
 
       <MenuItem
         onClick={() => handleToggleAutoDownload(!autoDownloadEnabled)}
-        disabled={multiModeEnabled || isResolving}
+        disabled={isResolving}
         sx={{
           py: 1.05,
           px: 1.25,
@@ -375,7 +755,6 @@ function HomePage({ onOpenDownloader }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           minHeight: 42,
-          opacity: multiModeEnabled ? 0.52 : 1,
         }}
       >
         <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.15 }}>
@@ -387,7 +766,7 @@ function HomePage({ onOpenDownloader }) {
         <Switch
           size="small"
           checked={autoDownloadEnabled}
-          disabled={multiModeEnabled || isResolving}
+          disabled={isResolving}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => handleToggleAutoDownload(event.target.checked)}
           inputProps={{ 'aria-label': t('home.quickActions.autoDownloadSwitchAria') }}
@@ -395,60 +774,83 @@ function HomePage({ onOpenDownloader }) {
       </MenuItem>
 
       {autoDownloadEnabled && !multiModeEnabled && (
-        <Box sx={{ display: 'flex', gap: 1, mt: -0.15 }}>
+        <Box sx={{ mt: -0.15 }}>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              variant={autoDownloadFormat === 'mp4' ? 'contained' : 'outlined'}
+              onClick={() => setAutoDownloadFormat('mp4')}
+              sx={(theme) => ({
+                flex: 1,
+                minWidth: 0,
+                borderRadius: 1.5,
+                textTransform: 'none',
+                fontWeight: 700,
+                cursor: 'pointer',
+                ...(autoDownloadFormat === 'mp4'
+                  ? {
+                      bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
+                      color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
+                      '&:hover': {
+                        bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
+                      },
+                    }
+                  : {
+                      borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
+                      color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
+                    }),
+              })}
+            >
+              {t('home.quickActions.formatMp4')}
+            </Button>
+            <Button
+              size="small"
+              variant={autoDownloadFormat === 'mp3' ? 'contained' : 'outlined'}
+              onClick={() => setAutoDownloadFormat('mp3')}
+              sx={(theme) => ({
+                flex: 1,
+                minWidth: 0,
+                borderRadius: 1.5,
+                textTransform: 'none',
+                fontWeight: 700,
+                cursor: 'pointer',
+                ...(autoDownloadFormat === 'mp3'
+                  ? {
+                      bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
+                      color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
+                      '&:hover': {
+                        bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
+                      },
+                    }
+                  : {
+                      borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
+                      color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
+                    }),
+              })}
+            >
+              {t('home.quickActions.formatMp3')}
+            </Button>
+          </Box>
+
           <Button
+            fullWidth
             size="small"
-            variant={autoDownloadFormat === 'mp4' ? 'contained' : 'outlined'}
-            onClick={() => setAutoDownloadFormat('mp4')}
-            sx={(theme) => ({
-              flex: 1,
-              minWidth: 0,
-              borderRadius: 1.5,
+            variant="text"
+            endIcon={<ChevronRight size={14} />}
+            onClick={() => {
+              closeQuickActions()
+              openSettingsModal('auto-download')
+            }}
+            sx={{
+              mt: 0.55,
+              justifyContent: 'space-between',
               textTransform: 'none',
-              fontWeight: 700,
-              cursor: 'pointer',
-              ...(autoDownloadFormat === 'mp4'
-                ? {
-                    bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
-                    color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
-                    '&:hover': {
-                      bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
-                    },
-                  }
-                : {
-                    borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
-                    color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
-                  }),
-            })}
-          >
-            {t('home.quickActions.formatMp4')}
-          </Button>
-          <Button
-            size="small"
-            variant={autoDownloadFormat === 'mp3' ? 'contained' : 'outlined'}
-            onClick={() => setAutoDownloadFormat('mp3')}
-            sx={(theme) => ({
-              flex: 1,
-              minWidth: 0,
               borderRadius: 1.5,
-              textTransform: 'none',
-              fontWeight: 700,
-              cursor: 'pointer',
-              ...(autoDownloadFormat === 'mp3'
-                ? {
-                    bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
-                    color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
-                    '&:hover': {
-                      bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
-                    },
-                  }
-                : {
-                    borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
-                    color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
-                  }),
-            })}
+              color: 'text.secondary',
+              fontWeight: 600,
+            }}
           >
-            {t('home.quickActions.formatMp3')}
+            {t('home.quickActions.moreSettings')}
           </Button>
         </Box>
       )}
@@ -528,7 +930,7 @@ function HomePage({ onOpenDownloader }) {
           },
         })}
       >
-        <Plus size={20} />
+        {autoDownloadEnabled ? <Zap size={18} /> : <Plus size={20} />}
       </IconButton>
       {quickActionsMenu}
     </Box>
@@ -759,7 +1161,11 @@ function HomePage({ onOpenDownloader }) {
 
               const serviceKey = detectService(nextValue)
               if (serviceKey) {
-                setTimeout(() => resolveAndOpenDownloader(nextValue), 0)
+                if (autoDownloadEnabled) {
+                  setTimeout(() => startAutoDownload(nextValue), 0)
+                } else {
+                  setTimeout(() => resolveAndOpenDownloader(nextValue), 0)
+                }
               }
             }}
             sx={(muiTheme) => ({

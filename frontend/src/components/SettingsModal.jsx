@@ -14,12 +14,33 @@ import {
   Divider,
   Tooltip,
   Button,
+  Switch,
 } from '@mui/material'
 import { X, RefreshCw } from 'lucide-react'
 import { ColorModeContext } from '../providers/ColorModeProvider'
 import { SettingsContext } from '../providers/SettingsProvider'
 import { useI18n } from '../providers/I18nProvider'
 import { getApiBase } from '../utils/metadata'
+
+const AUTO_DOWNLOAD_DEFAULTS = {
+  useMetadata: true,
+  embedCoverArt: true,
+  maxAudioBitrateKbps: 0,
+  maxVideoHeight: 1080,
+}
+
+function normalizeAutoDownloadSettings(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+  const maxAudioBitrateKbps = Number(input.maxAudioBitrateKbps)
+  const maxVideoHeight = Number(input.maxVideoHeight)
+
+  return {
+    useMetadata: input.useMetadata !== undefined ? Boolean(input.useMetadata) : AUTO_DOWNLOAD_DEFAULTS.useMetadata,
+    embedCoverArt: input.embedCoverArt !== undefined ? Boolean(input.embedCoverArt) : AUTO_DOWNLOAD_DEFAULTS.embedCoverArt,
+    maxAudioBitrateKbps: Number.isFinite(maxAudioBitrateKbps) ? maxAudioBitrateKbps : AUTO_DOWNLOAD_DEFAULTS.maxAudioBitrateKbps,
+    maxVideoHeight: Number.isFinite(maxVideoHeight) ? maxVideoHeight : AUTO_DOWNLOAD_DEFAULTS.maxVideoHeight,
+  }
+}
 
 // Reusable setting row: label on left, control on right
 function SettingRow({ label, description, children, noDivider }) {
@@ -51,11 +72,11 @@ function SettingRow({ label, description, children, noDivider }) {
   )
 }
 
-export default function SettingsModal({ open, onClose }) {
+export default function SettingsModal({ open, onClose, requestedSection = 'general' }) {
   const { t } = useI18n()
   const { mode, setPreference } = useContext(ColorModeContext)
   const { language, setLanguage } = useContext(SettingsContext)
-  const [section, setSection] = useState('general')
+  const [section, setSection] = useState(() => String(requestedSection || 'general'))
   const API_BASE = getApiBase()
 
   // yt-dlp state
@@ -81,6 +102,10 @@ export default function SettingsModal({ open, onClose }) {
   const [updating, setUpdating] = useState(false)
   const [logLines, setLogLines] = useState([])
   const logRef = useRef(null)
+  const [autoDownloadSettings, setAutoDownloadSettings] = useState(() => ({ ...AUTO_DOWNLOAD_DEFAULTS }))
+  const [autoDownloadLoading, setAutoDownloadLoading] = useState(false)
+  const [autoDownloadSaving, setAutoDownloadSaving] = useState(false)
+  const [autoDownloadError, setAutoDownloadError] = useState('')
 
   const fetchStatus = async () => {
     setYtInfo((s) => ({ ...s, loading: true, error: '' }))
@@ -129,9 +154,55 @@ export default function SettingsModal({ open, onClose }) {
     }
   }
 
+  const fetchAutoDownloadSettings = async () => {
+    setAutoDownloadLoading(true)
+    setAutoDownloadError('')
+    try {
+      const resp = await fetch(`${API_BASE}/api/auto-download/settings`)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      setAutoDownloadSettings(normalizeAutoDownloadSettings(data))
+    } catch (e) {
+      setAutoDownloadError(t('settings.autoDownloadLoadFailed', { message: e?.message || e }))
+    } finally {
+      setAutoDownloadLoading(false)
+    }
+  }
+
+  const saveAutoDownloadSettings = async (nextSettings) => {
+    setAutoDownloadSaving(true)
+    setAutoDownloadError('')
+    try {
+      const resp = await fetch(`${API_BASE}/api/auto-download/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextSettings),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      setAutoDownloadSettings(normalizeAutoDownloadSettings(data))
+    } catch (e) {
+      setAutoDownloadError(t('settings.autoDownloadSaveFailed', { message: e?.message || e }))
+    } finally {
+      setAutoDownloadSaving(false)
+    }
+  }
+
+  const updateAutoDownloadSettings = (changes) => {
+    const next = normalizeAutoDownloadSettings({ ...autoDownloadSettings, ...changes })
+    setAutoDownloadSettings(next)
+    saveAutoDownloadSettings(next)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    setSection(String(requestedSection || 'general'))
+  }, [open, requestedSection])
+
   useEffect(() => {
     if (open && section === 'yt-dlp') fetchStatus()
     if (open && section === 'ffmpeg') fetchFfmpegStatus()
+    if (open && section === 'auto-download') fetchAutoDownloadSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, section])
 
@@ -165,15 +236,15 @@ export default function SettingsModal({ open, onClose }) {
 
   const sections = useMemo(() => ([
     { key: 'general', label: t('settings.general') },
+    { key: 'auto-download', label: t('settings.sectionAutoDownload') },
     { key: 'yt-dlp', label: t('settings.sectionYtDlp') },
     { key: 'ffmpeg', label: t('settings.sectionFfmpeg') },
   ]), [t])
 
-  const sectionTitle = section === 'general'
-    ? t('settings.general')
-    : section === 'yt-dlp'
-      ? t('settings.ytDlpConfig')
-      : t('settings.ffmpegConfig')
+  let sectionTitle = t('settings.general')
+  if (section === 'auto-download') sectionTitle = t('settings.autoDownloadConfig')
+  if (section === 'yt-dlp') sectionTitle = t('settings.ytDlpConfig')
+  if (section === 'ffmpeg') sectionTitle = t('settings.ffmpegConfig')
 
   const selectSx = {
     fontSize: 13,
@@ -322,6 +393,98 @@ export default function SettingsModal({ open, onClose }) {
                     <MenuItem value="dark" sx={{ fontSize: 13 }}>{t('settings.dark')}</MenuItem>
                   </Select>
                 </SettingRow>
+              </Box>
+            )}
+
+            {/* ── Auto-download section ── */}
+            {section === 'auto-download' && (
+              <Box sx={{ px: 3, pt: 1, pb: 3 }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
+                  {t('settings.autoDownloadDescription')}
+                </Typography>
+
+                <SettingRow
+                  label={t('settings.autoDownloadUseMetadata')}
+                  description={t('settings.autoDownloadUseMetadataDesc')}
+                >
+                  <Switch
+                    size="small"
+                    checked={Boolean(autoDownloadSettings.useMetadata)}
+                    disabled={autoDownloadLoading || autoDownloadSaving}
+                    onChange={(event) => updateAutoDownloadSettings({ useMetadata: event.target.checked })}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label={t('settings.autoDownloadEmbedCover')}
+                  description={t('settings.autoDownloadEmbedCoverDesc')}
+                >
+                  <Switch
+                    size="small"
+                    checked={Boolean(autoDownloadSettings.embedCoverArt)}
+                    disabled={autoDownloadLoading || autoDownloadSaving}
+                    onChange={(event) => updateAutoDownloadSettings({ embedCoverArt: event.target.checked })}
+                  />
+                </SettingRow>
+
+                <SettingRow label={t('settings.autoDownloadMaxAudioBitrate')}>
+                  <Select
+                    size="small"
+                    value={Number(autoDownloadSettings.maxAudioBitrateKbps) || 0}
+                    disabled={autoDownloadLoading || autoDownloadSaving}
+                    onChange={(event) => updateAutoDownloadSettings({ maxAudioBitrateKbps: Number(event.target.value) || 0 })}
+                    sx={selectSx}
+                  >
+                    <MenuItem value={0} sx={{ fontSize: 13 }}>{t('settings.autoDownloadBest')}</MenuItem>
+                    <MenuItem value={320} sx={{ fontSize: 13 }}>320 kbps</MenuItem>
+                    <MenuItem value={256} sx={{ fontSize: 13 }}>256 kbps</MenuItem>
+                    <MenuItem value={192} sx={{ fontSize: 13 }}>192 kbps</MenuItem>
+                    <MenuItem value={160} sx={{ fontSize: 13 }}>160 kbps</MenuItem>
+                    <MenuItem value={128} sx={{ fontSize: 13 }}>128 kbps</MenuItem>
+                    <MenuItem value={96} sx={{ fontSize: 13 }}>96 kbps</MenuItem>
+                  </Select>
+                </SettingRow>
+
+                <SettingRow label={t('settings.autoDownloadMaxVideoQuality')} noDivider>
+                  <Select
+                    size="small"
+                    value={Number(autoDownloadSettings.maxVideoHeight) || 0}
+                    disabled={autoDownloadLoading || autoDownloadSaving}
+                    onChange={(event) => updateAutoDownloadSettings({ maxVideoHeight: Number(event.target.value) || 0 })}
+                    sx={selectSx}
+                  >
+                    <MenuItem value={0} sx={{ fontSize: 13 }}>{t('settings.autoDownloadBest')}</MenuItem>
+                    <MenuItem value={2160} sx={{ fontSize: 13 }}>2160p</MenuItem>
+                    <MenuItem value={1440} sx={{ fontSize: 13 }}>1440p</MenuItem>
+                    <MenuItem value={1080} sx={{ fontSize: 13 }}>1080p</MenuItem>
+                    <MenuItem value={720} sx={{ fontSize: 13 }}>720p</MenuItem>
+                    <MenuItem value={480} sx={{ fontSize: 13 }}>480p</MenuItem>
+                    <MenuItem value={360} sx={{ fontSize: 13 }}>360p</MenuItem>
+                  </Select>
+                </SettingRow>
+
+                {(autoDownloadLoading || autoDownloadSaving) && (
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1 }}>
+                    {t('settings.checking')}
+                  </Typography>
+                )}
+
+                {autoDownloadError && (
+                  <Box
+                    sx={(th) => ({
+                      mt: 1.5,
+                      px: 2,
+                      py: 1.25,
+                      borderRadius: '4px',
+                      bgcolor: th.palette.mode === 'dark' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                    })}
+                  >
+                    <Typography variant="body2" sx={{ color: '#f87171', fontWeight: 500, fontSize: 13 }}>
+                      {autoDownloadError}
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             )}
 
