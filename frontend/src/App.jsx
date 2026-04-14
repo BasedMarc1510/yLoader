@@ -48,7 +48,7 @@ export default function App() {
     handleAddTab,
     handleTabsReorder,
     handleTabRuntimeChange,
-  } = useTabsController({ t, closeTabAnimationMs: 240 })
+  } = useTabsController({ t })
 
   useGlobalTabShortcuts({
     activeTabId,
@@ -56,6 +56,8 @@ export default function App() {
     onCloseActiveTab: handleRequestCloseTab,
     onSelectRelativeTab: selectRelativeTab,
   })
+
+  const effectiveActiveTabId = activeTab?.id || tabs[0]?.id || ''
 
   const renderTabContent = React.useCallback((tab) => {
     const normalizedPath = normalizeTabPath(tab.path)
@@ -101,7 +103,7 @@ export default function App() {
           displayTitle: getDisplayTabTitle(tab),
         }))}
         closingTabIds={Array.from(closingTabIds)}
-        activeTabId={activeTab?.id || activeTabId}
+        activeTabId={effectiveActiveTabId}
         onTabSelect={setActiveTabId}
         onTabClose={handleRequestCloseTab}
         onAddTab={handleAddTab}
@@ -115,10 +117,10 @@ export default function App() {
               role="tabpanel"
               id={getPanelDomId(tab.id)}
               aria-labelledby={getTabDomId(tab.id)}
-              hidden={tab.id !== activeTabId}
-              tabIndex={tab.id === activeTabId ? 0 : -1}
+              hidden={tab.id !== effectiveActiveTabId}
+              tabIndex={tab.id === effectiveActiveTabId ? 0 : -1}
               sx={{
-                display: tab.id === activeTabId ? 'block' : 'none',
+                display: tab.id === effectiveActiveTabId ? 'block' : 'none',
                 height: '100%',
               }}
             >

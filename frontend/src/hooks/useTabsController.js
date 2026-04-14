@@ -17,7 +17,7 @@ import {
   serializeTabState,
 } from '../utils/tabState'
 
-export function useTabsController({ t, closeTabAnimationMs = 240 }) {
+export function useTabsController({ t }) {
   const [tabs, setTabs] = React.useState(() => [createTabFromCurrentLocation('tab-home')])
   const [activeTabId, setActiveTabId] = React.useState('tab-home')
   const [tabsReady, setTabsReady] = React.useState(false)
@@ -27,6 +27,7 @@ export function useTabsController({ t, closeTabAnimationMs = 240 }) {
   const saveTimerRef = React.useRef(null)
   const closeTimersRef = React.useRef(new Map())
   const lastSavedRef = React.useRef('')
+  const lastLocalSerializedRef = React.useRef('')
 
   React.useEffect(() => () => {
     closeTimersRef.current.forEach((timer) => clearTimeout(timer))
@@ -76,6 +77,7 @@ export function useTabsController({ t, closeTabAnimationMs = 240 }) {
 
         const serialized = JSON.stringify(serializeTabState(effectiveState.tabs, effectiveState.activeTabId))
         lastSavedRef.current = serialized
+        lastLocalSerializedRef.current = serialized
 
         try {
           localStorage.setItem(TAB_STATE_LOCAL_STORAGE_KEY, serialized)
@@ -91,6 +93,7 @@ export function useTabsController({ t, closeTabAnimationMs = 240 }) {
 
         const serialized = JSON.stringify(serializeTabState([fallbackTab], fallbackTab.id))
         lastSavedRef.current = serialized
+        lastLocalSerializedRef.current = serialized
 
         try {
           localStorage.setItem(TAB_STATE_LOCAL_STORAGE_KEY, serialized)
@@ -115,10 +118,13 @@ export function useTabsController({ t, closeTabAnimationMs = 240 }) {
 
     const serialized = JSON.stringify(persistedState)
 
-    try {
-      localStorage.setItem(TAB_STATE_LOCAL_STORAGE_KEY, serialized)
-    } catch {
-      // ignore local persistence errors
+    if (serialized !== lastLocalSerializedRef.current) {
+      try {
+        localStorage.setItem(TAB_STATE_LOCAL_STORAGE_KEY, serialized)
+        lastLocalSerializedRef.current = serialized
+      } catch {
+        // ignore local persistence errors
+      }
     }
 
     if (serialized === lastSavedRef.current) return
@@ -183,6 +189,20 @@ export function useTabsController({ t, closeTabAnimationMs = 240 }) {
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0]
 
+  React.useEffect(() => {
+    if (!tabs.length) {
+      const fallbackTab = createDefaultTab('tab-home')
+      setTabs([fallbackTab])
+      setActiveTabId(fallbackTab.id)
+      return
+    }
+
+    setActiveTabId((prevActiveId) => {
+      if (tabs.some((tab) => tab.id === prevActiveId)) return prevActiveId
+      return tabs[0].id
+    })
+  }, [tabs])
+
   const selectRelativeTab = React.useCallback((direction = 1) => {
     if (!tabs.length) return
 
@@ -218,11 +238,16 @@ export function useTabsController({ t, closeTabAnimationMs = 240 }) {
   const closeTabNow = React.useCallback((tabId) => {
     setTabs((prevTabs) => {
       const index = prevTabs.findIndex((tab) => tab.id === tabId)
-      if (index === -1) return prevTabs
+      if (index === -1) {
+        if (prevTabs.length) return prevTabs
+        const fallback = createDefaultTab('tab-home')
+        setActiveTabId(fallback.id)
+        return [fallback]
+      }
 
       const remaining = prevTabs.filter((tab) => tab.id !== tabId)
       if (!remaining.length) {
-        const fallback = createDefaultTab()
+        const fallback = createDefaultTab('tab-home')
         setActiveTabId(fallback.id)
         return [fallback]
       }
@@ -243,71 +268,72 @@ export function useTabsController({ t, closeTabAnimationMs = 240 }) {
     const normalizedId = String(tabId || '').trim()
     if (!normalizedId) return
 
-    setTabs((prevTabs) => {
-      const sourceIndex = prevTabs.findIndex((tab) => tab.id === normalizedId)
-      if (sourceIndex === -1) return prevTabs
+    const sourceIndex = tabs.findIndex((tab) => tab.id === normalizedId)
+    if (sourceIndex === -1) return
 
-      setActiveTabId((prevActiveId) => {
-        if (prevActiveId !== normalizedId) return prevActiveId
-
-        const remainingTabs = prevTabs.filter((tab) => tab.id !== normalizedId)
-        if (!remainingTabs.length) {
-          return prevActiveId
-        }
-
-        const fallbackIndex = Math.max(0, sourceIndex - 1)
-        return remainingTabs[Math.min(fallbackIndex, remainingTabs.length - 1)].id
-      })
-
-      return prevTabs
-    })
-
-    let shouldSchedule = false
-    setClosingTabIds((prev) => {
-      if (prev.has(normalizedId)) return prev
-      shouldSchedule = true
-      const next = new Set(prev)
-      next.add(normalizedId)
-      return next
-    })
-
-    if (!shouldSchedule || closeTimersRef.current.has(normalizedId)) return
-
-    const timer = setTimeout(() => {
-      closeTimersRef.current.delete(normalizedId)
-      closeTabNow(normalizedId)
+    // Never allow a zero-tab UI state.
+    if (tabs.length <= 1) {
+      const fallback = createDefaultTab('tab-home')
+      setTabs([fallback])
+      setActiveTabId(fallback.id)
       setClosingTabIds((prev) => {
         if (!prev.has(normalizedId)) return prev
         const next = new Set(prev)
         next.delete(normalizedId)
         return next
       })
-    }, closeTabAnimationMs)
+      return
+    }
+
+    if (closeTimersRef.current.has(normalizedId)) return
+
+    if (activeTabId === normalizedId) {
+      const remainingTabs = tabs.filter((tab) => tab.id !== normalizedId)
+      const fallbackIndex = Math.max(0, sourceIndex - 1)
+      const nextActiveId = remainingTabs[Math.min(fallbackIndex, remainingTabs.length - 1)]?.id
+      if (nextActiveId) setActiveTabId(nextActiveId)
+    }
+
+    setClosingTabIds((prev) => {
+      if (prev.has(normalizedId)) return prev
+      const next = new Set(prev)
+      next.add(normalizedId)
+      return next
+    })
+
+    const timer = setTimeout(() => {
+      closeTimersRef.current.delete(normalizedId)
+      setClosingTabIds((prev) => {
+        if (!prev.has(normalizedId)) return prev
+        const next = new Set(prev)
+        next.delete(normalizedId)
+        return next
+      })
+      closeTabNow(normalizedId)
+    }, 240)
 
     closeTimersRef.current.set(normalizedId, timer)
-  }, [closeTabAnimationMs, closeTabNow])
+  }, [activeTabId, closeTabNow, tabs])
 
   React.useEffect(() => {
-    const activeTabSet = new Set(tabs.map((tab) => tab.id))
+    const tabIdSet = new Set(tabs.map((tab) => tab.id))
 
     setClosingTabIds((prev) => {
       if (!prev.size) return prev
-
       let changed = false
       const next = new Set()
       prev.forEach((id) => {
-        if (activeTabSet.has(id)) {
-          next.add(id)
-        } else {
+        if (!tabIdSet.has(id)) {
           changed = true
+          return
         }
+        next.add(id)
       })
-
       return changed ? next : prev
     })
 
     closeTimersRef.current.forEach((timer, id) => {
-      if (activeTabSet.has(id)) return
+      if (tabIdSet.has(id)) return
       clearTimeout(timer)
       closeTimersRef.current.delete(id)
     })

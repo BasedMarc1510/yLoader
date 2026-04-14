@@ -1,45 +1,9 @@
 import React from 'react'
-import { Box, Paper, Skeleton } from '@mui/material'
+import { Box, Paper } from '@mui/material'
 import DownloaderHeader from './DownloaderHeader'
 import MediaSummary from './MediaSummary'
 import OptionsTabs from './OptionsTabs'
 import { useI18n } from '../../providers/I18nProvider'
-
-function DownloaderOptionsSkeleton() {
-  return (
-    <>
-      <Box
-        sx={(t) => ({
-          margin: t.spacing(1.5, 1.5, 0, 1.5),
-          padding: t.spacing(1.5),
-          borderRadius: '12px 12px 0 0',
-          bgcolor: t.palette.mode === 'dark' ? '#0a0a0a' : '#f0f0f0',
-          display: 'flex',
-          gap: t.spacing(1),
-        })}
-      >
-        <Skeleton variant="rounded" animation="wave" height={48} sx={{ flex: 1, borderRadius: '28px' }} />
-        <Skeleton variant="rounded" animation="wave" height={48} sx={{ flex: 1, borderRadius: '28px' }} />
-        <Skeleton variant="circular" animation="wave" width={48} height={48} />
-      </Box>
-
-      <Box
-        sx={(t) => ({
-          margin: t.spacing(0, 1.5, 1.5, 1.5),
-          padding: t.spacing(1.25, 1.5, 1.5, 1.5),
-          borderRadius: '0 0 12px 12px',
-          bgcolor: t.palette.mode === 'dark' ? '#0a0a0a' : '#f0f0f0',
-          minHeight: 160,
-        })}
-      >
-        <Skeleton variant="text" animation="wave" width="78%" height={30} />
-        <Skeleton variant="text" animation="wave" width="52%" height={26} sx={{ mt: 0.4 }} />
-        <Skeleton variant="rounded" animation="wave" width="100%" height={44} sx={{ mt: 1.25 }} />
-        <Skeleton variant="rounded" animation="wave" width="100%" height={44} sx={{ mt: 1 }} />
-      </Box>
-    </>
-  )
-}
 
 export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFetchError, onDownloadStateChange, loadingState = false }) {
   const { t } = useI18n()
@@ -53,9 +17,8 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFe
         overflow: 'hidden',
         bgcolor: t.palette.mode === 'dark' ? '#181818' : '#ffffff',
         boxShadow: t.palette.mode === 'dark' ? '0 8px 16px rgba(0, 0, 0, 0.2)' : '0 4px 24px rgba(0, 0, 0, 0.06)',
-        transition: 'opacity 140ms ease, filter 140ms ease',
-        opacity: loadingState ? 0.86 : 1,
-        filter: loadingState ? 'saturate(0.35)' : 'none',
+        transition: 'opacity 140ms ease',
+        opacity: loadingState ? 0.9 : 1,
       })}>
         <DownloaderHeader icon={brand.icon} title={t('downloader.title', { service: brand.name })} onClose={onClose} />
         <Box>
@@ -69,25 +32,20 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFe
               loading={loadingState}
             />
           </Box>
-          {loadingState ? (
-            <Box sx={{ mt: 0.5, pointerEvents: 'none' }}>
-              <DownloaderOptionsSkeleton />
-            </Box>
-          ) : (
-            <Box sx={{ mt: 0.5 }}>
-              <OptionsTabs
-                brandColor={brand.yColor}
-                videoTitle={meta.title}
-                videoAuthor={meta.author}
-                videoUrl={meta.url}
-                durationSeconds={meta.durationSeconds}
-                serviceKey={serviceKey}
-                initialFormats={meta.preloadedFormats}
-                onFetchError={onFetchError}
-                onDownloadStateChange={onDownloadStateChange}
-              />
-            </Box>
-          )}
+          <Box sx={{ mt: 0.5 }}>
+            <OptionsTabs
+              brandColor={brand.yColor}
+              videoTitle={meta.title}
+              videoAuthor={meta.author}
+              videoUrl={meta.url}
+              durationSeconds={meta.durationSeconds}
+              serviceKey={serviceKey}
+              initialFormats={meta.preloadedFormats}
+              onFetchError={onFetchError}
+              onDownloadStateChange={onDownloadStateChange}
+              loadingState={loadingState}
+            />
+          </Box>
         </Box>
       </Paper>
     </Box>

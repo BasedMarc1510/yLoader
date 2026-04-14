@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box, Button, useTheme } from '@mui/material'
+import { Box, Button, Skeleton, useTheme } from '@mui/material'
 import { Image as ImageIcon, Music2, Video } from 'lucide-react'
 import { useNotification } from '../../providers/NotificationProvider'
 import { useI18n } from '../../providers/I18nProvider'
@@ -19,17 +19,23 @@ export default function OptionsTabs({
   initialFormats = null,
   onFetchError = null,
   onDownloadStateChange = null,
+  loadingState = false,
 }) {
   const theme = useTheme()
   const { t: i18nT } = useI18n()
   const { showNotification } = useNotification()
 
+  const effectiveVideoUrl = loadingState ? '' : videoUrl
+  const effectiveInitialFormats = loadingState
+    ? { audioFormats: [], videoFormats: [], thumbnails: [] }
+    : initialFormats
+
   const data = useOptionsTabsData({
     i18nT,
     videoTitle,
     videoAuthor,
-    videoUrl,
-    initialFormats,
+    videoUrl: effectiveVideoUrl,
+    initialFormats: effectiveInitialFormats,
     onFetchError,
   })
 
@@ -37,7 +43,7 @@ export default function OptionsTabs({
     i18nT,
     showNotification,
     onDownloadStateChange,
-    videoUrl,
+    videoUrl: effectiveVideoUrl,
     serviceKey,
     durationSeconds,
     videoTitle,
@@ -56,6 +62,8 @@ export default function OptionsTabs({
     coverSource: data.coverSource,
     coverUpload: data.coverUpload,
   })
+
+  const interactionsDisabled = download.downloading || loadingState
 
   const isDark = theme.palette.mode === 'dark'
   const tabActiveBg = isDark ? '#272727' : '#e0e0e0'
@@ -76,15 +84,16 @@ export default function OptionsTabs({
           boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
           display: 'flex',
           gap: theme.spacing(1),
-          opacity: download.downloading ? 0.6 : 1,
-          pointerEvents: download.downloading ? 'none' : 'auto',
+          opacity: interactionsDisabled ? 0.66 : 1,
+          pointerEvents: interactionsDisabled ? 'none' : 'auto',
+          transition: 'opacity 180ms ease',
         }}
       >
         <Button
           variant="contained"
-          startIcon={<Music2 size={20} />}
+          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} /> : <Music2 size={20} />}
           onClick={() => data.handleTabChange('audio')}
-          disabled={download.downloading}
+          disabled={interactionsDisabled}
           sx={{
             borderRadius: '28px',
             textTransform: 'none',
@@ -103,14 +112,14 @@ export default function OptionsTabs({
             },
           }}
         >
-          {i18nT('downloader.tabAudio')}
+          {loadingState ? <Skeleton variant="text" animation="wave" width={70} /> : i18nT('downloader.tabAudio')}
         </Button>
 
         <Button
           variant="contained"
-          startIcon={<Video size={20} />}
+          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} /> : <Video size={20} />}
           onClick={() => data.handleTabChange('video')}
-          disabled={download.downloading}
+          disabled={interactionsDisabled}
           sx={{
             borderRadius: '28px',
             textTransform: 'none',
@@ -129,13 +138,13 @@ export default function OptionsTabs({
             },
           }}
         >
-          {i18nT('downloader.tabVideo')}
+          {loadingState ? <Skeleton variant="text" animation="wave" width={70} /> : i18nT('downloader.tabVideo')}
         </Button>
 
         <Button
           variant="contained"
           onClick={() => data.handleTabChange('thumbnail')}
-          disabled={download.downloading}
+          disabled={interactionsDisabled}
           sx={{
             borderRadius: '50%',
             minWidth: '48px',
@@ -157,7 +166,7 @@ export default function OptionsTabs({
             },
           }}
         >
-          <ImageIcon size={20} />
+          {loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} /> : <ImageIcon size={20} />}
         </Button>
       </Box>
 
@@ -169,18 +178,29 @@ export default function OptionsTabs({
           bgcolor: isDark ? '#0a0a0a' : '#f0f0f0',
           boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
           minHeight: '120px',
-          opacity: download.downloading ? 0.8 : 1,
-          pointerEvents: download.downloading ? 'none' : 'auto',
+          opacity: interactionsDisabled ? 0.82 : 1,
+          pointerEvents: interactionsDisabled ? 'none' : 'auto',
+          transition: 'opacity 180ms ease',
         }}
       >
-        {data.tab === 'audio' && (
+        {loadingState && (
+          <Box sx={{ pt: 0.5 }}>
+            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ borderRadius: 1.25 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ borderRadius: 1.25, mt: 1 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ borderRadius: 1.25, mt: 1 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ borderRadius: 1.25, mt: 1 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={50} sx={{ borderRadius: 999, mt: 2 }} />
+          </Box>
+        )}
+
+        {!loadingState && data.tab === 'audio' && (
           <AudioTabContent
             theme={theme}
             i18nT={i18nT}
             brandColor={brandColor}
             activeSection={data.activeSection}
             toggleSection={data.toggleSection}
-            downloading={download.downloading}
+            downloading={interactionsDisabled}
             durationSeconds={durationSeconds}
             titleValue={data.titleValue}
             setTitleValue={data.setTitleValue}
@@ -213,14 +233,14 @@ export default function OptionsTabs({
           />
         )}
 
-        {data.tab === 'video' && (
+        {!loadingState && data.tab === 'video' && (
           <VideoTabContent
             theme={theme}
             i18nT={i18nT}
             brandColor={brandColor}
             activeSection={data.activeSection}
             toggleSection={data.toggleSection}
-            downloading={download.downloading}
+            downloading={interactionsDisabled}
             durationSeconds={durationSeconds}
             setVideoCutsData={data.setVideoCutsData}
             selectedVideoFormat={data.selectedVideoFormat}
@@ -238,7 +258,7 @@ export default function OptionsTabs({
           />
         )}
 
-        {data.tab === 'thumbnail' && (
+        {!loadingState && data.tab === 'thumbnail' && (
           <ThumbnailTabContent
             theme={theme}
             i18nT={i18nT}
@@ -252,7 +272,7 @@ export default function OptionsTabs({
             filenameValue={data.filenameValue}
             setFilenameValue={data.setFilenameValue}
             videoTitle={videoTitle}
-            downloading={download.downloading}
+            downloading={interactionsDisabled}
           />
         )}
       </Box>

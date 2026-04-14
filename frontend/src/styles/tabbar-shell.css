@@ -114,11 +114,11 @@
   display: flex;
   align-items: flex-end;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
   overscroll-behavior-y: none;
   flex: 1;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 6px 0 10px;
   box-sizing: border-box;
 }
 
@@ -151,9 +151,7 @@
   /* All tabs same height – active tab sits flush at bottom via align-self */
   height: 40px;
   align-self: flex-end;
-  /* Use will-change to keep tabs on their own compositor layer so
-     sibling reflows during open/close don't cause 1px vertical jumps */
-  will-change: width;
+    will-change: transform, opacity;
   padding: 0;
   font-size: 13px;
   font-weight: 500;
@@ -173,6 +171,7 @@
     width 230ms cubic-bezier(0.22, 1, 0.36, 1),
     margin 230ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 180ms ease,
+    transform 180ms ease,
     color 0.15s ease,
     background 0.15s ease,
     border-color 0.15s ease;
@@ -182,22 +181,15 @@
   --yl-tab-bg: var(--yl-card, transparent);
   background: var(--yl-card, transparent);
   color: var(--yl-foreground, inherit);
-  border-color: transparent;
-  box-shadow: inset 0 1px 0 var(--yl-border, transparent);
+  border-color: var(--yl-border, transparent);
+  box-shadow: none;
   border-bottom: 0;
   z-index: 30;
   overflow: visible;
 }
 
 .yl-tab.is-active .yl-tab-hit::before {
-  content: "";
-  position: absolute;
-  top: 10px;
-  bottom: 8px;
-  width: 1px;
-  background: var(--yl-border, transparent);
-  pointer-events: none;
-  z-index: 31;
+  display: none;
 }
 
 .yl-tab.is-active .yl-tab-hit::before {
@@ -205,15 +197,7 @@
 }
 
 .yl-tab.is-active::before {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 10px;
-  bottom: 8px;
-  width: 1px;
-  background: var(--yl-border, transparent);
-  pointer-events: none;
-  z-index: 34;
+  display: none;
 }
 
 /* Cover the bottom 1px of the tabbar bottom line */
@@ -251,26 +235,4 @@
     margin 240ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 180ms ease,
     border-color 0.15s ease !important;
-}
-
-.yl-tab.is-entering {
-  animation: yl-tab-enter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  /* Suppress the regular width/margin transitions while animating so
-     removing the class doesn't trigger a second transition */
-  transition: none !important;
-}
-
-@keyframes yl-tab-enter {
-  0% {
-    width: 0;
-    margin-left: 0;
-    margin-right: 0;
-    opacity: 0;
-  }
-  100% {
-    width: var(--yl-tab-width);
-    margin-left: 0;
-    margin-right: 0;
-    opacity: 1;
-  }
 }

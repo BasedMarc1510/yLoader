@@ -3,7 +3,6 @@ import {
   Box,
   IconButton,
   Typography,
-  CircularProgress,
 } from '@mui/material'
 import {
   Plus,
@@ -41,6 +40,7 @@ export default function HeaderTabBar({
   const previousTabIdsRef = React.useRef(tabs.map((tab) => tab.id))
   const enterAnimationTimersRef = React.useRef(new Map())
   const closingTabIdSet = React.useMemo(() => new Set(closingTabIds), [closingTabIds])
+  const tabOrderSignature = React.useMemo(() => tabs.map((tab) => tab.id).join('|'), [tabs])
   const tabbarClassName = [
     'yl-tabbar',
     isElectron ? 'is-electron' : '',
@@ -102,7 +102,7 @@ export default function HeaderTabBar({
     checkScroll()
     const timer = setTimeout(checkScroll, 320)
     return () => clearTimeout(timer)
-  }, [tabs, activeTabId, checkScroll])
+  }, [tabOrderSignature, activeTabId, checkScroll])
 
   React.useEffect(() => {
     const element = scrollContainerRef.current
@@ -149,7 +149,7 @@ export default function HeaderTabBar({
             next.delete(id)
             return next
           })
-        }, 290)
+        }, 220)
 
         enterAnimationTimersRef.current.set(id, timer)
       })
@@ -177,7 +177,7 @@ export default function HeaderTabBar({
     })
 
     previousTabIdsRef.current = nextIds
-  }, [tabs])
+  }, [tabOrderSignature, tabs])
 
   React.useEffect(() => () => {
     enterAnimationTimersRef.current.forEach((timer) => clearTimeout(timer))
@@ -270,8 +270,6 @@ export default function HeaderTabBar({
     }
   }, [onTabClose, onTabSelect, selectTabByIndex, tabs])
 
-  const activeTabIndex = tabs.findIndex((tab) => tab.id === activeTabId)
-
   const handleWindowMinimize = React.useCallback(() => {
     if (!isElectron) return
     window.yloaderRuntime?.windowControls?.minimize?.()
@@ -327,11 +325,14 @@ export default function HeaderTabBar({
               const closeTooltipLabel = t('tabs.closeTooltip')
               const progress = clampProgress(tab?.download?.progress)
               const isDownloading = Boolean(tab?.download?.active)
+              const progressPrefix = isDownloading ? `${progress}% - ` : ''
+              const tabTitle = `${progressPrefix}${displayTitle}`
+              const nextTab = tabs[index + 1] || null
               const showDivider = !isActive
-                && index < tabs.length - 1
-                && activeTabIndex !== index
-                && activeTabIndex !== index + 1
-              const showTrailingDivider = !isActive && index === tabs.length - 1
+                && !isClosing
+                && Boolean(nextTab)
+                && nextTab.id !== activeTabId
+                && !closingTabIdSet.has(nextTab.id)
               const translateX = offsets[tab.id] ?? 0
 
               return (
@@ -339,13 +340,13 @@ export default function HeaderTabBar({
                   key={tab.id}
                   role="tab"
                   tabIndex={isActive && !isClosing ? 0 : -1}
-                  title={displayTitle}
+                  title={tabTitle}
                   id={getTabDomId(tab.id)}
                   aria-controls={getPanelDomId(tab.id)}
                   aria-selected={isActive}
-                  aria-label={t('tabs.tabAria', { title: displayTitle })}
+                  aria-label={t('tabs.tabAria', { title: tabTitle })}
                   data-tab-id={tab.id}
-                  className={`yl-tab ${isActive ? 'is-active' : ''} ${showDivider ? 'show-divider' : ''} ${showTrailingDivider ? 'show-trailing-divider' : ''} ${isDragging ? 'is-dragging' : ''} ${isClosing ? 'is-closing' : ''} ${isEntering ? 'is-entering' : ''}`}
+                  className={`yl-tab ${isActive ? 'is-active' : ''} ${showDivider ? 'show-divider' : ''} ${isDragging ? 'is-dragging' : ''} ${isClosing ? 'is-closing' : ''} ${isEntering ? 'is-entering' : ''}`}
                   style={translateX !== 0 || isDragging ? {
                     transform: `translateX(${translateX}px)`,
                     transition: isDragging ? 'none' : 'transform 120ms ease',
@@ -383,14 +384,8 @@ export default function HeaderTabBar({
                     <Box className="yl-tab-content">
                       <RouteIcon iconKey={iconKey} />
                       <Typography component="span" className="yl-tab-title">
-                        {displayTitle}
+                        {tabTitle}
                       </Typography>
-                      {isDownloading && (
-                        <Box className="yl-tab-progress" aria-label={`${progress}%`}>
-                          <CircularProgress size={9} thickness={6} sx={{ color: 'currentColor' }} />
-                          <Typography component="span" className="yl-tab-progress-text">{`${progress}%`}</Typography>
-                        </Box>
-                      )}
                     </Box>
                   </Box>
 
