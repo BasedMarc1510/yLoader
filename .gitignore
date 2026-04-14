@@ -40,3 +40,5 @@ docker-compose.override.yml
 # Misc
 *.local
 .codex
+
+/Dokumentation
