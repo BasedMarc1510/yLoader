@@ -205,6 +205,10 @@ body,
   box-sizing: border-box;
 }
 
+.yl-tabbar.is-mac-electron .yl-tabstrip {
+  padding-left: 24px;
+}
+
 .yl-tab-free-drag {
   flex: 1 0 28px;
   min-width: 28px;

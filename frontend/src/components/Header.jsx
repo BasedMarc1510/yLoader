@@ -259,12 +259,10 @@ export default function Header({
   const theme = useTheme()
   const sidebarBg = theme.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
   const mainBg = theme.palette.mode === 'dark' ? '#212121' : '#ffffff'
-  const isElectron = Boolean(
-    typeof window !== 'undefined'
-    && window.yloaderRuntime
-    && window.yloaderRuntime.isElectron
-    && window.yloaderRuntime.windowControls
-  )
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+  const isElectron = Boolean(runtime?.isElectron && runtime?.windowControls)
+  const isMacElectron = Boolean(runtime?.platform === 'darwin')
+  const showCustomWindowControls = isElectron && !isMacElectron
   const [isWindowMaximized, setIsWindowMaximized] = React.useState(false)
 
   const scrollContainerRef = React.useRef(null)
@@ -275,6 +273,12 @@ export default function Header({
   const previousTabIdsRef = React.useRef(tabs.map((tab) => tab.id))
   const enterAnimationTimersRef = React.useRef(new Map())
   const closingTabIdSet = React.useMemo(() => new Set(closingTabIds), [closingTabIds])
+  const tabbarClassName = [
+    'yl-tabbar',
+    isElectron ? 'is-electron' : '',
+    isMacElectron ? 'is-mac-electron' : '',
+    showCustomWindowControls ? 'has-electron-controls' : '',
+  ].filter(Boolean).join(' ')
 
   const { draggingId, offsets, didDragRef, startDrag, onPointerMove, endDrag, cancelDrag } =
     useTabDrag({ tabs, onTabsReorder, scrollContainerRef })
@@ -289,7 +293,7 @@ export default function Header({
   const displayTabs = tabs
 
   React.useEffect(() => {
-    if (!isElectron) return undefined
+    if (!showCustomWindowControls) return undefined
 
     let isMounted = true
     const controls = window.yloaderRuntime?.windowControls
@@ -315,7 +319,7 @@ export default function Header({
         unsubscribe()
       }
     }
-  }, [isElectron])
+  }, [showCustomWindowControls])
 
   const checkScroll = React.useCallback(() => {
     const element = scrollContainerRef.current
@@ -550,7 +554,7 @@ export default function Header({
         </IconButton>
 
         <Box
-          className={`yl-tabbar ${isElectron ? 'is-electron has-electron-controls' : ''}`}
+          className={tabbarClassName}
           style={{
             '--yl-surface': sidebarBg,
             '--yl-card': mainBg,
@@ -711,7 +715,7 @@ export default function Header({
             </Box>
           </Box>
 
-          {isElectron && (
+          {showCustomWindowControls && (
             <Box className="yl-window-controls" role="group" aria-label={t('tabs.windowControlsAria')}>
               <IconButton
                 size="small"
