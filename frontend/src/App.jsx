@@ -174,14 +174,32 @@ function HomePage({ onOpenDownloader }) {
   const { t } = useI18n()
   const [value, setValue] = React.useState('')
   const [menuAnchorEl, setMenuAnchorEl] = React.useState(null)
+  const [multiModeEnabled, setMultiModeEnabled] = React.useState(false)
+  const [confirmDisableMultiOpen, setConfirmDisableMultiOpen] = React.useState(false)
   const [autoDownloadEnabled, setAutoDownloadEnabled] = React.useState(false)
   const [autoDownloadFormat, setAutoDownloadFormat] = React.useState('mp4')
   const [isResolving, setIsResolving] = React.useState(false)
   const [fetchError, setFetchError] = React.useState(null)
 
-  const trimmedValue = value.trim()
-  const hasTypedInput = trimmedValue.length > 0
   const quickActionsOpen = Boolean(menuAnchorEl)
+  const hasMultiInput = React.useMemo(
+    () => String(value || '').replace(/\r/g, '').split('\n').some((line) => Boolean(line.trim())),
+    [value]
+  )
+  const multiInputRows = React.useMemo(() => {
+    if (!multiModeEnabled) return 1
+
+    const lines = String(value || '').replace(/\r/g, '').split('\n')
+    let lastFilledIndex = -1
+    for (let i = 0; i < lines.length; i += 1) {
+      if (lines[i].trim()) lastFilledIndex = i
+    }
+
+    return Math.max(3, Math.min(5, lastFilledIndex + 2))
+  }, [multiModeEnabled, value])
+  const inputHeightEstimate = multiModeEnabled
+    ? (136 + Math.max(0, multiInputRows - 3) * 24)
+    : 56
 
   const resolveAndOpenDownloader = React.useCallback(async (rawUrl) => {
     const target = String(rawUrl || '').trim()
@@ -229,15 +247,47 @@ function HomePage({ onOpenDownloader }) {
     setMenuAnchorEl(null)
   }, [])
 
-  React.useEffect(() => {
-    if (!hasTypedInput) return
-    if (menuAnchorEl) setMenuAnchorEl(null)
-  }, [hasTypedInput, menuAnchorEl])
+  const disableMultiModeNow = React.useCallback(() => {
+    setConfirmDisableMultiOpen(false)
+    setMultiModeEnabled(false)
+    setValue('')
+    setFetchError(null)
+    setMenuAnchorEl(null)
+  }, [])
+
+  const requestToggleMultiMode = React.useCallback((nextEnabled) => {
+    if (isResolving) return
+
+    if (!nextEnabled) {
+      if (!multiModeEnabled) return
+      if (!hasMultiInput) {
+        disableMultiModeNow()
+        return
+      }
+      setConfirmDisableMultiOpen(true)
+      setMenuAnchorEl(null)
+      return
+    }
+
+    if (autoDownloadEnabled) setAutoDownloadEnabled(false)
+    setMultiModeEnabled(true)
+    setMenuAnchorEl(null)
+  }, [autoDownloadEnabled, disableMultiModeNow, hasMultiInput, isResolving, multiModeEnabled])
+
+  const confirmDisableMultiMode = React.useCallback(() => {
+    disableMultiModeNow()
+  }, [disableMultiModeNow])
+
+  const handleToggleAutoDownload = React.useCallback((nextEnabled) => {
+    if (isResolving || multiModeEnabled) return
+    setAutoDownloadEnabled(nextEnabled)
+  }, [isResolving, multiModeEnabled])
 
   const handleSubmit = React.useCallback(() => {
+    if (multiModeEnabled || isResolving) return
     const serviceKey = detectService(value)
     if (serviceKey) resolveAndOpenDownloader(value)
-  }, [resolveAndOpenDownloader, value])
+  }, [isResolving, multiModeEnabled, resolveAndOpenDownloader, value])
 
   const closeFetchError = React.useCallback(() => {
     setFetchError(null)
@@ -250,314 +300,513 @@ function HomePage({ onOpenDownloader }) {
     resolveAndOpenDownloader(url)
   }, [fetchError?.url, isResolving, resolveAndOpenDownloader])
 
+  const quickActionsMenu = (
+    <Menu
+      anchorEl={menuAnchorEl}
+      open={quickActionsOpen}
+      onClose={closeQuickActions}
+      transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+      anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+      slotProps={{
+        paper: {
+          sx: (theme) => ({
+            mt: 1,
+            width: 300,
+            borderRadius: '16px',
+            overflow: 'hidden',
+            border: `1px solid ${theme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0'}`,
+            bgcolor: theme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
+            boxShadow: theme.palette.mode === 'dark'
+              ? '0 14px 32px rgba(0,0,0,0.45)'
+              : '0 14px 30px rgba(0,0,0,0.16)',
+          }),
+        },
+        list: {
+          sx: {
+            p: 1.5,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.9,
+          },
+        },
+      }}
+    >
+      <MenuItem
+        onClick={() => requestToggleMultiMode(!multiModeEnabled)}
+        disabled={isResolving}
+        sx={{
+          py: 1.05,
+          px: 1.25,
+          borderRadius: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          minHeight: 42,
+        }}
+      >
+        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.15 }}>
+          <List
+            size={16}
+            color={multiModeEnabled ? '#df2f2f' : undefined}
+          />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {t('home.quickActions.multiDownload')}
+          </Typography>
+        </Box>
+        <Switch
+          size="small"
+          checked={multiModeEnabled}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => requestToggleMultiMode(event.target.checked)}
+          inputProps={{ 'aria-label': t('home.quickActions.multiDownloadSwitchAria') }}
+        />
+      </MenuItem>
+
+      <Divider sx={(theme) => ({ borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })} />
+
+      <MenuItem
+        onClick={() => handleToggleAutoDownload(!autoDownloadEnabled)}
+        disabled={multiModeEnabled || isResolving}
+        sx={{
+          py: 1.05,
+          px: 1.25,
+          borderRadius: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          minHeight: 42,
+          opacity: multiModeEnabled ? 0.52 : 1,
+        }}
+      >
+        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.15 }}>
+          <Zap size={16} />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {t('home.quickActions.autoDownload')}
+          </Typography>
+        </Box>
+        <Switch
+          size="small"
+          checked={autoDownloadEnabled}
+          disabled={multiModeEnabled || isResolving}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => handleToggleAutoDownload(event.target.checked)}
+          inputProps={{ 'aria-label': t('home.quickActions.autoDownloadSwitchAria') }}
+        />
+      </MenuItem>
+
+      {autoDownloadEnabled && !multiModeEnabled && (
+        <Box sx={{ display: 'flex', gap: 1, mt: -0.15 }}>
+          <Button
+            size="small"
+            variant={autoDownloadFormat === 'mp4' ? 'contained' : 'outlined'}
+            onClick={() => setAutoDownloadFormat('mp4')}
+            sx={(theme) => ({
+              flex: 1,
+              minWidth: 0,
+              borderRadius: 1.5,
+              textTransform: 'none',
+              fontWeight: 700,
+              cursor: 'pointer',
+              ...(autoDownloadFormat === 'mp4'
+                ? {
+                    bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
+                    color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
+                    '&:hover': {
+                      bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
+                    },
+                  }
+                : {
+                    borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
+                    color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
+                  }),
+            })}
+          >
+            {t('home.quickActions.formatMp4')}
+          </Button>
+          <Button
+            size="small"
+            variant={autoDownloadFormat === 'mp3' ? 'contained' : 'outlined'}
+            onClick={() => setAutoDownloadFormat('mp3')}
+            sx={(theme) => ({
+              flex: 1,
+              minWidth: 0,
+              borderRadius: 1.5,
+              textTransform: 'none',
+              fontWeight: 700,
+              cursor: 'pointer',
+              ...(autoDownloadFormat === 'mp3'
+                ? {
+                    bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
+                    color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
+                    '&:hover': {
+                      bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
+                    },
+                  }
+                : {
+                    borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
+                    color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
+                  }),
+            })}
+          >
+            {t('home.quickActions.formatMp3')}
+          </Button>
+        </Box>
+      )}
+    </Menu>
+  )
+
+  const quickActionsTrigger = multiModeEnabled ? (
+    <Box
+      sx={(theme) => ({
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 0.35,
+        height: 32,
+        px: 0.85,
+        borderRadius: 1.5,
+        border: `1px solid ${theme.palette.mode === 'dark' ? '#535353' : '#d2d4d8'}`,
+        bgcolor: theme.palette.mode === 'dark' ? '#3a3a3a' : '#f1f2f4',
+        color: theme.palette.mode === 'dark' ? '#f2f3f5' : '#1f2937',
+      })}
+    >
+      <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.1, lineHeight: 1 }}>
+        {t('home.quickActions.multiDownload')}
+      </Typography>
+      <IconButton
+        size="small"
+        onClick={() => requestToggleMultiMode(false)}
+        aria-label={t('home.quickActions.multiDisableWarningTitle')}
+        sx={(theme) => ({
+          width: 20,
+          height: 20,
+          color: 'inherit',
+          '&:hover': {
+            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+          },
+        })}
+      >
+        <X size={12} />
+      </IconButton>
+    </Box>
+  ) : (
+    <Box
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 36,
+        height: 36,
+      }}
+    >
+      <IconButton
+        size="small"
+        aria-label={t('home.quickActions.openAria')}
+        onClick={openQuickActions}
+        disabled={isResolving}
+        sx={(theme) => ({
+          width: 36,
+          height: 36,
+          p: 0,
+          borderRadius: '50%',
+          color: isResolving
+            ? theme.palette.text.disabled
+            : (quickActionsOpen ? theme.palette.text.primary : theme.palette.text.secondary),
+          bgcolor: quickActionsOpen
+            ? (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')
+            : 'transparent',
+          opacity: 1,
+          cursor: isResolving ? 'default' : 'pointer',
+          '&:hover': {
+            bgcolor: isResolving
+              ? 'transparent'
+              : (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'),
+            opacity: 1,
+          },
+          '&.Mui-disabled': {
+            opacity: 1,
+            color: theme.palette.text.disabled,
+          },
+        })}
+      >
+        <Plus size={20} />
+      </IconButton>
+      {quickActionsMenu}
+    </Box>
+  )
+
   return (
     <Box sx={{ position: 'relative', height: '100%' }}>
       <Box sx={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '100%', maxWidth: 780, px: 2 }}>
-        <TextField
-          placeholder={t('placeholders.genericUrl')}
-          variant="outlined"
-          fullWidth
-          size="medium"
-          autoFocus
-          value={value}
-          onChange={(e) => {
-            if (fetchError) setFetchError(null)
-            setValue(e.target.value)
-          }}
-          onFocus={(e) => e.target.select()}
-          onClick={(e) => e.target.select()}
-          onMouseUp={(e) => e.preventDefault()}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start" sx={{ mr: 0.25, ml: 0 }}>
-                <Box
-                  sx={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+        {multiModeEnabled ? (
+          <Box
+            sx={(muiTheme) => ({
+              borderRadius: '12px',
+              overflow: 'hidden',
+              border: `1px solid ${muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0'}`,
+              bgcolor: muiTheme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
+              boxShadow: muiTheme.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
+            })}
+          >
+            <TextField
+              placeholder={t('placeholders.genericUrl')}
+              variant="standard"
+              fullWidth
+              multiline
+              autoFocus
+              minRows={multiInputRows}
+              maxRows={5}
+              value={value}
+              onChange={(e) => {
+                if (fetchError) setFetchError(null)
+                setValue(e.target.value)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  handleSubmit()
+                }
+              }}
+              InputProps={{
+                disableUnderline: true,
+                sx: (muiTheme) => ({
+                  alignItems: 'flex-start',
+                  px: 1.6,
+                  pt: 1.35,
+                  pb: 0.85,
+                  '& textarea': {
+                    color: muiTheme.palette.text.primary,
+                    fontWeight: 700,
+                    lineHeight: 1.45,
+                    padding: 0,
+                    resize: 'none',
+                    overflowY: 'auto !important',
+                    scrollbarWidth: 'thin',
+                  },
+                  '& textarea::placeholder': {
+                    color: muiTheme.palette.text.secondary,
+                    fontWeight: 700,
+                    opacity: 1,
+                  },
+                }),
+              }}
+              disabled={isResolving}
+              inputProps={{ 'aria-label': t('app.urlInputAria', { service: t('routes.downloader') }) }}
+            />
+
+            <Box
+              sx={(muiTheme) => ({
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                px: 1,
+                py: 0.8,
+                borderTop: `1px solid ${muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0'}`,
+              })}
+            >
+              {quickActionsTrigger}
+
+              {isResolving ? (
+                <IconButton
+                  size="small"
+                  disableRipple
+                  disabled
+                  aria-label={t('app.loadingAria')}
+                  sx={(muiTheme) => ({
                     width: 36,
                     height: 36,
-                    ml: 0,
-                  }}
+                    bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                    borderRadius: '50%',
+                    boxShadow: muiTheme.palette.mode === 'dark'
+                      ? '0 2px 6px rgba(0,0,0,0.4)'
+                      : '0 2px 6px rgba(0,0,0,0.25)',
+                    opacity: 1,
+                    '&.Mui-disabled': {
+                      opacity: 1,
+                      color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                      bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    },
+                  })}
                 >
-                  <>
+                  <CircularProgress
+                    size={18}
+                    thickness={4}
+                    sx={{ color: (muiTheme) => (muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff') }}
+                  />
+                </IconButton>
+              ) : (
+                <IconButton
+                  size="small"
+                  aria-label={t('app.startDownloadAria')}
+                  onClick={handleSubmit}
+                  sx={(muiTheme) => ({
+                    width: 36,
+                    height: 36,
+                    bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                    borderRadius: '50%',
+                    boxShadow: muiTheme.palette.mode === 'dark'
+                      ? '0 2px 6px rgba(0,0,0,0.4)'
+                      : '0 2px 6px rgba(0,0,0,0.25)',
+                    '&:hover': {
+                      bgcolor: muiTheme.palette.mode === 'dark' ? '#f5f5f5' : '#111111',
+                    },
+                  })}
+                >
+                  <ArrowRight size={18} />
+                </IconButton>
+              )}
+            </Box>
+          </Box>
+        ) : (
+          <TextField
+            placeholder={t('placeholders.genericUrl')}
+            variant="outlined"
+            fullWidth
+            size="medium"
+            autoFocus
+            value={value}
+            onChange={(e) => {
+              if (fetchError) setFetchError(null)
+              setValue(e.target.value)
+            }}
+            onFocus={(e) => e.target.select()}
+            onClick={(e) => e.target.select()}
+            onMouseUp={(e) => e.preventDefault()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleSubmit()
+              }
+            }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start" sx={{ mr: 0.25, ml: 0 }}>
+                  {quickActionsTrigger}
+                </InputAdornment>
+              ),
+              endAdornment: (
+                <InputAdornment position="end">
+                  {isResolving ? (
                     <IconButton
                       size="small"
-                      aria-label={t('home.quickActions.openAria')}
-                      onClick={openQuickActions}
-                      disabled={hasTypedInput || isResolving}
-                      sx={(theme) => ({
+                      edge="end"
+                      disableRipple
+                      disabled
+                      aria-label={t('app.loadingAria')}
+                      sx={(muiTheme) => ({
                         width: 36,
                         height: 36,
-                        p: 0,
+                        bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                        color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
                         borderRadius: '50%',
-                        color: (hasTypedInput || isResolving)
-                          ? theme.palette.text.disabled
-                          : (quickActionsOpen ? theme.palette.text.primary : theme.palette.text.secondary),
-                        bgcolor: !(hasTypedInput || isResolving) && quickActionsOpen
-                          ? (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')
-                          : 'transparent',
+                        boxShadow: muiTheme.palette.mode === 'dark'
+                          ? '0 2px 6px rgba(0,0,0,0.4)'
+                          : '0 2px 6px rgba(0,0,0,0.25)',
                         opacity: 1,
-                        cursor: (hasTypedInput || isResolving) ? 'default' : 'pointer',
-                        '&:hover': {
-                          bgcolor: (hasTypedInput || isResolving)
-                            ? 'transparent'
-                            : (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'),
-                          color: (hasTypedInput || isResolving) ? theme.palette.text.disabled : theme.palette.text.primary,
-                          opacity: 1,
-                        },
                         '&.Mui-disabled': {
                           opacity: 1,
-                          color: theme.palette.text.disabled,
+                          color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                          bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
                         },
                       })}
                     >
-                      <Plus size={20} />
+                      <CircularProgress
+                        size={18}
+                        thickness={4}
+                        sx={{ color: (muiTheme) => (muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff') }}
+                      />
                     </IconButton>
-                    <Menu
-                      anchorEl={menuAnchorEl}
-                      open={quickActionsOpen}
-                      onClose={closeQuickActions}
-                      transformOrigin={{ horizontal: 'left', vertical: 'top' }}
-                      anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
-                      slotProps={{
-                        paper: {
-                          sx: (theme) => ({
-                            mt: 1,
-                            width: 290,
-                            borderRadius: '16px',
-                            overflow: 'hidden',
-                            border: `1px solid ${theme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0'}`,
-                            bgcolor: theme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
-                            boxShadow: theme.palette.mode === 'dark'
-                              ? '0 14px 32px rgba(0,0,0,0.45)'
-                              : '0 14px 30px rgba(0,0,0,0.16)',
-                          }),
-                        },
-                      }}
-                    >
-                        <MenuItem
-                          onClick={closeQuickActions}
-                          sx={{
-                            py: 1.15,
-                            px: 1.5,
-                            mx: 0.75,
-                            mt: 0.65,
-                            borderRadius: 2,
-                          }}
-                        >
-                          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.15 }}>
-                            <List size={16} />
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {t('home.quickActions.multiDownload')}
-                            </Typography>
-                          </Box>
-                        </MenuItem>
-
-                        <Divider sx={(theme) => ({ mx: 1.5, my: 0.85, borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })} />
-
-                        <Box sx={{ px: 1.5, pt: 0.2, pb: autoDownloadEnabled ? 1.35 : 1.1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 38 }}>
-                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.15 }}>
-                              <Zap size={16} />
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {t('home.quickActions.autoDownload')}
-                              </Typography>
-                            </Box>
-                            <Switch
-                              size="small"
-                              checked={autoDownloadEnabled}
-                              onChange={(event) => setAutoDownloadEnabled(event.target.checked)}
-                              inputProps={{ 'aria-label': t('home.quickActions.autoDownloadSwitchAria') }}
-                            />
-                          </Box>
-
-                          {autoDownloadEnabled && (
-                            <Box sx={{ display: 'flex', gap: 1, mt: 1.1 }}>
-                              <Button
-                                size="small"
-                                variant={autoDownloadFormat === 'mp4' ? 'contained' : 'outlined'}
-                                onClick={() => setAutoDownloadFormat('mp4')}
-                                sx={(theme) => ({
-                                  flex: 1,
-                                  minWidth: 0,
-                                  borderRadius: 1.5,
-                                  textTransform: 'none',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  ...(autoDownloadFormat === 'mp4'
-                                    ? {
-                                        bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
-                                        color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
-                                        '&:hover': {
-                                          bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
-                                        },
-                                      }
-                                    : {
-                                        borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
-                                        color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
-                                      }),
-                                })}
-                              >
-                                {t('home.quickActions.formatMp4')}
-                              </Button>
-                              <Button
-                                size="small"
-                                variant={autoDownloadFormat === 'mp3' ? 'contained' : 'outlined'}
-                                onClick={() => setAutoDownloadFormat('mp3')}
-                                sx={(theme) => ({
-                                  flex: 1,
-                                  minWidth: 0,
-                                  borderRadius: 1.5,
-                                  textTransform: 'none',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  ...(autoDownloadFormat === 'mp3'
-                                    ? {
-                                        bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
-                                        color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
-                                        '&:hover': {
-                                          bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
-                                        },
-                                      }
-                                    : {
-                                        borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
-                                        color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
-                                      }),
-                                })}
-                              >
-                                {t('home.quickActions.formatMp3')}
-                              </Button>
-                            </Box>
-                          )}
-                        </Box>
-                    </Menu>
-                  </>
-                </Box>
-              </InputAdornment>
-            ),
-            endAdornment: (
-              <InputAdornment position="end">
-                {isResolving ? (
-                  <IconButton
-                    size="small"
-                    edge="end"
-                    disableRipple
-                    disabled
-                    aria-label={t('app.loadingAria')}
-                    sx={(muiTheme) => ({
-                      width: 36,
-                      height: 36,
-                      bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                      color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
-                      borderRadius: '50%',
-                      boxShadow: muiTheme.palette.mode === 'dark'
-                        ? '0 2px 6px rgba(0,0,0,0.4)'
-                        : '0 2px 6px rgba(0,0,0,0.25)',
-                      opacity: 1,
-                      '&.Mui-disabled': {
-                        opacity: 1,
-                        color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                  ) : (
+                    <IconButton
+                      size="small"
+                      aria-label={t('app.startDownloadAria')}
+                      edge="end"
+                      onClick={handleSubmit}
+                      sx={(muiTheme) => ({
+                        width: 36,
+                        height: 36,
                         bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                      },
-                    })}
-                  >
-                    <CircularProgress
-                      size={18}
-                      thickness={4}
-                      sx={{ color: (muiTheme) => (muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff') }}
-                    />
-                  </IconButton>
-                ) : (
-                  <IconButton
-                    size="small"
-                    aria-label={t('app.startDownloadAria')}
-                    edge="end"
-                    onClick={handleSubmit}
-                    sx={(muiTheme) => ({
-                      width: 36,
-                      height: 36,
-                      bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                      color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
-                      borderRadius: '50%',
-                      boxShadow: muiTheme.palette.mode === 'dark'
-                        ? '0 2px 6px rgba(0,0,0,0.4)'
-                        : '0 2px 6px rgba(0,0,0,0.25)',
-                      '&:hover': {
-                        bgcolor: muiTheme.palette.mode === 'dark' ? '#f5f5f5' : '#111111',
-                      },
-                    })}
-                  >
-                    <ArrowRight size={18} />
-                  </IconButton>
-                )}
-              </InputAdornment>
-            ),
-          }}
-          onPaste={(e) => {
-            const pasted = e.clipboardData.getData('text')
-            if (!pasted) return
+                        color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                        borderRadius: '50%',
+                        boxShadow: muiTheme.palette.mode === 'dark'
+                          ? '0 2px 6px rgba(0,0,0,0.4)'
+                          : '0 2px 6px rgba(0,0,0,0.25)',
+                        '&:hover': {
+                          bgcolor: muiTheme.palette.mode === 'dark' ? '#f5f5f5' : '#111111',
+                        },
+                      })}
+                    >
+                      <ArrowRight size={18} />
+                    </IconButton>
+                  )}
+                </InputAdornment>
+              ),
+            }}
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData('text')
+              if (!pasted) return
 
-            e.preventDefault()
+              e.preventDefault()
 
-            const input = e.currentTarget
-            const start = Number.isFinite(input.selectionStart) ? input.selectionStart : value.length
-            const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : value.length
-            const nextValue = `${value.slice(0, start)}${pasted}${value.slice(end)}`
+              const input = e.currentTarget
+              const start = Number.isFinite(input.selectionStart) ? input.selectionStart : value.length
+              const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : value.length
+              const nextValue = `${value.slice(0, start)}${pasted}${value.slice(end)}`
 
-            if (fetchError) setFetchError(null)
-            setValue(nextValue)
+              if (fetchError) setFetchError(null)
+              setValue(nextValue)
 
-            const serviceKey = detectService(nextValue)
-            if (serviceKey) {
-              setTimeout(() => resolveAndOpenDownloader(nextValue), 0)
-            }
-          }}
-          sx={(muiTheme) => ({
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 9999,
-              backgroundColor: muiTheme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
-              outline: 'none',
-              '&:focus-within': {
+              const serviceKey = detectService(nextValue)
+              if (serviceKey) {
+                setTimeout(() => resolveAndOpenDownloader(nextValue), 0)
+              }
+            }}
+            sx={(muiTheme) => ({
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 9999,
+                backgroundColor: muiTheme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
                 outline: 'none',
-                boxShadow: 'none',
+                '&:focus-within': {
+                  outline: 'none',
+                  boxShadow: 'none',
+                },
+                '& fieldset': {
+                  borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                  borderWidth: '1px !important',
+                },
+                '&:hover fieldset': {
+                  borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                  borderWidth: '1px !important',
+                },
+                '&.Mui-disabled fieldset': {
+                  borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                  borderWidth: '1px !important',
+                },
+                boxShadow: muiTheme.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
               },
-              '& fieldset': {
-                borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-                borderWidth: '1px !important',
+              '& .MuiOutlinedInput-input': {
+                paddingLeft: '8px',
+                paddingRight: '16px',
+                color: muiTheme.palette.text.primary,
+                fontWeight: 700,
+                outline: 'none',
               },
-              '&:hover fieldset': {
-                borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+              '& .MuiOutlinedInput-input::placeholder': {
+                color: muiTheme.palette.text.secondary,
+                fontWeight: 700,
               },
-              '&.Mui-focused fieldset': {
-                borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-                borderWidth: '1px !important',
-              },
-              '&.Mui-disabled fieldset': {
-                borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-                borderWidth: '1px !important',
-              },
-              boxShadow: muiTheme.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
-            },
-            '& .MuiOutlinedInput-input': {
-              paddingLeft: '8px',
-              paddingRight: '16px',
-              color: muiTheme.palette.text.primary,
-              fontWeight: 700,
-              outline: 'none',
-            },
-            '& .MuiOutlinedInput-input::placeholder': {
-              color: muiTheme.palette.text.secondary,
-              fontWeight: 700,
-            },
-          })}
-          disabled={isResolving}
-          inputProps={{ 'aria-label': t('app.urlInputAria', { service: t('routes.downloader') }) }}
-        />
+            })}
+            disabled={isResolving}
+            inputProps={{ 'aria-label': t('app.urlInputAria', { service: t('routes.downloader') }) }}
+          />
+        )}
       </Box>
 
-      <Stack spacing={0} sx={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(50% + 56px + 16px)', width: '100%', maxWidth: 780, px: 2 }}>
+      <Stack spacing={0} sx={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: `calc(50% + ${Math.round(inputHeightEstimate / 2)}px + 16px)`, width: '100%', maxWidth: 780, px: 2 }}>
         <Typography variant="h1" component="h1" align="center" className="youtube-title" sx={{ fontSize: { xs: '3.5rem', sm: '5rem', md: '6rem' } }}>
           <span style={{ color: '#df2f2f' }}>y</span>Loader
         </Typography>
@@ -565,6 +814,21 @@ function HomePage({ onOpenDownloader }) {
           {t('app.subtitle')}
         </Typography>
       </Stack>
+
+      <Dialog open={confirmDisableMultiOpen} onClose={() => setConfirmDisableMultiOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{t('home.quickActions.multiDisableWarningTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            {t('home.quickActions.multiDisableWarningBody')}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDisableMultiOpen(false)}>{t('tabs.cancel')}</Button>
+          <Button variant="contained" color="error" onClick={confirmDisableMultiMode}>
+            {t('home.quickActions.multiDisableWarningConfirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {fetchError && (
         <Box

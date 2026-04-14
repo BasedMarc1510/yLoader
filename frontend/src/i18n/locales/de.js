@@ -59,10 +59,14 @@ const de = {
     quickActions: {
       openAria: 'Schnellaktionen öffnen',
       multiDownload: 'Multi-Download',
+      multiDownloadSwitchAria: 'Multi-Download-Modus aktivieren',
       autoDownload: 'Auto-Download',
       autoDownloadSwitchAria: 'Auto-Download aktivieren',
       formatMp4: 'MP4',
       formatMp3: 'MP3',
+      multiDisableWarningTitle: 'Multi-Modus deaktivieren?',
+      multiDisableWarningBody: 'Beim Deaktivieren des Multi-Modus werden alle eingegebenen Links gelöscht. Möchtest du fortfahren?',
+      multiDisableWarningConfirm: 'Deaktivieren und löschen',
     },
   },
   settings: {

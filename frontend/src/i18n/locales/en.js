@@ -59,10 +59,14 @@ const en = {
     quickActions: {
       openAria: 'Open quick actions',
       multiDownload: 'Multi-download',
+      multiDownloadSwitchAria: 'Enable multi-download mode',
       autoDownload: 'Auto download',
       autoDownloadSwitchAria: 'Enable auto download',
       formatMp4: 'MP4',
       formatMp3: 'MP3',
+      multiDisableWarningTitle: 'Disable multi mode?',
+      multiDisableWarningBody: 'Disabling multi mode clears all entered links. Do you want to continue?',
+      multiDisableWarningConfirm: 'Disable and clear',
     },
   },
   settings: {
