@@ -72,10 +72,8 @@ export default function SettingsModal({ open, onClose }) {
   const [ffmpegInfo, setFfmpegInfo] = useState({
     available: false,
     version: '-',
-    ffprobeVersion: '-',
     path: '-',
     fileSize: '-',
-    ffprobeFileSize: '-',
     projectManaged: true,
     loading: false,
     error: '',
@@ -111,15 +109,14 @@ export default function SettingsModal({ open, onClose }) {
       const resp = await fetch(`${API_BASE}/api/ffmpeg/status`)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data = await resp.json()
+      const projectManaged = data.projectManaged !== false
 
       setFfmpegInfo({
         available: !!data.available,
         version: data.version || '-',
-        ffprobeVersion: data.ffprobeVersion || '-',
         path: data.path || '-',
-        fileSize: data.fileSizeHuman || '-',
-        ffprobeFileSize: data.ffprobeFileSizeHuman || '-',
-        projectManaged: data.projectManaged !== false,
+        fileSize: projectManaged ? (data.fileSizeHuman || '-') : t('settings.systemManagedFfmpegSize'),
+        projectManaged,
         loading: false,
         error: data.error || '',
       })
@@ -497,12 +494,6 @@ export default function SettingsModal({ open, onClose }) {
                   </Typography>
                 </SettingRow>
 
-                <SettingRow label={t('settings.ffprobeVersion')}>
-                  <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
-                    {ffmpegInfo.loading ? '…' : ffmpegInfo.ffprobeVersion}
-                  </Typography>
-                </SettingRow>
-
                 <SettingRow label={t('settings.ffmpegPath')}>
                   <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', maxWidth: 380, textAlign: 'right', wordBreak: 'break-all' }}>
                     {ffmpegInfo.loading ? '…' : ffmpegInfo.path}
@@ -512,12 +503,6 @@ export default function SettingsModal({ open, onClose }) {
                 <SettingRow label={t('settings.ffmpegBinarySize')}>
                   <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
                     {ffmpegInfo.loading ? '…' : ffmpegInfo.fileSize}
-                  </Typography>
-                </SettingRow>
-
-                <SettingRow label={t('settings.ffprobeBinarySize')}>
-                  <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
-                    {ffmpegInfo.loading ? '…' : ffmpegInfo.ffprobeFileSize}
                   </Typography>
                 </SettingRow>
 

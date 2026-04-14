@@ -885,17 +885,34 @@ function formatBytes(bytes) {
   return `${value.toFixed(digits)} ${units[idx]}`
 }
 
+function resolveExistingPath(filePath) {
+  const target = String(filePath || '').trim()
+  if (!target) return ''
+  try {
+    return fs.realpathSync(target)
+  } catch {
+    return target
+  }
+}
+
+function isProjectManagedFfmpegBinary() {
+  const normalizedBinaryPath = path.normalize(String(FFMPEG_BIN || '')).toLowerCase()
+  const marker = path.normalize(path.join('.tools', 'ffmpeg-bin')).toLowerCase()
+  return normalizedBinaryPath.includes(marker)
+}
+
 function getFileSizeInfo(filePath) {
   const target = String(filePath || '').trim()
-  if (!target) return { bytes: null, human: '' }
+  if (!target) return { bytes: null, human: '', resolvedPath: '' }
 
   try {
-    if (!fs.existsSync(target)) return { bytes: null, human: '' }
-    const stat = fs.statSync(target)
-    if (!stat.isFile()) return { bytes: null, human: '' }
-    return { bytes: stat.size, human: formatBytes(stat.size) }
+    const resolvedPath = resolveExistingPath(target)
+    if (!fs.existsSync(resolvedPath)) return { bytes: null, human: '', resolvedPath: '' }
+    const stat = fs.statSync(resolvedPath)
+    if (!stat.isFile()) return { bytes: null, human: '', resolvedPath: '' }
+    return { bytes: stat.size, human: formatBytes(stat.size), resolvedPath }
   } catch {
-    return { bytes: null, human: '' }
+    return { bytes: null, human: '', resolvedPath: '' }
   }
 }
 
@@ -953,7 +970,7 @@ app.get('/api/yt-dlp/status', async (_req, res) => {
 
 // GET /api/ffmpeg/status -> { available, version, path, ffprobeVersion }
 app.get('/api/ffmpeg/status', async (_req, res) => {
-  const projectManaged = true
+  const projectManaged = isProjectManagedFfmpegBinary()
 
   if (!FFMPEG_BIN) {
     return res.json({
@@ -975,6 +992,7 @@ app.get('/api/ffmpeg/status', async (_req, res) => {
     const versionLine = await readBinaryVersionLine(FFMPEG_BIN)
     const version = extractVersionToken(versionLine)
     const ffmpegFileSize = getFileSizeInfo(FFMPEG_BIN)
+    const ffmpegPath = ffmpegFileSize.resolvedPath || resolveExistingPath(FFMPEG_BIN) || FFMPEG_BIN
 
     let ffprobePath = FFPROBE_BIN
     if (!ffprobePath) {
@@ -992,6 +1010,7 @@ app.get('/api/ffmpeg/status', async (_req, res) => {
         const ffprobeVersionLine = await readBinaryVersionLine(ffprobePath)
         ffprobeVersion = extractVersionToken(ffprobeVersionLine)
         ffprobeFileSize = getFileSizeInfo(ffprobePath)
+        ffprobePath = ffprobeFileSize.resolvedPath || resolveExistingPath(ffprobePath) || ffprobePath
       } catch {
         ffprobeVersion = ''
       }
@@ -1000,7 +1019,7 @@ app.get('/api/ffmpeg/status', async (_req, res) => {
     return res.json({
       available: true,
       projectManaged,
-      path: FFMPEG_BIN,
+      path: ffmpegPath,
       version,
       fileSizeBytes: ffmpegFileSize.bytes,
       fileSizeHuman: ffmpegFileSize.human,
