@@ -1,0 +1,82 @@
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'YouTube Sans Bold';
+  src: url('/youtube-sans-bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+html,
+body,
+#root {
+  font-family: 'Inter', 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+}
+
+:root {
+  --yl-scroll-thumb: rgba(71, 85, 105, 0.48);
+  --yl-scroll-thumb-hover: rgba(71, 85, 105, 0.68);
+}
+
+:root[data-theme-mode='dark'] {
+  --yl-scroll-thumb: rgba(203, 213, 225, 0.42);
+  --yl-scroll-thumb-hover: rgba(226, 232, 240, 0.62);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--yl-scroll-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--yl-scroll-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--yl-scroll-thumb-hover);
+}
+
+*::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.youtube-title {
+  font-family: 'YouTube Sans Bold', 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em;
+}
+
+.tabs-scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.tabs-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}

@@ -1,0 +1,390 @@
+import React from 'react'
+import { parseVideoTitle } from '../../../utils/metadataParser'
+import {
+  getApiBase,
+  normalizeUrlForNoembed,
+  detectService,
+  extractYouTubeId,
+  youtubeThumb,
+  fetchNoembed,
+} from '../../../utils/metadata'
+
+export default function useOptionsTabsData({
+  i18nT,
+  videoTitle,
+  videoAuthor,
+  videoUrl,
+  initialFormats,
+  onFetchError,
+}) {
+  const [tab, setTab] = React.useState('audio')
+  const [activeSection, setActiveSection] = React.useState(null)
+
+  const [titleValue, setTitleValue] = React.useState('')
+  const [artistValue, setArtistValue] = React.useState('')
+  const [albumValue, setAlbumValue] = React.useState('')
+  const [videoContainer, setVideoContainer] = React.useState('mp4')
+  const [audioContainer, setAudioContainer] = React.useState('mp3')
+  const [filenameValue, setFilenameValue] = React.useState('')
+
+  const [audioFormats, setAudioFormats] = React.useState([])
+  const [videoFormats, setVideoFormats] = React.useState([])
+  const [selectedAudioFormat, setSelectedAudioFormat] = React.useState('best')
+  const [selectedVideoFormat, setSelectedVideoFormat] = React.useState('best')
+  const [loadingFormats, setLoadingFormats] = React.useState(false)
+
+  const [thumbOptions, setThumbOptions] = React.useState([])
+  const [selectedThumbValue, setSelectedThumbValue] = React.useState('')
+  const [selectedThumbFormat, setSelectedThumbFormat] = React.useState('jpg')
+  const [loadingThumbs, setLoadingThumbs] = React.useState(false)
+
+  const [audioCutsData, setAudioCutsData] = React.useState(null)
+  const [videoCutsData, setVideoCutsData] = React.useState(null)
+
+  const [coverEmbedEnabled, setCoverEmbedEnabled] = React.useState(true)
+  const [coverSource, setCoverSource] = React.useState('video')
+  const [coverUpload, setCoverUpload] = React.useState(null)
+  const [coverUploadError, setCoverUploadError] = React.useState('')
+
+  const toggleSection = React.useCallback((section) => {
+    setActiveSection((prev) => (prev === section ? null : section))
+  }, [])
+
+  const handleTabChange = React.useCallback((newTab) => {
+    setTab(newTab)
+    setActiveSection(null)
+  }, [])
+
+  const handleCoverFileChange = React.useCallback((event) => {
+    const file = event?.target?.files?.[0]
+    if (!file) return
+
+    if (!file.type || !file.type.startsWith('image/')) {
+      setCoverUpload(null)
+      setCoverUploadError(i18nT('downloader.errorSelectImageFile'))
+      if (event?.target) event.target.value = ''
+      return
+    }
+
+    const maxSize = 10 * 1024 * 1024
+    if (file.size > maxSize) {
+      setCoverUpload(null)
+      setCoverUploadError(i18nT('downloader.errorImageTooLarge'))
+      if (event?.target) event.target.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+      setCoverUpload({ name: file.name, type: file.type, size: file.size, dataUrl })
+      setCoverUploadError('')
+      if (event?.target) event.target.value = ''
+    }
+    reader.onerror = () => {
+      setCoverUpload(null)
+      setCoverUploadError(i18nT('downloader.errorImageRead'))
+      if (event?.target) event.target.value = ''
+    }
+
+    reader.readAsDataURL(file)
+  }, [i18nT])
+
+  React.useEffect(() => {
+    if (!videoTitle) return
+
+    const parsed = parseVideoTitle(videoTitle)
+    setTitleValue(parsed.title || videoTitle)
+    setArtistValue(parsed.artist || videoAuthor || '')
+    setAlbumValue(parsed.album || '')
+    setFilenameValue(videoTitle)
+  }, [videoTitle, videoAuthor])
+
+  const applyBackendThumbnails = React.useCallback((thumbnails) => {
+    const valid = (thumbnails || []).filter((item) => item.width && item.height && item.width > 0 && item.height > 0)
+    valid.sort((a, b) => (b.height || 0) - (a.height || 0))
+
+    const seen = new Set()
+    const opts = []
+    const friendlyMap = {
+      maxresdefault: i18nT('downloader.maxResolution'),
+      sddefault: i18nT('downloader.sd'),
+      hqdefault: i18nT('downloader.hq'),
+      mqdefault: i18nT('downloader.mq'),
+      default: i18nT('downloader.default'),
+    }
+
+    for (const item of valid) {
+      const dimLabel = `${item.width}x${item.height}`
+      if (seen.has(dimLabel)) continue
+      seen.add(dimLabel)
+
+      const label = (item.id && friendlyMap[item.id])
+        ? `${friendlyMap[item.id]} (${dimLabel})`
+        : dimLabel
+
+      opts.push({
+        value: item.id || `thumb-${opts.length}`,
+        label,
+        description: undefined,
+        url: item.url,
+        width: item.width,
+        height: item.height,
+      })
+    }
+
+    if (opts.length > 0) {
+      setThumbOptions(opts)
+      setSelectedThumbValue(opts[0]?.value || '')
+      return
+    }
+
+    setThumbOptions([])
+    setSelectedThumbValue('')
+  }, [i18nT])
+
+  React.useEffect(() => {
+    const loadFormats = async () => {
+      if (!videoUrl) {
+        setAudioFormats([])
+        setVideoFormats([])
+        setSelectedAudioFormat('best')
+        setSelectedVideoFormat('best')
+        setThumbOptions([])
+        setSelectedThumbValue('')
+        return
+      }
+
+      if (initialFormats != null) {
+        setAudioFormats(initialFormats.audioFormats || [])
+        setVideoFormats(initialFormats.videoFormats || [])
+
+        const isYouTube = !!extractYouTubeId(videoUrl)
+        if (!isYouTube && Array.isArray(initialFormats.thumbnails) && initialFormats.thumbnails.length) {
+          applyBackendThumbnails(initialFormats.thumbnails)
+        } else {
+          setThumbOptions([])
+          setSelectedThumbValue('')
+        }
+        return
+      }
+
+      try {
+        const apiBase = getApiBase()
+        const normalized = normalizeUrlForNoembed(videoUrl)
+        setLoadingFormats(true)
+
+        const res = await fetch(`${apiBase}/api/meta/formats?url=${encodeURIComponent(normalized)}`)
+        if (!res.ok) {
+          let errMsg = `HTTP ${res.status}`
+          try {
+            const body = await res.json()
+            errMsg = body?.details || body?.error || errMsg
+          } catch {
+            // keep fallback HTTP status
+          }
+          throw new Error(errMsg)
+        }
+
+        const data = await res.json()
+        setAudioFormats(data.audioFormats || [])
+        setVideoFormats(data.videoFormats || [])
+
+        const isYouTube = !!extractYouTubeId(videoUrl)
+        if (!isYouTube && Array.isArray(data.thumbnails) && data.thumbnails.length) {
+          applyBackendThumbnails(data.thumbnails)
+        } else {
+          setThumbOptions([])
+          setSelectedThumbValue('')
+        }
+      } catch (err) {
+        setAudioFormats([])
+        setVideoFormats([])
+        setThumbOptions([])
+        setSelectedThumbValue('')
+        onFetchError?.(videoUrl, err.message || String(err))
+      } finally {
+        setLoadingFormats(false)
+      }
+    }
+
+    loadFormats()
+  }, [videoUrl, initialFormats, applyBackendThumbnails, onFetchError])
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    const loadThumbs = async () => {
+      if (thumbOptions.length > 0) return
+      setLoadingThumbs(true)
+
+      try {
+        const ytId = extractYouTubeId(videoUrl)
+        const service = ytId ? 'youtube' : detectService(videoUrl)
+        const options = []
+
+        if (!videoUrl || !service) {
+          setThumbOptions([])
+          setSelectedThumbValue('')
+          return
+        }
+
+        if (service === 'youtube') {
+          const id = ytId || extractYouTubeId(videoUrl)
+          if (!id) {
+            setThumbOptions([])
+            setSelectedThumbValue('')
+            return
+          }
+
+          const candidates = [
+            { key: 'maxresdefault', label: i18nT('downloader.maxResolution'), width: 1280, height: 720 },
+            { key: 'sddefault', label: i18nT('downloader.sd'), width: 640, height: 480 },
+            { key: 'hqdefault', label: i18nT('downloader.hq'), width: 480, height: 360 },
+            { key: 'mqdefault', label: i18nT('downloader.mq'), width: 320, height: 180 },
+            { key: 'default', label: i18nT('downloader.default'), width: 120, height: 90 },
+          ]
+
+          const preOptions = candidates.map((candidate) => ({
+            value: candidate.key,
+            label: `${candidate.label} (${candidate.width}x${candidate.height})`,
+            description: undefined,
+            url: youtubeThumb(id, candidate.key),
+            width: candidate.width,
+            height: candidate.height,
+          }))
+
+          if (!cancelled) {
+            setThumbOptions(preOptions)
+            setSelectedThumbValue(preOptions[0]?.value || '')
+          }
+
+          try {
+            const probes = await Promise.all(
+              candidates.map((candidate) => new Promise((resolve) => {
+                const url = youtubeThumb(id, candidate.key)
+                const img = new Image()
+                img.onload = () => resolve({
+                  ok: true,
+                  url,
+                  key: candidate.key,
+                  label: candidate.label,
+                  width: img.naturalWidth,
+                  height: img.naturalHeight,
+                })
+                img.onerror = () => resolve({ ok: false })
+                img.src = `${url}?v=${Date.now()}`
+              }))
+            )
+
+            const available = probes
+              .filter((probe) => probe.ok && probe.width && probe.height)
+              .sort((a, b) => (b.height || 0) - (a.height || 0))
+              .map((probe) => ({
+                value: probe.key,
+                label: `${probe.label} (${probe.width}x${probe.height})`,
+                description: undefined,
+                url: probe.url,
+                width: probe.width,
+                height: probe.height,
+              }))
+
+            if (!cancelled && available.length) {
+              setThumbOptions(available)
+              setSelectedThumbValue(available[0]?.value || '')
+            }
+          } catch {
+            // keep preloaded options
+          }
+        } else {
+          try {
+            const noembed = await fetchNoembed(normalizeUrlForNoembed(videoUrl))
+            const url = noembed?.thumbnail_url || ''
+            if (url) {
+              const dim = await new Promise((resolve) => {
+                const img = new Image()
+                img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+                img.onerror = () => resolve({ w: 0, h: 0 })
+                img.src = `${url}`
+              })
+
+              options.push({
+                value: 'original',
+                label: dim.w && dim.h
+                  ? `${i18nT('downloader.originalThumb')} (${dim.w}x${dim.h})`
+                  : i18nT('downloader.originalThumb'),
+                description: undefined,
+                url,
+                width: dim.w,
+                height: dim.h,
+              })
+            }
+          } catch {
+            // ignore noembed probe failures
+          }
+        }
+
+        if (!cancelled && thumbOptions.length === 0) {
+          setThumbOptions(options)
+          setSelectedThumbValue(options[0]?.value || '')
+        }
+      } finally {
+        if (!cancelled) setLoadingThumbs(false)
+      }
+    }
+
+    loadThumbs()
+    return () => {
+      cancelled = true
+    }
+  }, [videoUrl, thumbOptions.length, i18nT])
+
+  return {
+    tab,
+    activeSection,
+    titleValue,
+    artistValue,
+    albumValue,
+    videoContainer,
+    audioContainer,
+    filenameValue,
+    audioFormats,
+    videoFormats,
+    selectedAudioFormat,
+    selectedVideoFormat,
+    loadingFormats,
+    thumbOptions,
+    selectedThumbValue,
+    selectedThumbFormat,
+    loadingThumbs,
+    audioCutsData,
+    videoCutsData,
+    coverEmbedEnabled,
+    coverSource,
+    coverUpload,
+    coverUploadError,
+
+    setTab,
+    setActiveSection,
+    setTitleValue,
+    setArtistValue,
+    setAlbumValue,
+    setVideoContainer,
+    setAudioContainer,
+    setFilenameValue,
+    setSelectedAudioFormat,
+    setSelectedVideoFormat,
+    setSelectedThumbValue,
+    setSelectedThumbFormat,
+    setAudioCutsData,
+    setVideoCutsData,
+    setCoverEmbedEnabled,
+    setCoverSource,
+    setCoverUpload,
+    setCoverUploadError,
+
+    toggleSection,
+    handleTabChange,
+    handleCoverFileChange,
+  }
+}
