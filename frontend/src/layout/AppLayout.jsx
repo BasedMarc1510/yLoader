@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { Box, Toolbar } from '@mui/material'
 import Header from '../components/Header'
 import Sidebar, { drawerWidth as drawerWidthExpanded } from '../components/Sidebar'
-import { isDownloaderPath } from '../utils/tabRoutes'
 
 import { useNotification } from '../providers/NotificationProvider'
 import { getApiBase } from '../utils/metadata'
@@ -15,6 +14,7 @@ const sidebarHeaderHeight = 49
 export default function AppLayout({
   children,
   activePath = '/',
+  activeSearch = '',
   tabs = [],
   closingTabIds = [],
   activeTabId = '',
@@ -67,7 +67,15 @@ export default function AppLayout({
   const handleToggleCollapsed = () => setCollapsed((v) => !v)
 
   const sidebarWidth = collapsed ? drawerWidthCollapsed : drawerWidthExpanded
-  const isDownloaderRoute = isDownloaderPath(activePath)
+  const hasHomeQuery = React.useMemo(() => {
+    if (activePath !== '/') return false
+    const rawSearch = String(activeSearch || '').trim()
+    if (!rawSearch) return false
+
+    const normalizedSearch = rawSearch.startsWith('?') ? rawSearch.slice(1) : rawSearch
+    const params = new URLSearchParams(normalizedSearch)
+    return Boolean(String(params.get('url') || '').trim())
+  }, [activePath, activeSearch])
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -96,7 +104,7 @@ export default function AppLayout({
         component="main"
         sx={(muiTheme) => ({
           flexGrow: 1,
-          p: isDownloaderRoute ? 0 : 3,
+          p: hasHomeQuery ? 0 : 3,
           width: { sm: `calc(100% - ${sidebarWidth}px)` },
           height: '100dvh',
           boxSizing: 'border-box',

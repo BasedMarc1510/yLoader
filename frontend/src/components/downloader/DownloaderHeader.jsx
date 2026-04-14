@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, IconButton, Typography, Tooltip, useTheme } from '@mui/material'
 import { X } from 'lucide-react'
+import ServiceIcon from '../ServiceIcon'
 import { useI18n } from '../../providers/I18nProvider'
 
 export default function DownloaderHeader({ icon, title, onClose }) {
@@ -31,7 +32,7 @@ export default function DownloaderHeader({ icon, title, onClose }) {
           justifyContent: 'center',
           color: theme.palette.mode === 'dark' ? 'white' : theme.palette.text.primary,
         }}>
-          <Box component="img" src={icon} alt="icon" sx={{ width: 18, height: 18, display: 'block' }} />
+          <ServiceIcon serviceKey={icon} size={18} title={title} />
         </Box>
         <Typography 
           variant="subtitle1" 

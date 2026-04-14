@@ -1,28 +1,61 @@
+import { detectService } from './metadata'
+
 export const SERVICE_TO_PATH = {
-  youtube: '/youtube-downloader',
-  reddit: '/reddit-downloader',
-  x: '/x-downloader',
-  generic: '/generic-downloader',
+  youtube: '/',
+  reddit: '/',
+  x: '/',
+  generic: '/',
 }
 
-export const PATH_TO_SERVICE = {
+const LEGACY_PATH_TO_SERVICE = {
+  '/downloader': 'generic',
   '/youtube-downloader': 'youtube',
   '/reddit-downloader': 'reddit',
   '/x-downloader': 'x',
   '/generic-downloader': 'generic',
 }
 
+const VALID_SERVICE_KEYS = new Set(Object.keys(SERVICE_TO_PATH))
+
 const ALLOWED_PATHS = new Set([
   '/',
   '/downloads',
   '/support',
-  ...Object.keys(PATH_TO_SERVICE),
 ])
 
-export const DOWNLOADER_PATHS = new Set(Object.keys(PATH_TO_SERVICE))
+export const DOWNLOADER_PATHS = new Set()
+
+function normalizeLegacyPath(path) {
+  const normalized = String(path || '').trim()
+  if (Object.prototype.hasOwnProperty.call(LEGACY_PATH_TO_SERVICE, normalized)) {
+    return '/'
+  }
+  return normalized
+}
+
+function hasUrlInSearch(search) {
+  const normalizedSearch = normalizeTabSearch(search)
+  if (!normalizedSearch) return false
+
+  const params = new URLSearchParams(normalizedSearch)
+  return Boolean(String(params.get('url') || '').trim())
+}
+
+function getServiceFromSearch(search) {
+  const normalizedSearch = normalizeTabSearch(search)
+  if (!normalizedSearch) return null
+
+  const params = new URLSearchParams(normalizedSearch)
+  const serviceParam = String(params.get('service') || '').trim().toLowerCase()
+  if (VALID_SERVICE_KEYS.has(serviceParam)) return serviceParam
+
+  const urlParam = String(params.get('url') || '').trim()
+  if (!urlParam) return null
+  return detectService(urlParam) || 'generic'
+}
 
 export function normalizeTabPath(path) {
-  const normalized = String(path || '').trim()
+  const normalized = normalizeLegacyPath(path)
   return ALLOWED_PATHS.has(normalized) ? normalized : '/'
 }
 
@@ -41,28 +74,27 @@ export function getPathForService(serviceKey) {
   return SERVICE_TO_PATH[String(serviceKey || '').trim()] || SERVICE_TO_PATH.generic
 }
 
-export function getServiceForPath(path) {
-  return PATH_TO_SERVICE[normalizeTabPath(path)] || null
+export function getServiceForPath(path, search = '') {
+  if (normalizeTabPath(path) !== '/' || !hasUrlInSearch(search)) return null
+  return getServiceFromSearch(search)
 }
 
-export function getRouteTitle(path, t) {
+export function getRouteTitle(path, t, search = '') {
   const normalized = normalizeTabPath(path)
   if (normalized === '/downloads') return t('routes.downloads')
   if (normalized === '/support') return t('routes.support')
-  if (normalized === '/youtube-downloader') return t('routes.youtubeDownloader')
-  if (normalized === '/reddit-downloader') return t('routes.redditDownloader')
-  if (normalized === '/x-downloader') return t('routes.xDownloader')
-  if (normalized === '/generic-downloader') return t('routes.genericDownloader')
+  if (normalized === '/' && hasUrlInSearch(search)) {
+    return t('routes.downloader')
+  }
   return t('routes.home')
 }
 
-export function getRouteIconKey(path) {
+export function getRouteIconKey(path, search = '') {
   const normalized = normalizeTabPath(path)
   if (normalized === '/downloads') return 'downloads'
   if (normalized === '/support') return 'support'
-  if (normalized === '/youtube-downloader') return 'youtube'
-  if (normalized === '/reddit-downloader') return 'reddit'
-  if (normalized === '/x-downloader') return 'x'
-  if (normalized === '/generic-downloader') return 'generic'
+  if (normalized === '/' && hasUrlInSearch(search)) {
+    return getServiceFromSearch(search) || 'generic'
+  }
   return 'home'
 }

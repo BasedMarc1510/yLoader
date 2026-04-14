@@ -17,6 +17,7 @@ import {
     Container
 } from '@mui/material'
 import { Search, Trash2, Download, RefreshCw, Music, Video, Image as ImageIcon, Filter } from 'lucide-react'
+import ServiceIcon from '../components/ServiceIcon'
 import { getApiBase, youtubeThumb } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 
@@ -33,8 +34,6 @@ export default function DownloadsPage({ onOpenDownloader }) {
     const { t, language } = useI18n()
     const theme = useTheme()
     const isDark = theme.palette.mode === 'dark'
-    const genericIcon = isDark ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
-    const xIcon = isDark ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
     const [downloads, setDownloads] = useState([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
@@ -103,10 +102,10 @@ export default function DownloadsPage({ onOpenDownloader }) {
 
     const services = [
         { value: 'all', label: t('downloads.allServices'), icon: null },
-        { value: 'youtube', label: 'YouTube', icon: '/dl-icons/youtube-icon.svg' },
-        { value: 'reddit', label: 'Reddit', icon: '/dl-icons/reddit-icon.svg' },
-        { value: 'x', label: t('downloads.xService'), icon: xIcon },
-        { value: 'generic', label: t('downloads.genericService'), icon: genericIcon }
+        { value: 'youtube', label: 'YouTube', icon: 'youtube' },
+        { value: 'reddit', label: 'Reddit', icon: 'reddit' },
+        { value: 'x', label: t('downloads.xService'), icon: 'x' },
+        { value: 'generic', label: t('downloads.genericService'), icon: 'generic' }
     ]
 
     const getTypeIcon = (type) => {
@@ -188,7 +187,7 @@ export default function DownloadsPage({ onOpenDownloader }) {
                             return (
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                     {svc.icon ? (
-                                        <Box component="img" src={svc.icon} sx={{ width: 18, height: 18 }} />
+                                        <ServiceIcon serviceKey={svc.icon} size={18} title={t('sidebar.iconAlt', { name: svc.label })} />
                                     ) : (
                                         <Filter size={18} />
                                     )}
@@ -201,7 +200,7 @@ export default function DownloadsPage({ onOpenDownloader }) {
                             <MenuItem key={svc.value} value={svc.value}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                     {svc.icon ? (
-                                        <Box component="img" src={svc.icon} sx={{ width: 20, height: 20 }} />
+                                        <ServiceIcon serviceKey={svc.icon} size={20} title={t('sidebar.iconAlt', { name: svc.label })} />
                                     ) : (
                                         <Filter size={20} />
                                     )}

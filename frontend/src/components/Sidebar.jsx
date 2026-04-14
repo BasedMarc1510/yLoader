@@ -7,9 +7,8 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Collapse,
 } from '@mui/material'
-import { Home, Download, Settings, Heart, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react'
+import { Home, Download, Settings, Heart, ChevronLeft, ChevronRight } from 'lucide-react'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import { useTheme } from '@mui/material/styles'
@@ -32,12 +31,9 @@ export default function Sidebar({
   const { t: i18nT } = useI18n()
   const t = useTheme()
   const sidebarBg = t.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
-  const genericIcon = t.palette.mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
-  const xIcon = t.palette.mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
   const ICON_SIZE = 20
   const logoLeftOffset = Math.max(0, (collapsedWidth - ICON_SIZE) / 2)
   const expandedLeftInset = 1
-  const [openDownloaders, setOpenDownloaders] = React.useState(true)
   const [openSettings, setOpenSettings] = React.useState(false)
 
   const withCollapsedTooltip = (node, title) => (
@@ -64,13 +60,6 @@ export default function Sidebar({
     { label: i18nT('routes.downloads'), icon: <Download size={16} />, to: '/downloads' },
     { label: i18nT('routes.support'), icon: <Heart size={16} />, to: '/support' },
   ]), [i18nT])
-
-  const downloaders = React.useMemo(() => ([
-    { label: 'YouTube', to: '/youtube-downloader', icon: '/dl-icons/youtube-icon.svg' },
-    { label: 'X/Twitter', to: '/x-downloader', icon: xIcon },
-    { label: 'Reddit', to: '/reddit-downloader', icon: '/dl-icons/reddit-icon.svg' },
-    { label: 'Generic', to: '/generic-downloader', icon: genericIcon },
-  ]), [genericIcon, xIcon])
 
   const SidebarTopBar = ({ bg }) => {
     if (collapsed) {
@@ -109,6 +98,7 @@ export default function Sidebar({
           display: 'flex',
           alignItems: 'center',
           px: 0,
+          position: 'relative',
           borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
           borderRight: 'none',
         }}
@@ -124,11 +114,14 @@ export default function Sidebar({
             color: 'inherit',
             gap: 1,
             flexGrow: 1,
+            minWidth: 0,
             justifyContent: 'flex-start',
             pl: `calc(${logoLeftOffset}px + 8px)`,
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
+            position: 'relative',
+            zIndex: 2,
             py: 0,
             pr: 0,
           }}
@@ -143,7 +136,12 @@ export default function Sidebar({
           </Typography>
         </Box>
         <Tooltip title={i18nT('sidebar.collapse')}>
-          <IconButton size="small" onClick={onToggleCollapsed} aria-label={i18nT('sidebar.collapse')} sx={{ mr: 1 }}>
+          <IconButton
+            size="small"
+            onClick={onToggleCollapsed}
+            aria-label={i18nT('sidebar.collapse')}
+            sx={{ mr: 1, cursor: 'pointer', position: 'relative', zIndex: 3 }}
+          >
             <ChevronLeft size={18} />
           </IconButton>
         </Tooltip>
@@ -219,96 +217,6 @@ export default function Sidebar({
           )
         })}
 
-        {!collapsed && (
-          <ListItem disablePadding sx={{ mb: 0.5, mt: 1 }}>
-            <ListItemButton
-              onClick={() => setOpenDownloaders((v) => !v)}
-              disableRipple
-              sx={{
-                borderRadius: 0,
-                minHeight: 24,
-                px: expandedLeftInset,
-                py: 0,
-                justifyContent: 'flex-start',
-                color: t.palette.text.secondary,
-                transition: 'none',
-                '&:hover': { bgcolor: 'transparent' },
-                '&.Mui-focusVisible': { bgcolor: 'transparent' },
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Box component="span" sx={{ fontSize: '0.825rem', fontWeight: 500, color: t.palette.text.secondary }}>{i18nT('sidebar.downloaders')}</Box>
-                {openDownloaders ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </Box>
-            </ListItemButton>
-          </ListItem>
-        )}
-
-        <Collapse in={collapsed ? true : openDownloaders} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding sx={{ pl: 0 }}>
-            {downloaders.map((dl) => {
-              const isActive = activePath === dl.to
-              return (
-                <ListItem key={dl.label} disablePadding sx={{ mb: 0.25 }}>
-                  {withCollapsedTooltip(
-                    <ListItemButton
-                      selected={isActive}
-                      onClick={() => handleNavigate(dl.to)}
-                      sx={{
-                        borderRadius: 1,
-                        minHeight: 28,
-                        px: collapsed ? 1 : expandedLeftInset,
-                        py: collapsed ? undefined : 0.5,
-                        justifyContent: collapsed ? 'center' : 'flex-start',
-                        color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                        transition: 'none',
-                        '@media (hover: hover) and (pointer: fine)': {
-                          '&:hover': {
-                            bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
-                          },
-                        },
-                        '&.Mui-selected': {
-                          bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
-                          '@media (hover: hover) and (pointer: fine)': {
-                            '&:hover': {
-                              bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)',
-                            },
-                          },
-                        },
-                      }}
-                    >
-                      <ListItemIcon
-                        sx={{
-                          minWidth: collapsed ? 'auto' : 36,
-                          justifyContent: 'center',
-                          display: 'flex',
-                          alignItems: 'center',
-                          height: '100%',
-                        }}
-                      >
-                        <Box component="img" src={dl.icon} alt={i18nT('sidebar.iconAlt', { name: dl.label })} sx={{ width: 18, height: 18, display: 'block' }} />
-                      </ListItemIcon>
-                      {!collapsed && (
-                        <ListItemText
-                          primary={dl.label}
-                          sx={{
-                            '& .MuiListItemText-primary': {
-                              fontSize: '0.85rem',
-                              fontWeight: 400,
-                              lineHeight: 1.2,
-                              color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                            },
-                          }}
-                        />
-                      )}
-                    </ListItemButton>,
-                    dl.label,
-                  )}
-                </ListItem>
-              )
-            })}
-          </List>
-        </Collapse>
       </List>
 
       <Box sx={{ mt: 'auto', px: 1, pb: 1, pt: 1.25, borderTop: (theme) => `1px solid ${theme.palette.divider}` }}>

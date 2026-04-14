@@ -8,25 +8,25 @@ import {
   Toolbar,
 } from '@mui/material'
 import { Menu, Home, Download, Heart, Plus, X, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Box as ImageBox } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import { useI18n } from '../providers/I18nProvider'
+import ServiceIcon from './ServiceIcon'
 import { getRouteIconKey, getRouteTitle } from '../utils/tabRoutes'
 
-function RouteIcon({ iconKey, xIcon, genericIcon }) {
+function RouteIcon({ iconKey }) {
   if (iconKey === 'downloads') return <Download size={14} />
   if (iconKey === 'support') return <Heart size={14} />
   if (iconKey === 'youtube') {
-    return <ImageBox component="img" src="/dl-icons/youtube-icon.svg" alt="YouTube" sx={{ width: 14, height: 14 }} />
+    return <ServiceIcon serviceKey="youtube" size={14} />
   }
   if (iconKey === 'reddit') {
-    return <ImageBox component="img" src="/dl-icons/reddit-icon.svg" alt="Reddit" sx={{ width: 14, height: 14 }} />
+    return <ServiceIcon serviceKey="reddit" size={14} />
   }
   if (iconKey === 'x') {
-    return <ImageBox component="img" src={xIcon} alt="X/Twitter" sx={{ width: 14, height: 14 }} />
+    return <ServiceIcon serviceKey="x" size={14} />
   }
   if (iconKey === 'generic') {
-    return <ImageBox component="img" src={genericIcon} alt="Generic" sx={{ width: 14, height: 14 }} />
+    return <ServiceIcon serviceKey="generic" size={14} />
   }
   return <Home size={14} />
 }
@@ -257,8 +257,6 @@ export default function Header({
 }) {
   const { t } = useI18n()
   const theme = useTheme()
-  const xIcon = theme.palette.mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
-  const genericIcon = theme.palette.mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
   const sidebarBg = theme.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
   const mainBg = theme.palette.mode === 'dark' ? '#212121' : '#ffffff'
 
@@ -480,7 +478,7 @@ export default function Header({
       color="transparent"
       sx={(muiTheme) => ({
         zIndex: muiTheme.zIndex.drawer + 1,
-        ml: { sm: `${sidebarWidth}px` },
+        left: { sm: `${sidebarWidth}px` },
         width: { sm: `calc(100% - ${sidebarWidth}px)` },
         bgcolor: sidebarBg,
         borderBottom: 'none',
@@ -533,8 +531,8 @@ export default function Header({
                   const isDragging = draggingId === tab.id
                   const isClosing = closingTabIdSet.has(tab.id)
                   const isEntering = enteringTabIds.has(tab.id)
-                  const iconKey = getRouteIconKey(tab.path)
-                  const displayTitle = tab.displayTitle || getRouteTitle(tab.path, t)
+                  const iconKey = getRouteIconKey(tab.path, tab.search)
+                  const displayTitle = tab.displayTitle || getRouteTitle(tab.path, t, tab.search)
                   const closeTooltipLabel = t('tabs.closeTooltip')
                   const progress = clampProgress(tab?.download?.progress)
                   const isDownloading = Boolean(tab?.download?.active)
@@ -593,7 +591,7 @@ export default function Header({
                         }}
                       >
                         <Box className="yl-tab-content">
-                          <RouteIcon iconKey={iconKey} xIcon={xIcon} genericIcon={genericIcon} />
+                          <RouteIcon iconKey={iconKey} />
                           <Typography component="span" className="yl-tab-title">
                             {displayTitle}
                           </Typography>

@@ -6,30 +6,34 @@ import {
   TextField,
   InputAdornment,
   IconButton,
+  CircularProgress,
+  Menu,
+  MenuItem,
+  Divider,
+  Switch,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Plus, List, Zap } from 'lucide-react'
 import AppLayout from './layout/AppLayout'
 import Downloader from './pages/Downloader'
 import SupportPage from './pages/Support'
 import DownloadsPage from './pages/Downloads'
-import { getApiBase } from './utils/metadata'
+import { detectService, fetchDuration, fetchFormats, fetchNoembed, getApiBase } from './utils/metadata'
 import { useI18n } from './providers/I18nProvider'
 import {
   getPathForService,
   getRouteTitle,
   getServiceForPath,
-  isDownloaderPath,
   normalizeTabPath,
   normalizeTabSearch,
 } from './utils/tabRoutes'
 
 const TAB_STATE_LOCAL_STORAGE_KEY = 'yloader.ui.tabs.state.v1'
+const HOME_PREFETCH_CACHE_KEY = 'yloader.home.prefetch.v1'
 
 function createTabId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -149,149 +153,339 @@ function readLocalTabState() {
   }
 }
 
-function detectServiceFromUrl(rawValue) {
-  if (!rawValue) return null
-  const lower = String(rawValue).trim().toLowerCase()
-  if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(lower)) return 'youtube'
-  if (/^(https?:\/\/)?(www\.)?(reddit\.com|redd\.it)\//i.test(lower)) return 'reddit'
-  if (/^(https?:\/\/)?(www\.)?(x\.com|twitter\.com)\//i.test(lower)) return 'x'
-  if (/^https?:\/\//i.test(lower)) return 'generic'
-  return null
+function hasUrlInSearch(search) {
+  const normalizedSearch = normalizeTabSearch(search)
+  if (!normalizedSearch) return false
+
+  const params = new URLSearchParams(normalizedSearch)
+  return Boolean(String(params.get('url') || '').trim())
 }
 
 function HomePage({ onOpenDownloader }) {
   const { t } = useI18n()
-  const theme = useTheme()
-  const genericIcon = theme.palette.mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
-  const xIcon = theme.palette.mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
-  const platforms = [
-    { key: 'youtube', placeholder: t('placeholders.youtubeUrl'), icon: '/dl-icons/youtube-icon.svg' },
-    { key: 'x', placeholder: t('placeholders.xUrl'), icon: xIcon },
-    { key: 'reddit', placeholder: t('placeholders.redditUrl'), icon: '/dl-icons/reddit-icon.svg' },
-    { key: 'generic', placeholder: t('placeholders.genericUrl'), icon: genericIcon },
-  ]
-
-  const FADE_MS = 400
-  const HOLD_MS = 4200
-
-  const [idx, setIdx] = React.useState(0)
-  const [fading, setFading] = React.useState(false)
   const [value, setValue] = React.useState('')
+  const [menuAnchorEl, setMenuAnchorEl] = React.useState(null)
+  const [autoDownloadEnabled, setAutoDownloadEnabled] = React.useState(false)
+  const [autoDownloadFormat, setAutoDownloadFormat] = React.useState('mp4')
+  const [isResolving, setIsResolving] = React.useState(false)
 
-  const intervalRef = React.useRef(null)
-  const timeoutRef = React.useRef(null)
+  const trimmedValue = value.trim()
+  const hasTypedInput = trimmedValue.length > 0
+  const quickActionsOpen = Boolean(menuAnchorEl)
+
+  const resolveAndOpenDownloader = React.useCallback(async (rawUrl) => {
+    const target = String(rawUrl || '').trim()
+    const serviceKey = detectService(target)
+    if (!serviceKey || !target || isResolving) return
+
+    setIsResolving(true)
+    try {
+      const noembedP = fetchNoembed(target).catch(() => ({}))
+      const durationP = fetchDuration(target).catch(() => ({ duration: null, durationString: null }))
+      const [noembed, duration, formats] = await Promise.all([noembedP, durationP, fetchFormats(target)])
+
+      try {
+        sessionStorage.setItem(HOME_PREFETCH_CACHE_KEY, JSON.stringify({
+          type: 'success',
+          url: target,
+          service: serviceKey,
+          noembed,
+          duration,
+          formats,
+          createdAt: Date.now(),
+        }))
+      } catch {
+        // ignore sessionStorage write errors
+      }
+
+      onOpenDownloader?.(serviceKey, target, { prefetched: true })
+    } catch (error) {
+      const message = error?.message || String(error || '')
+      try {
+        sessionStorage.setItem(HOME_PREFETCH_CACHE_KEY, JSON.stringify({
+          type: 'error',
+          url: target,
+          service: serviceKey,
+          errorMessage: message,
+          createdAt: Date.now(),
+        }))
+      } catch {
+        // ignore sessionStorage write errors
+      }
+
+      // Jump directly into the downloader error panel state.
+      onOpenDownloader?.(serviceKey, target, { prefetchedError: true })
+    } finally {
+      setIsResolving(false)
+    }
+  }, [isResolving, onOpenDownloader])
+
+  const openQuickActions = React.useCallback((event) => {
+    setMenuAnchorEl(event.currentTarget)
+  }, [])
+
+  const closeQuickActions = React.useCallback(() => {
+    setMenuAnchorEl(null)
+  }, [])
 
   React.useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-      timeoutRef.current = null
-    }
-
-    if (value && value.length > 0) {
-      setFading(false)
-      return () => {}
-    }
-
-    intervalRef.current = setInterval(() => {
-      setFading(true)
-      timeoutRef.current = setTimeout(() => {
-        setIdx((i) => (i + 1) % platforms.length)
-        setFading(false)
-      }, FADE_MS)
-    }, HOLD_MS + FADE_MS)
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    }
-  }, [value, platforms.length])
-
-  const goToDownloader = React.useCallback((serviceKey, rawUrl) => {
-    if (!serviceKey || !rawUrl) return
-    onOpenDownloader?.(serviceKey, rawUrl)
-  }, [onOpenDownloader])
-
-  React.useEffect(() => {
-    const serviceKey = detectServiceFromUrl(value)
-    if (!serviceKey) return
-    const timer = setTimeout(() => {
-      goToDownloader(serviceKey, value)
-    }, 250)
-    return () => clearTimeout(timer)
-  }, [value, goToDownloader])
+    if (!hasTypedInput) return
+    if (menuAnchorEl) setMenuAnchorEl(null)
+  }, [hasTypedInput, menuAnchorEl])
 
   const handleSubmit = React.useCallback(() => {
-    const serviceKey = detectServiceFromUrl(value)
-    if (serviceKey) goToDownloader(serviceKey, value)
-  }, [value, goToDownloader])
+    const serviceKey = detectService(value)
+    if (serviceKey) resolveAndOpenDownloader(value)
+  }, [resolveAndOpenDownloader, value])
 
   return (
     <Box sx={{ position: 'relative', height: '100%' }}>
       <Box sx={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '100%', maxWidth: 780, px: 2 }}>
         <TextField
-          placeholder={platforms[idx].placeholder}
+          placeholder={t('placeholders.genericUrl')}
           variant="outlined"
           fullWidth
           size="medium"
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          onClick={(e) => e.target.select()}
+          onMouseUp={(e) => e.preventDefault()}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
           InputProps={{
             startAdornment: (
-              <InputAdornment position="start" sx={{ mr: 0.25 }}>
+              <InputAdornment position="start" sx={{ mr: 0.25, ml: 0 }}>
                 <Box
                   sx={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: 44,
-                    height: 44,
+                    width: 36,
+                    height: 36,
                     ml: 0,
-                    opacity: fading ? 0 : 1,
-                    transition: `opacity ${FADE_MS}ms ease`,
                   }}
                 >
-                  <Box component="img" src={platforms[idx].icon} alt={t('app.platformIconAlt')} sx={{ width: 32, height: 32, display: 'block' }} />
+                  <>
+                    <IconButton
+                      size="small"
+                      aria-label={t('home.quickActions.openAria')}
+                      onClick={openQuickActions}
+                      disabled={hasTypedInput || isResolving}
+                      sx={(theme) => ({
+                        width: 36,
+                        height: 36,
+                        p: 0,
+                        borderRadius: '50%',
+                        color: (hasTypedInput || isResolving)
+                          ? theme.palette.text.disabled
+                          : (quickActionsOpen ? theme.palette.text.primary : theme.palette.text.secondary),
+                        bgcolor: !(hasTypedInput || isResolving) && quickActionsOpen
+                          ? (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')
+                          : 'transparent',
+                        opacity: 1,
+                        cursor: (hasTypedInput || isResolving) ? 'default' : 'pointer',
+                        '&:hover': {
+                          bgcolor: (hasTypedInput || isResolving)
+                            ? 'transparent'
+                            : (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'),
+                          color: (hasTypedInput || isResolving) ? theme.palette.text.disabled : theme.palette.text.primary,
+                          opacity: 1,
+                        },
+                        '&.Mui-disabled': {
+                          opacity: 1,
+                          color: theme.palette.text.disabled,
+                        },
+                      })}
+                    >
+                      <Plus size={20} />
+                    </IconButton>
+                    <Menu
+                      anchorEl={menuAnchorEl}
+                      open={quickActionsOpen}
+                      onClose={closeQuickActions}
+                      transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+                      anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+                      slotProps={{
+                        paper: {
+                          sx: (theme) => ({
+                            mt: 1,
+                            width: 290,
+                            borderRadius: '16px',
+                            overflow: 'hidden',
+                            border: `1px solid ${theme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0'}`,
+                            bgcolor: theme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
+                            boxShadow: theme.palette.mode === 'dark'
+                              ? '0 14px 32px rgba(0,0,0,0.45)'
+                              : '0 14px 30px rgba(0,0,0,0.16)',
+                          }),
+                        },
+                      }}
+                    >
+                        <MenuItem
+                          onClick={closeQuickActions}
+                          sx={{
+                            py: 1.15,
+                            px: 1.5,
+                            mx: 0.75,
+                            mt: 0.65,
+                            borderRadius: 2,
+                          }}
+                        >
+                          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.15 }}>
+                            <List size={16} />
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {t('home.quickActions.multiDownload')}
+                            </Typography>
+                          </Box>
+                        </MenuItem>
+
+                        <Divider sx={(theme) => ({ mx: 1.5, my: 0.85, borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })} />
+
+                        <Box sx={{ px: 1.5, pt: 0.2, pb: autoDownloadEnabled ? 1.35 : 1.1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 38 }}>
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.15 }}>
+                              <Zap size={16} />
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {t('home.quickActions.autoDownload')}
+                              </Typography>
+                            </Box>
+                            <Switch
+                              size="small"
+                              checked={autoDownloadEnabled}
+                              onChange={(event) => setAutoDownloadEnabled(event.target.checked)}
+                              inputProps={{ 'aria-label': t('home.quickActions.autoDownloadSwitchAria') }}
+                            />
+                          </Box>
+
+                          {autoDownloadEnabled && (
+                            <Box sx={{ display: 'flex', gap: 1, mt: 1.1 }}>
+                              <Button
+                                size="small"
+                                variant={autoDownloadFormat === 'mp4' ? 'contained' : 'outlined'}
+                                onClick={() => setAutoDownloadFormat('mp4')}
+                                sx={(theme) => ({
+                                  flex: 1,
+                                  minWidth: 0,
+                                  borderRadius: 1.5,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  ...(autoDownloadFormat === 'mp4'
+                                    ? {
+                                        bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
+                                        color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
+                                        '&:hover': {
+                                          bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
+                                        },
+                                      }
+                                    : {
+                                        borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
+                                        color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
+                                      }),
+                                })}
+                              >
+                                {t('home.quickActions.formatMp4')}
+                              </Button>
+                              <Button
+                                size="small"
+                                variant={autoDownloadFormat === 'mp3' ? 'contained' : 'outlined'}
+                                onClick={() => setAutoDownloadFormat('mp3')}
+                                sx={(theme) => ({
+                                  flex: 1,
+                                  minWidth: 0,
+                                  borderRadius: 1.5,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  ...(autoDownloadFormat === 'mp3'
+                                    ? {
+                                        bgcolor: theme.palette.mode === 'dark' ? '#f3f4f6' : '#111827',
+                                        color: theme.palette.mode === 'dark' ? '#111827' : '#f9fafb',
+                                        '&:hover': {
+                                          bgcolor: theme.palette.mode === 'dark' ? '#e5e7eb' : '#1f2937',
+                                        },
+                                      }
+                                    : {
+                                        borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.2)',
+                                        color: theme.palette.mode === 'dark' ? '#e5e7eb' : '#374151',
+                                      }),
+                                })}
+                              >
+                                {t('home.quickActions.formatMp3')}
+                              </Button>
+                            </Box>
+                          )}
+                        </Box>
+                    </Menu>
+                  </>
                 </Box>
               </InputAdornment>
             ),
             endAdornment: (
               <InputAdornment position="end">
-                <IconButton
-                  size="small"
-                  aria-label={t('app.startDownloadAria')}
-                  edge="end"
-                  onClick={handleSubmit}
-                  sx={(muiTheme) => ({
-                    width: 36,
-                    height: 36,
-                    bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                    color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
-                    borderRadius: '50%',
-                    boxShadow: muiTheme.palette.mode === 'dark'
-                      ? '0 2px 6px rgba(0,0,0,0.4)'
-                      : '0 2px 6px rgba(0,0,0,0.25)',
-                    '&:hover': {
-                      bgcolor: muiTheme.palette.mode === 'dark' ? '#f5f5f5' : '#111111',
-                    },
-                  })}
-                >
-                  <ArrowRight size={18} />
-                </IconButton>
+                {isResolving ? (
+                  <IconButton
+                    size="small"
+                    edge="end"
+                    disableRipple
+                    disabled
+                    aria-label={t('app.loadingAria')}
+                    sx={(muiTheme) => ({
+                      width: 36,
+                      height: 36,
+                      bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                      color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                      borderRadius: '50%',
+                      boxShadow: muiTheme.palette.mode === 'dark'
+                        ? '0 2px 6px rgba(0,0,0,0.4)'
+                        : '0 2px 6px rgba(0,0,0,0.25)',
+                      opacity: 1,
+                      '&.Mui-disabled': {
+                        opacity: 1,
+                        color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                        bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                      },
+                    })}
+                  >
+                    <CircularProgress
+                      size={18}
+                      thickness={4}
+                      sx={{ color: (muiTheme) => (muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff') }}
+                    />
+                  </IconButton>
+                ) : (
+                  <IconButton
+                    size="small"
+                    aria-label={t('app.startDownloadAria')}
+                    edge="end"
+                    onClick={handleSubmit}
+                    sx={(muiTheme) => ({
+                      width: 36,
+                      height: 36,
+                      bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                      color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                      borderRadius: '50%',
+                      boxShadow: muiTheme.palette.mode === 'dark'
+                        ? '0 2px 6px rgba(0,0,0,0.4)'
+                        : '0 2px 6px rgba(0,0,0,0.25)',
+                      '&:hover': {
+                        bgcolor: muiTheme.palette.mode === 'dark' ? '#f5f5f5' : '#111111',
+                      },
+                    })}
+                  >
+                    <ArrowRight size={18} />
+                  </IconButton>
+                )}
               </InputAdornment>
             ),
           }}
           onPaste={(e) => {
             const pasted = e.clipboardData.getData('text')
-            const serviceKey = detectServiceFromUrl(pasted)
+            const serviceKey = detectService(pasted)
             if (serviceKey) {
               setValue(pasted)
-              setTimeout(() => goToDownloader(serviceKey, pasted), 0)
+              setTimeout(() => resolveAndOpenDownloader(pasted), 0)
             }
           }}
           sx={(muiTheme) => ({
@@ -314,23 +508,26 @@ function HomePage({ onOpenDownloader }) {
                 borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
                 borderWidth: '1px !important',
               },
+              '&.Mui-disabled fieldset': {
+                borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                borderWidth: '1px !important',
+              },
               boxShadow: muiTheme.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
             },
             '& .MuiOutlinedInput-input': {
-              paddingLeft: '4px',
+              paddingLeft: '8px',
               paddingRight: '16px',
               color: muiTheme.palette.text.primary,
               fontWeight: 700,
               outline: 'none',
-              transition: `opacity ${FADE_MS}ms ease`,
-              opacity: fading ? 0 : 1,
             },
             '& .MuiOutlinedInput-input::placeholder': {
               color: muiTheme.palette.text.secondary,
               fontWeight: 700,
             },
           })}
-          inputProps={{ 'aria-label': t('app.urlInputAria', { service: 'YouTube' }) }}
+          disabled={isResolving}
+          inputProps={{ 'aria-label': t('app.urlInputAria', { service: t('routes.downloader') }) }}
         />
       </Box>
 
@@ -490,10 +687,16 @@ export default function App() {
     navigateTab(activeTabId, path, search)
   }, [activeTabId, navigateTab])
 
-  const openDownloaderInTab = React.useCallback((tabId, serviceKey, rawUrl) => {
+  const openDownloaderInTab = React.useCallback((tabId, serviceKey, rawUrl, options = {}) => {
     const path = getPathForService(serviceKey)
     const trimmedUrl = String(rawUrl || '').trim()
-    const search = trimmedUrl ? `?url=${encodeURIComponent(trimmedUrl)}` : ''
+    const detected = detectService(trimmedUrl) || serviceKey || 'generic'
+    const params = new URLSearchParams()
+    params.set('service', detected)
+    if (trimmedUrl) params.set('url', trimmedUrl)
+    if (options?.prefetched) params.set('prefetch', '1')
+    if (options?.prefetchedError) params.set('prefetchError', '1')
+    const search = params.toString() ? `?${params.toString()}` : ''
     navigateTab(tabId, path, search)
   }, [navigateTab])
 
@@ -522,8 +725,8 @@ export default function App() {
   }, [activeTab?.path, activeTab?.search])
 
   const getDisplayTabTitle = React.useCallback((tab) => {
-    const routeTitle = getRouteTitle(tab.path, t)
-    if (!isDownloaderPath(tab.path)) return routeTitle
+    const routeTitle = getRouteTitle(tab.path, t, tab.search)
+    if (normalizeTabPath(tab.path) !== '/' || !hasUrlInSearch(tab.search)) return routeTitle
 
     const candidate = tab.download?.title || tab.pageTitle
     return candidate || routeTitle
@@ -709,6 +912,7 @@ export default function App() {
 
   const renderTabContent = React.useCallback((tab) => {
     const normalizedPath = normalizeTabPath(tab.path)
+    const normalizedSearch = normalizeTabSearch(tab.search)
 
     if (normalizedPath === '/downloads') {
       return (
@@ -722,8 +926,8 @@ export default function App() {
       return <SupportPage />
     }
 
-    if (isDownloaderPath(normalizedPath)) {
-      const serviceKey = getServiceForPath(normalizedPath) || 'generic'
+    if (normalizedPath === '/' && hasUrlInSearch(normalizedSearch)) {
+      const serviceKey = getServiceForPath(normalizedPath, tab.search) || 'generic'
       return (
         <Downloader
           serviceKey={serviceKey}
@@ -736,7 +940,7 @@ export default function App() {
     }
 
     return (
-      <HomePage onOpenDownloader={(serviceKey, rawUrl) => openDownloaderInTab(tab.id, serviceKey, rawUrl)} />
+      <HomePage onOpenDownloader={(serviceKey, rawUrl, options) => openDownloaderInTab(tab.id, serviceKey, rawUrl, options)} />
     )
   }, [handleTabRuntimeChange, navigateTab, openDownloaderInTab])
 
@@ -781,6 +985,7 @@ export default function App() {
     <>
       <AppLayout
         activePath={activeTab?.path || '/'}
+        activeSearch={activeTab?.search || ''}
         tabs={tabs.map((tab) => ({
           ...tab,
           displayTitle: getDisplayTabTitle(tab),

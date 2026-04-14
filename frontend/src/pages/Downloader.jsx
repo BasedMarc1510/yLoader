@@ -3,8 +3,11 @@ import { Box, Stack, Typography, TextField, InputAdornment, IconButton, Circular
 import { ArrowRight, X, AlertTriangle } from 'lucide-react'
 import { useTheme } from '@mui/material/styles'
 import DownloaderShell from '../components/downloader/DownloaderShell'
-import { fetchNoembed, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchFormats } from '../utils/metadata'
+import ServiceIcon from '../components/ServiceIcon'
+import { detectService, fetchNoembed, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchFormats } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
+
+const HOME_PREFETCH_CACHE_KEY = 'yloader.home.prefetch.v1'
 
 function extractYtDlpError(msg) {
   if (!msg) return ''
@@ -15,9 +18,8 @@ function extractYtDlpError(msg) {
   return raw.replace(/\ufffd/g, '\u2019')
 }
 
-// serviceKey: 'youtube' | 'reddit' | 'x'
 export default function Downloader({
-  serviceKey = 'youtube',
+  serviceKey = 'generic',
   routeSearch = '',
   routeToken = 0,
   onNavigate,
@@ -26,8 +28,6 @@ export default function Downloader({
   const { t: i18nT } = useI18n()
   const t = useTheme()
   const mode = t.palette.mode
-  const genericIcon = mode === 'dark' ? '/dl-icons/generic-icon-dark.svg' : '/dl-icons/generic-icon-light.svg'
-  const xIcon = mode === 'dark' ? '/dl-icons/x-icon-dark.svg' : '/dl-icons/x-icon-light.svg'
   const inputRef = React.useRef(null)
 
   const services = {
@@ -39,7 +39,7 @@ export default function Downloader({
         'https://youtu.be/PsO6ZnUZI0g',
         'https://www.youtube.com/shorts/PsO6ZnUZI0g',
       ],
-      icon: '/dl-icons/youtube-icon.svg',
+      icon: 'youtube',
       yColor: '#df2f2f',
     },
     reddit: {
@@ -50,7 +50,7 @@ export default function Downloader({
         'https://redd.it/abc123',
         'https://www.reddit.com/comments/abc123',
       ],
-      icon: '/dl-icons/reddit-icon.svg',
+      icon: 'reddit',
       yColor: '#ff4500',
     },
     x: {
@@ -61,7 +61,7 @@ export default function Downloader({
         'https://twitter.com/elonmusk/status/1234567890123456789',
         'https://x.com/i/status/1234567890123456789',
       ],
-      icon: xIcon,
+      icon: 'x',
       // X brand is black/white; adapt for contrast by theme
       yColor: mode === 'dark' ? '#ffffff' : '#000000',
     },
@@ -74,12 +74,17 @@ export default function Downloader({
         'https://www.dailymotion.com/video/x8abc12',
         'https://www.twitch.tv/videos/1234567890',
       ],
-      icon: genericIcon,
+      icon: 'generic',
       yColor: '#6366f1',
     },
   }
 
-  const cfg = services[serviceKey] || services.youtube
+  const params = React.useMemo(() => new URLSearchParams(routeSearch), [routeSearch])
+  const serviceParam = React.useMemo(() => String(params.get('service') || '').trim().toLowerCase(), [params])
+  const queryUrl = React.useMemo(() => String(params.get('url') || '').trim(), [params])
+  const serviceFromQuery = services[serviceParam] ? serviceParam : null
+  const resolvedServiceKey = serviceFromQuery || detectService(queryUrl) || serviceKey || 'generic'
+  const cfg = services[resolvedServiceKey] || services.generic
   const [value, setValue] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [meta, setMeta] = React.useState(null) // when set -> show downloader UI
@@ -96,22 +101,66 @@ export default function Downloader({
   // Reset index when service changes
   React.useEffect(() => {
     setIdx(0)
-  }, [serviceKey])
+  }, [resolvedServiceKey])
 
   // Read ?url= param and prefill
   React.useEffect(() => {
-    const params = new URLSearchParams(routeSearch)
     const urlParam = params.get('url')
+    const shouldUsePrefetch = params.get('prefetch') === '1'
+    const shouldUsePrefetchError = params.get('prefetchError') === '1'
     if (urlParam && typeof urlParam === 'string') {
       setValue(urlParam)
+      const effectiveService = detectService(urlParam) || serviceFromQuery || serviceKey || 'generic'
+
+      if (shouldUsePrefetch || shouldUsePrefetchError) {
+        try {
+          const raw = sessionStorage.getItem(HOME_PREFETCH_CACHE_KEY)
+          if (raw) {
+            const parsed = JSON.parse(raw)
+            if (parsed?.url === urlParam) {
+              if (parsed?.type === 'error' || shouldUsePrefetchError) {
+                setMeta(null)
+                setFetchError({
+                  url: urlParam,
+                  message: parsed?.errorMessage || i18nT('downloader.errorDownloadFailed'),
+                })
+                setLoading(false)
+                try {
+                  sessionStorage.removeItem(HOME_PREFETCH_CACHE_KEY)
+                } catch {
+                  // ignore sessionStorage cleanup errors
+                }
+                return
+              }
+
+              const model = toMetaModel(parsed.service || effectiveService, urlParam, parsed.noembed || {})
+              model.duration = parsed?.duration?.durationString || null
+              model.durationSeconds = parsed?.duration?.duration || null
+              model.preloadedFormats = parsed?.formats
+              setMeta(model)
+              setFetchError(null)
+              setLoading(false)
+              try {
+                sessionStorage.removeItem(HOME_PREFETCH_CACHE_KEY)
+              } catch {
+                // ignore sessionStorage cleanup errors
+              }
+              return
+            }
+          }
+        } catch {
+          // ignore prefetched payload parse errors
+        }
+      }
+
       // If a valid URL is provided via query, auto-fetch meta on mount
-      if (isLikelyValidUrlFor(serviceKey, urlParam)) {
+      if (isLikelyValidUrlFor(effectiveService, urlParam)) {
         // delay a tick so input shows value before spinner kicks in
         setTimeout(() => handleFetch(urlParam), 0)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeSearch, routeToken, serviceKey])
+  }, [routeSearch, routeToken, serviceFromQuery, serviceKey])
 
   // Reset to input bar when navigating to the downloader base route (no ?url)
   // This also covers clicking the same downloader again in the sidebar.
@@ -126,7 +175,7 @@ export default function Downloader({
     // We intentionally only depend on route token and service key to capture repeated route clicks
     // without causing re-runs while typing
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeToken, serviceKey, routeSearch])
+  }, [routeToken, resolvedServiceKey, routeSearch])
 
   // Auto-fetch metadata when a valid URL is entered (like on the start page)
   React.useEffect(() => {
@@ -135,7 +184,8 @@ export default function Downloader({
 
     // Check if the current value is a valid URL for this service
     const trimmedValue = value.trim()
-    if (!isLikelyValidUrlFor(serviceKey, trimmedValue)) return
+    const valueService = detectService(trimmedValue) || resolvedServiceKey
+    if (!isLikelyValidUrlFor(valueService, trimmedValue)) return
 
     // Debounce the fetch to avoid excessive calls while typing
     const timer = setTimeout(() => {
@@ -144,7 +194,7 @@ export default function Downloader({
 
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, serviceKey])
+  }, [value, resolvedServiceKey])
 
   // Clear input bar after metadata is successfully loaded
   React.useEffect(() => {
@@ -187,11 +237,12 @@ export default function Downloader({
       if (intervalRef.current) clearInterval(intervalRef.current)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
-  }, [value, serviceKey])
+  }, [value, resolvedServiceKey])
 
   const handleFetch = async (urlOverride) => {
     const target = (urlOverride ?? value).trim()
-    if (!isLikelyValidUrlFor(serviceKey, target) || loading) return
+    const targetService = detectService(target) || resolvedServiceKey || 'generic'
+    if (!isLikelyValidUrlFor(targetService, target) || loading) return
     setLoading(true)
     setMeta(null)
     setFetchError(null)
@@ -200,7 +251,7 @@ export default function Downloader({
       const noembedP = fetchNoembed(target).catch(() => ({}))
       const durationP = fetchDuration(target).catch(() => ({ duration: null, durationString: null }))
       const [noembed, duration, formats] = await Promise.all([noembedP, durationP, fetchFormats(target)])
-      const model = toMetaModel(serviceKey, target, noembed)
+      const model = toMetaModel(targetService, target, noembed)
       model.duration = duration?.durationString || null
       model.durationSeconds = duration?.duration || null
       model.preloadedFormats = formats
@@ -212,7 +263,7 @@ export default function Downloader({
     }
   }
 
-  const basePath = serviceKey === 'youtube' ? '/youtube-downloader' : serviceKey === 'reddit' ? '/reddit-downloader' : serviceKey === 'x' ? '/x-downloader' : '/generic-downloader'
+  const basePath = '/'
 
   const closeInterface = () => {
     setMeta(null)
@@ -233,7 +284,8 @@ export default function Downloader({
   const retryError = () => {
     const url = fetchError?.url
     setFetchError(null)
-    onNavigate?.(basePath, `?url=${encodeURIComponent(url)}`)
+    const retryService = detectService(url) || resolvedServiceKey || 'generic'
+    onNavigate?.(basePath, `?service=${encodeURIComponent(retryService)}&url=${encodeURIComponent(url)}`)
   }
 
   const handleDownloadStateChange = React.useCallback((state) => {
@@ -290,7 +342,9 @@ export default function Downloader({
     }
   }, [meta, serviceKey, loading, fetchError])
 
-  const showLanding = !meta && !fetchError
+  const hasRouteUrl = Boolean(queryUrl)
+  const showLanding = !meta && !fetchError && !hasRouteUrl
+  const showRouteLoading = !showLanding && loading && !meta && !fetchError
 
   return (
     <Box sx={{ position: 'relative', height: '100%', overflowY: showLanding ? 'hidden' : 'auto' }}>
@@ -316,6 +370,9 @@ export default function Downloader({
           inputRef={inputRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          onClick={(e) => e.target.select()}
+          onMouseUp={(e) => e.preventDefault()}
           onKeyDown={(e) => { if (e.key === 'Enter') handleFetch() }}
           InputProps={{
             startAdornment: (
@@ -330,31 +387,44 @@ export default function Downloader({
                     ml: 0,
                   }}
                 >
-                  <Box component="img" src={cfg.icon} alt={i18nT('sidebar.iconAlt', { name: cfg.name })} sx={{ width: 32, height: 32, display: 'block' }} />
+                  <ServiceIcon serviceKey={cfg.icon} size={32} title={i18nT('sidebar.iconAlt', { name: cfg.name })} />
                 </Box>
               </InputAdornment>
             ),
             endAdornment: (
               <InputAdornment position="end">
                 {loading ? (
-                  <Box
+                  <IconButton
+                    size="small"
+                    edge="end"
+                    disableRipple
+                    disabled
                     aria-label={i18nT('app.loadingAria')}
                     sx={(t) => ({
                       width: 36,
                       height: 36,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      bgcolor: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                      color: t.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                      borderRadius: '50%',
+                      boxShadow: t.palette.mode === 'dark'
+                        ? '0 2px 6px rgba(0,0,0,0.4)'
+                        : '0 2px 6px rgba(0,0,0,0.25)',
+                      opacity: 1,
+                      '&.Mui-disabled': {
+                        opacity: 1,
+                        color: t.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                        bgcolor: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                      },
                     })}
                   >
                     <CircularProgress
-                      size={36}
-                      thickness={3.5}
+                      size={18}
+                      thickness={4}
                       sx={(t) => ({
-                        color: t.palette.mode === 'dark' ? t.palette.grey[400] : t.palette.grey[600],
+                        color: t.palette.mode === 'dark' ? '#000000' : '#ffffff',
                       })}
                     />
-                  </Box>
+                  </IconButton>
                 ) : (
                   <IconButton
                     size="small"
@@ -399,6 +469,10 @@ export default function Downloader({
                 borderColor: t.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
               },
               '&.Mui-focused fieldset': {
+                borderColor: t.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                borderWidth: '1px !important',
+              },
+              '&.Mui-disabled fieldset': {
                 borderColor: t.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
                 borderWidth: '1px !important',
               },
@@ -468,6 +542,20 @@ export default function Downloader({
             onFetchError={handleFetchError}
             onDownloadStateChange={handleDownloadStateChange}
           />
+        </Box>
+      )}
+
+      {showRouteLoading && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            minHeight: '100%',
+          }}
+        >
+          <CircularProgress size={28} />
         </Box>
       )}
 

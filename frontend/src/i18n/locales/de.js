@@ -19,6 +19,7 @@ const de = {
   },
   routes: {
     home: 'Startseite',
+    downloader: 'Downloader',
     downloads: 'Alle Downloads',
     support: 'Support',
     youtubeDownloader: 'YouTube Downloader',
@@ -48,6 +49,16 @@ const de = {
     collapse: 'Sidebar einklappen',
     settings: 'Einstellungen',
     iconAlt: '{name} Icon',
+  },
+  home: {
+    quickActions: {
+      openAria: 'Schnellaktionen öffnen',
+      multiDownload: 'Multi-Download',
+      autoDownload: 'Auto-Download',
+      autoDownloadSwitchAria: 'Auto-Download aktivieren',
+      formatMp4: 'MP4',
+      formatMp3: 'MP3',
+    },
   },
   settings: {
     title: 'Einstellungen',

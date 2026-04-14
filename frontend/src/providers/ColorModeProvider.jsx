@@ -74,6 +74,11 @@ export default function ColorModeProvider({ children }) {
     return sys ? 'dark' : 'light'
   }, [preference])
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.documentElement.setAttribute('data-theme-mode', effectiveMode)
+  }, [effectiveMode])
+
   const theme = useMemo(() => createTheme({
     palette: {
       mode: effectiveMode,
