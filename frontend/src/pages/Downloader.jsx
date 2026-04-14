@@ -1,13 +1,13 @@
 import React from 'react'
-import { Box, CircularProgress } from '@mui/material'
+import { Box } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import DownloaderShell from '../components/downloader/DownloaderShell'
-import { detectService, fetchNoembed, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchFormats } from '../utils/metadata'
+import { detectService, toMetaModel, isLikelyValidUrlFor, fetchFormats } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import DownloaderLanding from './downloader/DownloaderLanding'
 import FetchErrorPanel from './downloader/FetchErrorPanel'
 import buildServices from './downloader/buildServices'
-import { FADE_MS, HOLD_MS, HOME_PREFETCH_CACHE_KEY } from './downloader/constants'
+import { FADE_MS, HOLD_MS } from './downloader/constants'
 
 export default function Downloader({
   serviceKey = 'generic',
@@ -48,51 +48,10 @@ export default function Downloader({
   // Read ?url= param and prefill
   React.useEffect(() => {
     const urlParam = params.get('url')
-    const shouldUsePrefetch = params.get('prefetch') === '1'
     if (urlParam && typeof urlParam === 'string') {
       setValue(urlParam)
+      setFetchError(null)
       const effectiveService = detectService(urlParam) || serviceFromQuery || serviceKey || 'generic'
-
-      if (shouldUsePrefetch) {
-        try {
-          const raw = sessionStorage.getItem(HOME_PREFETCH_CACHE_KEY)
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            if (parsed?.url === urlParam) {
-              if (parsed?.type === 'error') {
-                setMeta(null)
-                setFetchError({
-                  url: urlParam,
-                  message: parsed?.errorMessage || i18nT('downloader.errorDownloadFailed'),
-                })
-                setLoading(false)
-                try {
-                  sessionStorage.removeItem(HOME_PREFETCH_CACHE_KEY)
-                } catch {
-                  // ignore sessionStorage cleanup errors
-                }
-                return
-              }
-
-              const model = toMetaModel(parsed.service || effectiveService, urlParam, parsed.noembed || {})
-              model.duration = parsed?.duration?.durationString || null
-              model.durationSeconds = parsed?.duration?.duration || null
-              model.preloadedFormats = parsed?.formats
-              setMeta(model)
-              setFetchError(null)
-              setLoading(false)
-              try {
-                sessionStorage.removeItem(HOME_PREFETCH_CACHE_KEY)
-              } catch {
-                // ignore sessionStorage cleanup errors
-              }
-              return
-            }
-          }
-        } catch {
-          // ignore prefetched payload parse errors
-        }
-      }
 
       // If a valid URL is provided via query, auto-fetch meta on mount
       if (isLikelyValidUrlFor(effectiveService, urlParam)) {
@@ -136,6 +95,16 @@ export default function Downloader({
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, resolvedServiceKey])
+
+  const loadingShellMeta = React.useMemo(() => ({
+    thumbnail: '',
+    title: '',
+    author: '',
+    duration: null,
+    durationSeconds: null,
+    preloadedFormats: null,
+    url: queryUrl || value || '',
+  }), [queryUrl, value])
 
   // Clear input bar after metadata is successfully loaded
   React.useEffect(() => {
@@ -188,13 +157,15 @@ export default function Downloader({
     setMeta(null)
     setFetchError(null)
     try {
-      // Start all three in parallel; formats is required - let it throw on error
-      const noembedP = fetchNoembed(target).catch(() => ({}))
-      const durationP = fetchDuration(target).catch(() => ({ duration: null, durationString: null }))
-      const [noembed, duration, formats] = await Promise.all([noembedP, durationP, fetchFormats(target)])
-      const model = toMetaModel(targetService, target, noembed)
-      model.duration = duration?.durationString || null
-      model.durationSeconds = duration?.duration || null
+      const formats = await fetchFormats(target)
+      const model = toMetaModel(targetService, target, {
+        title: formats?.title || '',
+        author_name: formats?.author || '',
+        provider_name: formats?.extractor || '',
+        thumbnail_url: formats?.thumbnail || '',
+      })
+      model.duration = formats?.durationString || null
+      model.durationSeconds = formats?.duration || null
       model.preloadedFormats = formats
       setMeta(model)
     } catch (e) {
@@ -284,8 +255,10 @@ export default function Downloader({
   }, [meta, serviceKey, loading, fetchError])
 
   const hasRouteUrl = Boolean(queryUrl)
-  const showLanding = !meta && !fetchError && !hasRouteUrl
-  const showRouteLoading = !showLanding && loading && !meta && !fetchError
+  const routeService = detectService(queryUrl) || resolvedServiceKey
+  const hasValidRouteUrl = hasRouteUrl && isLikelyValidUrlFor(routeService, queryUrl)
+  const showLanding = !meta && !fetchError && !hasValidRouteUrl
+  const showLoadingShell = !meta && !fetchError && hasValidRouteUrl
 
   return (
     <Box sx={{ position: 'relative', height: '100%', overflowY: showLanding ? 'hidden' : 'auto' }}>
@@ -304,7 +277,7 @@ export default function Downloader({
       />
 
       {/* Downloader UI (appears after metadata is loaded) */}
-      {meta && (
+      {(meta || showLoadingShell) && (
         <Box
           sx={{
             display: 'flex',
@@ -318,26 +291,13 @@ export default function Downloader({
         >
           <DownloaderShell
             brand={cfg}
-            meta={meta}
+            meta={meta || loadingShellMeta}
             onClose={closeInterface}
-            serviceKey={serviceKey}
+            serviceKey={resolvedServiceKey}
             onFetchError={handleFetchError}
             onDownloadStateChange={handleDownloadStateChange}
+            loadingState={showLoadingShell}
           />
-        </Box>
-      )}
-
-      {showRouteLoading && (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '100%',
-            minHeight: '100%',
-          }}
-        >
-          <CircularProgress size={28} />
         </Box>
       )}
 

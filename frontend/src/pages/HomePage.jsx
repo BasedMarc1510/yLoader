@@ -9,14 +9,14 @@ import {
   DialogActions,
   Button,
 } from '@mui/material'
-import { detectService, fetchDuration, fetchFormats, fetchNoembed } from '../utils/metadata'
+import { detectService, isLikelyValidUrlFor } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import { useNotification } from '../providers/NotificationProvider'
 import HomeQuickActions from './home/HomeQuickActions'
 import HomeMultiInput from './home/HomeMultiInput'
 import HomeSingleInput from './home/HomeSingleInput'
 import HomeErrorOverlay from './home/HomeErrorOverlay'
-import { HOME_AUTO_PREFS_KEY, HOME_PREFETCH_CACHE_KEY } from './home/constants'
+import { HOME_AUTO_PREFS_KEY } from './home/constants'
 import { readHomeAutoDownloadPrefs, persistHomeAutoDownloadPrefs } from './home/prefs'
 import { useAutoDownload } from './home/useAutoDownload'
 
@@ -76,40 +76,14 @@ export default function HomePage({ onOpenDownloader }) {
     ? (136 + Math.max(0, multiInputRows - 3) * 24)
     : 56
 
-  const resolveAndOpenDownloader = React.useCallback(async (rawUrl) => {
+  const resolveAndOpenDownloader = React.useCallback((rawUrl) => {
     const target = String(rawUrl || '').trim()
-    const serviceKey = detectService(target)
-    if (!serviceKey || !target || isResolving) return
+    const detectedService = detectService(target)
+    if (!detectedService || !target || isResolving) return
+    if (!isLikelyValidUrlFor(detectedService, target)) return
 
     setFetchError(null)
-    setIsResolving(true)
-
-    try {
-      const noembedP = fetchNoembed(target).catch(() => ({}))
-      const durationP = fetchDuration(target).catch(() => ({ duration: null, durationString: null }))
-      const [noembed, duration, formats] = await Promise.all([noembedP, durationP, fetchFormats(target)])
-
-      try {
-        sessionStorage.setItem(HOME_PREFETCH_CACHE_KEY, JSON.stringify({
-          type: 'success',
-          url: target,
-          service: serviceKey,
-          noembed,
-          duration,
-          formats,
-          createdAt: Date.now(),
-        }))
-      } catch {
-        // ignore sessionStorage write errors
-      }
-
-      onOpenDownloader?.(serviceKey, target, { prefetched: true })
-    } catch (error) {
-      const message = error?.message || String(error || '')
-      setFetchError({ url: target, message })
-    } finally {
-      setIsResolving(false)
-    }
+    onOpenDownloader?.(detectedService, target)
   }, [isResolving, onOpenDownloader])
 
   React.useEffect(() => {

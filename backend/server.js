@@ -55,12 +55,15 @@ const AUTO_DOWNLOAD_SETTINGS_KEY = 'ui.autoDownload.settings.v1'
 const MAX_PERSISTED_TABS = 30
 const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
+const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
+const META_FORMATS_CACHE_MAX_ENTRIES = 150
 const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
   useMetadata: true,
   embedCoverArt: true,
   maxAudioBitrateKbps: 0,
   maxVideoHeight: 0,
 })
+const metaFormatsCache = new Map()
 const ALLOWED_TAB_PATHS = new Set([
   '/',
   '/downloads',
@@ -677,6 +680,59 @@ function parseYtDlpJson(raw) {
   }
 }
 
+function formatDurationLabel(durationSeconds) {
+  const numeric = Number(durationSeconds)
+  if (!Number.isFinite(numeric)) return null
+
+  const total = Math.max(0, Math.round(numeric))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const pad2 = (value) => String(value).padStart(2, '0')
+
+  if (h > 0) {
+    return `${h}:${pad2(m)}:${pad2(s)}`
+  }
+  return `${pad2(m)}:${pad2(s)}`
+}
+
+function readCachedMetaFormats(url) {
+  const key = String(url || '').trim()
+  if (!key) return null
+
+  const cached = metaFormatsCache.get(key)
+  if (!cached) return null
+
+  if (cached.expiresAt <= Date.now()) {
+    metaFormatsCache.delete(key)
+    return null
+  }
+
+  return cached.payload
+}
+
+function writeCachedMetaFormats(url, payload) {
+  const key = String(url || '').trim()
+  if (!key || !payload || typeof payload !== 'object') return
+
+  const now = Date.now()
+  metaFormatsCache.set(key, {
+    expiresAt: now + META_FORMATS_CACHE_TTL_MS,
+    payload,
+  })
+
+  for (const [cacheKey, entry] of metaFormatsCache.entries()) {
+    if (entry.expiresAt > now) continue
+    metaFormatsCache.delete(cacheKey)
+  }
+
+  while (metaFormatsCache.size > META_FORMATS_CACHE_MAX_ENTRIES) {
+    const oldestKey = metaFormatsCache.keys().next().value
+    if (!oldestKey) break
+    metaFormatsCache.delete(oldestKey)
+  }
+}
+
 const YT_DLP_HEALTH_CACHE_TTL_MS = 60 * 1000
 let ytDlpHealthCache = {
   checkedAt: 0,
@@ -1142,20 +1198,7 @@ app.get('/api/meta/duration', async (req, res) => {
     const strRaw = parts.join('|')
     const duration = secRaw ? Number(secRaw) : null
 
-    // Manually format duration to ensure consistency (e.g. 00:46 instead of just 46)
-    let formattedDuration = null
-    if (duration !== null && Number.isFinite(duration)) {
-      const d = Math.round(duration)
-      const h = Math.floor(d / 3600)
-      const m = Math.floor((d % 3600) / 60)
-      const s = d % 60
-      const pp = (n) => n.toString().padStart(2, '0')
-      if (h > 0) {
-        formattedDuration = `${h}:${pp(m)}:${pp(s)}`
-      } else {
-        formattedDuration = `${pp(m)}:${pp(s)}`
-      }
-    }
+    const formattedDuration = formatDurationLabel(duration)
 
     // Prefer our robust formatting, fallback to yt-dlp string, then null
     const durationString = formattedDuration || (strRaw && strRaw.trim()) || null
@@ -1172,6 +1215,11 @@ app.get('/api/meta/formats', async (req, res) => {
   const url = (req.query.url || '').toString().trim()
   if (!url) return res.status(400).json({ error: 'Missing url' })
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
+
+  const cachedPayload = readCachedMetaFormats(url)
+  if (cachedPayload) {
+    return res.json(cachedPayload)
+  }
 
   try {
     // Get format list as JSON
@@ -1254,11 +1302,26 @@ app.get('/api/meta/formats', async (req, res) => {
       return bw - aw
     })
 
-    res.json({
+    const numericDuration = Number(data?.duration)
+    const duration = Number.isFinite(numericDuration) ? numericDuration : null
+    const rawDurationString = String(data?.duration_string || '').trim()
+    const durationString = formatDurationLabel(duration) || rawDurationString || null
+
+    const payload = {
+      title: String(data?.title || '').trim(),
+      author: String(data?.uploader || data?.channel || data?.creator || data?.uploader_id || '').trim(),
+      extractor: String(data?.extractor_key || data?.extractor || '').trim(),
+      thumbnail: String(data?.thumbnail || thumbnails?.[0]?.url || '').trim() || null,
+      duration,
+      durationString,
       audioFormats: audioFormats,
       videoFormats: videoFormats,
       thumbnails: thumbnails,
-    })
+    }
+
+    writeCachedMetaFormats(url, payload)
+
+    res.json(payload)
   } catch (err) {
     console.error('Error fetching formats:', err)
     res.status(500).json({ error: 'Failed to query formats', details: String(err?.message || err) })
