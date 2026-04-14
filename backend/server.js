@@ -246,13 +246,7 @@ app.get('/health', async (_req, res) => {
   }
 
   checks.db = await checkDbHealth()
-
-  try {
-    const version = await runCmd(YT_DLP, ['--version'], { timeout: 5000, maxBuffer: 256 * 1024 })
-    checks.ytDlp = Boolean((version || '').trim())
-  } catch {
-    checks.ytDlp = false
-  }
+  checks.ytDlp = await checkYtDlpHealth()
 
   const healthy = checks.db && checks.ytDlp
   const status = healthy ? 'ok' : 'degraded'
@@ -604,6 +598,34 @@ function parseYtDlpJson(raw) {
     }
     throw new Error('yt-dlp did not return valid JSON metadata')
   }
+}
+
+const YT_DLP_HEALTH_CACHE_TTL_MS = 60 * 1000
+let ytDlpHealthCache = {
+  checkedAt: 0,
+  ok: false,
+}
+
+async function checkYtDlpHealth() {
+  const now = Date.now()
+  if (ytDlpHealthCache.checkedAt > 0 && (now - ytDlpHealthCache.checkedAt) < YT_DLP_HEALTH_CACHE_TTL_MS) {
+    return ytDlpHealthCache.ok
+  }
+
+  let ok = false
+  try {
+    const version = await runCmd(YT_DLP, ['--version'], { timeout: 30000, maxBuffer: 256 * 1024 })
+    ok = Boolean((version || '').trim())
+  } catch {
+    ok = false
+  }
+
+  ytDlpHealthCache = {
+    checkedAt: Date.now(),
+    ok,
+  }
+
+  return ok
 }
 
 function checkDbHealth() {
