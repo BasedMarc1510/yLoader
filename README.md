@@ -135,9 +135,21 @@ Unlike cloud-based downloaders, yLoader is completely private. You avoid ads, tr
 
 ## Support
 
-- Buy Me a Coffee: `https://buymeacoffee.com/michaelsant0s`
-- Bitcoin: `bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f`
-- Dogecoin: `DASGta7VgHuxUCvDh9v5cfRCFLirjs611B`
+If you find this useful, consider supporting development:
+
+<a href="https://buymeacoffee.com/michaelsant0s">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200">
+</a>
+
+BTC donations:  
+`bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f`
+
+![BTC Donation QR](frontend/src/assets/btc-qr.png)
+
+DOGE donations:  
+`DASGta7VgHuxUCvDh9v5cfRCFLirjs611B`
+
+![DOGE Donation QR](frontend/src/assets/doge-qr.png)
 
 ## License
 
