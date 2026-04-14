@@ -238,7 +238,7 @@ body,
      sibling reflows during open/close don't cause 1px vertical jumps */
   will-change: width;
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   flex-shrink: 0;
@@ -371,7 +371,7 @@ body,
   min-width: 0;
   height: 100%;
   border-radius: inherit;
-  padding: 0 6px 0 14px !important;
+  padding: 0 24px 0 14px !important;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -400,7 +400,7 @@ body,
 
 .yl-tab:not(.is-active) .yl-tab-fade {
   right: 2px;
-  width: 34px;
+  width: 40px;
   top: 3px;
   bottom: 3px;
   border-radius: 0 8px 8px 0;
@@ -437,10 +437,11 @@ body,
 .yl-tab-content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
   margin-right: 0;
   flex: 1;
+  padding-right: 4px;
   position: relative;
   z-index: 10;
   transition: opacity 120ms ease;
@@ -454,7 +455,7 @@ body,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1;
 }
@@ -524,7 +525,7 @@ body,
   top: 0;
   /* Stop 1px above the bottom so the fade doesn't overlay the bottom line */
   bottom: 1px;
-  width: 36px;
+  width: 42px;
   background: linear-gradient(to right, transparent, var(--yl-tab-bg));
   pointer-events: none;
   z-index: 15;

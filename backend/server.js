@@ -1378,7 +1378,7 @@ app.get('/api/proxy-image', async (req, res) => {
 })
 
 // POST /api/download/stream -> SSE with live yt-dlp download progress
-// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover?, audioCuts?, videoCuts? }
+// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover?, cuts? }
 app.post('/api/download/stream', async (req, res) => {
   const {
     url: rawUrl,
@@ -1464,10 +1464,11 @@ app.post('/api/download/stream', async (req, res) => {
     coverUploadHash = crypto.createHash('sha256').update(buffer).digest('hex').substring(0, 12)
   }
 
-  // Parse and validate cuts (new payload: req.body.cuts, legacy fallback: req.body.audioCuts).
+  // Parse and validate cuts (new payload: req.body.cuts, legacy fallback: req.body.audioCuts/videoCuts).
+  const legacyCuts = type === 'video' ? req.body.videoCuts : req.body.audioCuts
   const rawCuts = (req.body.cuts && typeof req.body.cuts === 'object')
     ? req.body.cuts
-    : ((req.body.audioCuts && typeof req.body.audioCuts === 'object') ? req.body.audioCuts : null)
+    : ((legacyCuts && typeof legacyCuts === 'object') ? legacyCuts : null)
 
   let cuts = null
   if (rawCuts?.enabled) {
@@ -1485,9 +1486,6 @@ app.post('/api/download/stream', async (req, res) => {
 
     cuts = { enabled: true, mode, trimStart, trimEnd, segments }
   }
-
-  const audioCuts = type === 'audio' ? normalizeCutPayload(req.body.audioCuts) : null
-  const videoCuts = type === 'video' ? normalizeCutPayload(req.body.videoCuts) : null
 
   // Setup SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
@@ -1520,26 +1518,6 @@ app.post('/api/download/stream', async (req, res) => {
   }
 
   try {
-    // Generate unique hash for this download configuration
-    const hashPayload = {
-      url,
-      type,
-      format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
-      audioFormat: normalizedAudioFormatId || '',
-      videoFormat: normalizedVideoFormatId || '',
-      videoTitle: req.body.videoTitle || null,
-      metadata: metadata || null,
-      cover: {
-        enabled: coverEnabled,
-        source: coverSource,
-        upload: coverUploadHash || null,
-      },
-      audioCuts: audioCuts || null,
-    }
-    if (type === 'video' && videoCuts) {
-      hashPayload.videoCuts = videoCuts
-    }
-
     const downloadHash = crypto.createHash('sha256')
       .update(JSON.stringify({
         url,
@@ -1814,41 +1792,6 @@ app.post('/api/download/stream', async (req, res) => {
                   } catch (cutErr) {
                     console.error('Media cut failed:', cutErr)
                     send('message', 'Media cutting failed, continuing with original file')
-                  }
-                }
-              }
-            }
-
-            // Apply video cuts (trim + removals) if requested
-            if (type === 'video' && videoCuts?.enabled) {
-              if (!HAS_FFMPEG) {
-                send('message', '⚠️ ffmpeg required for video cutting – skipping cuts')
-              } else {
-                const keepSegments = computeKeepSegments(videoCuts, mediaDuration)
-                if (keepSegments) {
-                  const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
-                  send('progress', { percent: 99, stage: 'processing' })
-                  try {
-                    let hasAudio = await detectAudioStream(sourcePath)
-                    let ffArgs = buildVideoCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext, hasAudio)
-                    try {
-                      await runCmd(FFMPEG_BIN, ffArgs)
-                    } catch (ffErr) {
-                      const stderr = String(ffErr?.stderr || ffErr?.message || '')
-                      const noAudioHint = /matches no streams|Stream map .*a:0|Cannot find a matching stream/i.test(stderr)
-                      if (!hasAudio || !noAudioHint) throw ffErr
-
-                      hasAudio = false
-                      ffArgs = buildVideoCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext, false)
-                      await runCmd(FFMPEG_BIN, ffArgs)
-                    }
-
-                    if (fs.existsSync(cutOutputPath)) {
-                      sourcePath = cutOutputPath
-                    }
-                  } catch (cutErr) {
-                    console.error('Video cut failed:', cutErr)
-                    send('message', 'Video cutting failed, continuing with original video')
                   }
                 }
               }
