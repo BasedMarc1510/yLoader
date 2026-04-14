@@ -1783,31 +1783,40 @@ app.post('/api/download/stream', async (req, res) => {
     let lastPercent = 0
     let errorOutput = []
 
-    // Parse yt-dlp output for progress
-    const parseProgress = (line) => {
-      // yt-dlp progress format: [download]  45.2% of 10.5MiB at 1.2MiB/s ETA 00:05
-      const match = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/)
-      if (match) {
-        const percent = parseFloat(match[1])
-        if (percent > lastPercent) {
-          lastPercent = percent
-          send('progress', { percent: Math.min(percent, 99), stage: 'downloading' })
-        }
+    // Parse yt-dlp output for progress. Some yt-dlp builds emit many updates in one
+    // chunk with carriage returns, so we scan the whole chunk and take the highest %.
+    const parseProgress = (textChunk) => {
+      const text = String(textChunk || '')
+      if (!text) return
+
+      let nextPercent = null
+      for (const match of text.matchAll(/\[download\][^\r\n]*?(\d+(?:[\.,]\d+)?)%/gi)) {
+        const parsed = Number.parseFloat(String(match[1] || '').replace(',', '.'))
+        if (!Number.isFinite(parsed)) continue
+        nextPercent = nextPercent == null ? parsed : Math.max(nextPercent, parsed)
       }
+
+      if (nextPercent != null && nextPercent > lastPercent) {
+        lastPercent = nextPercent
+        send('progress', { percent: Math.min(nextPercent, 99), stage: 'downloading' })
+      }
+
       // Also check for merge/post-processing
-      if (line.includes('[Merger]') || line.includes('Merging formats')) {
+      if (text.includes('[Merger]') || text.includes('Merging formats')) {
         send('progress', { percent: 99, stage: 'merging' })
       }
-      if (line.includes('[ffmpeg]')) {
+      if (text.includes('[ffmpeg]')) {
         send('progress', { percent: 99, stage: 'processing' })
       }
     }
 
     child.stdout.on('data', (chunk) => {
-      const lines = chunk.toString().split(/\r?\n/)
+      const text = chunk.toString()
+      parseProgress(text)
+
+      const lines = text.split(/\r?\n|\r/)
       for (const line of lines) {
         if (line.trim()) {
-          parseProgress(line)
           send('message', line)
         }
       }
@@ -1821,13 +1830,14 @@ app.post('/api/download/stream', async (req, res) => {
         return
       }
 
-      const lines = text.split(/\r?\n/)
+      parseProgress(text)
+
+      const lines = text.split(/\r?\n|\r/)
       for (const line of lines) {
         if (line.trim()) {
           errorOutput.push(line.trim())
           if (errorOutput.length > 50) errorOutput.shift()
           console.error('yt-dlp stderr:', line)
-          parseProgress(line)
           send('message', line)
         }
       }

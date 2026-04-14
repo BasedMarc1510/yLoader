@@ -663,3 +663,12 @@ body,
   background: color-mix(in srgb, var(--yl-destructive, #ef4444) 90%, #ffffff 10%);
   color: #ffffff;
 }
+
+@keyframes input-border-runner {
+  0% {
+    background-position: 140% 0;
+  }
+  100% {
+    background-position: -60% 0;
+  }
+}
