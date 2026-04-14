@@ -81,15 +81,67 @@ body,
   display: none;
 }
 
+.yl-sidebar-topbar {
+  position: relative;
+}
+
+.yl-sidebar-topbar-drag-fill {
+  flex: 1;
+  min-width: 10px;
+  height: 100%;
+}
+
+.yl-sidebar-topbar.is-electron {
+  -webkit-app-region: drag;
+}
+
+.yl-sidebar-topbar.is-electron .yl-sidebar-topbar-brand,
+.yl-sidebar-topbar.is-electron .yl-sidebar-topbar-action {
+  -webkit-app-region: no-drag;
+}
+
 .yl-tabbar {
   position: relative;
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   padding: 0;
   background: var(--yl-surface, transparent);
   height: 49px;
   overflow: hidden;
   user-select: none;
+}
+
+.yl-tabbar.is-electron {
+  -webkit-app-region: drag;
+}
+
+.yl-tabbar-drag-strip {
+  display: none;
+}
+
+.yl-tabbar.is-electron .yl-tabbar-drag-strip {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 35;
+}
+
+.yl-tabbar.is-electron .yl-tab,
+.yl-tabbar.is-electron .yl-tab-hit,
+.yl-tabbar.is-electron .yl-tab-close,
+.yl-tabbar.is-electron .yl-add-btn,
+.yl-tabbar.is-electron .yl-scroll-controls,
+.yl-tabbar.is-electron .yl-scroll-btn,
+.yl-tabbar.is-electron .yl-window-controls,
+.yl-tabbar.is-electron .yl-window-btn {
+  -webkit-app-region: no-drag;
+}
+
+.yl-tabbar.is-electron .yl-tabstrip {
+  -webkit-app-region: drag;
 }
 
 .yl-tabbar-bottom-line {
@@ -108,6 +160,10 @@ body,
   min-width: 0;
   align-items: flex-end;
   padding: 0;
+}
+
+.yl-tabbar.has-electron-controls .yl-tabbar-inner {
+  padding-right: 132px;
 }
 
 .yl-tabstrip-wrap {
@@ -147,6 +203,17 @@ body,
   min-width: 0;
   padding: 0 6px;
   box-sizing: border-box;
+}
+
+.yl-tab-free-drag {
+  flex: 1 0 28px;
+  min-width: 28px;
+  height: 100%;
+  align-self: stretch;
+}
+
+.yl-tabbar.is-electron .yl-tab-free-drag {
+  -webkit-app-region: drag;
 }
 
 .yl-tab {
@@ -547,7 +614,7 @@ body,
   color: var(--yl-muted-foreground, inherit);
   display: grid;
   place-items: center;
-  cursor: pointer;
+  cursor: default !important;
   padding: 0 !important;
 }
 
@@ -559,4 +626,35 @@ body,
 .yl-scroll-btn:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+.yl-window-controls {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 32px;
+  margin-left: 0;
+  z-index: 40;
+}
+
+.yl-window-btn {
+  width: 44px !important;
+  min-width: 44px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 0 !important;
+  color: var(--yl-muted-foreground, inherit);
+  cursor: default !important;
+}
+
+.yl-window-btn:hover {
+  background: var(--yl-accent, transparent);
+  color: var(--yl-foreground, inherit);
+}
+
+.yl-window-btn.is-close:hover {
+  background: color-mix(in srgb, var(--yl-destructive, #ef4444) 90%, #ffffff 10%);
+  color: #ffffff;
 }

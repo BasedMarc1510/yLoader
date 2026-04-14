@@ -7,7 +7,7 @@ import {
   CircularProgress,
   Toolbar,
 } from '@mui/material'
-import { Menu, Home, Download, Heart, Plus, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Menu, Home, Download, Heart, Plus, X, ChevronLeft, ChevronRight, Minus, Square, Copy } from 'lucide-react'
 import { useTheme } from '@mui/material/styles'
 import { useI18n } from '../providers/I18nProvider'
 import ServiceIcon from './ServiceIcon'
@@ -259,6 +259,13 @@ export default function Header({
   const theme = useTheme()
   const sidebarBg = theme.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
   const mainBg = theme.palette.mode === 'dark' ? '#212121' : '#ffffff'
+  const isElectron = Boolean(
+    typeof window !== 'undefined'
+    && window.yloaderRuntime
+    && window.yloaderRuntime.isElectron
+    && window.yloaderRuntime.windowControls
+  )
+  const [isWindowMaximized, setIsWindowMaximized] = React.useState(false)
 
   const scrollContainerRef = React.useRef(null)
   const [showScrollButtons, setShowScrollButtons] = React.useState(false)
@@ -280,6 +287,35 @@ export default function Header({
   }, [cancelDrag])
 
   const displayTabs = tabs
+
+  React.useEffect(() => {
+    if (!isElectron) return undefined
+
+    let isMounted = true
+    const controls = window.yloaderRuntime?.windowControls
+    if (!controls) return undefined
+
+    Promise.resolve(controls.getState?.())
+      .then((state) => {
+        if (!isMounted) return
+        setIsWindowMaximized(Boolean(state?.isMaximized))
+      })
+      .catch(() => {
+        // ignore transient state read errors
+      })
+
+    const unsubscribe = controls.onStateChange?.((state) => {
+      if (!isMounted) return
+      setIsWindowMaximized(Boolean(state?.isMaximized))
+    })
+
+    return () => {
+      isMounted = false
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    }
+  }, [isElectron])
 
   const checkScroll = React.useCallback(() => {
     const element = scrollContainerRef.current
@@ -471,6 +507,21 @@ export default function Header({
 
   const activeTabIndex = displayTabs.findIndex((tab) => tab.id === activeTabId)
 
+  const handleWindowMinimize = React.useCallback(() => {
+    if (!isElectron) return
+    window.yloaderRuntime?.windowControls?.minimize?.()
+  }, [isElectron])
+
+  const handleWindowToggleMaximize = React.useCallback(() => {
+    if (!isElectron) return
+    window.yloaderRuntime?.windowControls?.toggleMaximize?.()
+  }, [isElectron])
+
+  const handleWindowClose = React.useCallback(() => {
+    if (!isElectron) return
+    window.yloaderRuntime?.windowControls?.close?.()
+  }, [isElectron])
+
   return (
     <AppBar
       position="fixed"
@@ -499,7 +550,7 @@ export default function Header({
         </IconButton>
 
         <Box
-          className="yl-tabbar"
+          className={`yl-tabbar ${isElectron ? 'is-electron has-electron-controls' : ''}`}
           style={{
             '--yl-surface': sidebarBg,
             '--yl-card': mainBg,
@@ -511,6 +562,7 @@ export default function Header({
           }}
           sx={{ flex: 1, minWidth: 0 }}
         >
+          {isElectron && <Box className="yl-tabbar-drag-strip" aria-hidden="true" />}
           <Box className="yl-tabbar-bottom-line" />
 
           <Box className="yl-tabbar-inner">
@@ -632,6 +684,8 @@ export default function Header({
                 >
                   <Plus size={16} />
                 </IconButton>
+
+                {isElectron && <Box className="yl-tab-free-drag" aria-hidden="true" />}
               </Box>
             </Box>
 
@@ -656,6 +710,37 @@ export default function Header({
               </IconButton>
             </Box>
           </Box>
+
+          {isElectron && (
+            <Box className="yl-window-controls" role="group" aria-label={t('tabs.windowControlsAria')}>
+              <IconButton
+                size="small"
+                className="yl-window-btn"
+                aria-label={t('tabs.windowMinimizeAria')}
+                onClick={handleWindowMinimize}
+              >
+                <Minus size={14} />
+              </IconButton>
+
+              <IconButton
+                size="small"
+                className="yl-window-btn"
+                aria-label={isWindowMaximized ? t('tabs.windowRestoreAria') : t('tabs.windowMaximizeAria')}
+                onClick={handleWindowToggleMaximize}
+              >
+                {isWindowMaximized ? <Copy size={12} /> : <Square size={12} />}
+              </IconButton>
+
+              <IconButton
+                size="small"
+                className="yl-window-btn is-close"
+                aria-label={t('tabs.windowCloseAria')}
+                onClick={handleWindowClose}
+              >
+                <X size={14} />
+              </IconButton>
+            </Box>
+          )}
         </Box>
       </Toolbar>
     </AppBar>

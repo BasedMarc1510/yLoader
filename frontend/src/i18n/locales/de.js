@@ -41,6 +41,11 @@ const de = {
     unnamedTab: 'Unbenannter Tab',
     cancel: 'Abbrechen',
     closeAnyway: 'Trotzdem schließen',
+    windowControlsAria: 'Fenstersteuerung',
+    windowMinimizeAria: 'Fenster minimieren',
+    windowMaximizeAria: 'Fenster maximieren',
+    windowRestoreAria: 'Fenster wiederherstellen',
+    windowCloseAria: 'Fenster schließen',
   },
   sidebar: {
     navigationAria: 'Navigationslinks',

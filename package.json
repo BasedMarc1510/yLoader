@@ -1,16 +1,73 @@
 {
   "name": "yloader",
   "version": "1.0.0",
+  "main": "electron/main.js",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "Self-hosted yt-dlp web wrapper with React UI and Node backend",
   "scripts": {
     "start": "node scripts/start.mjs",
+    "start:electron": "node scripts/start-electron.mjs",
+    "build:electron": "node scripts/build-electron.mjs",
+    "dist:win": "npm run build:electron -- --win",
+    "dist:mac": "npm run build:electron -- --mac",
+    "dist:linux": "npm run build:electron -- --linux",
     "docker:start": "docker compose up -d --build --remove-orphans",
     "docker:start:plain": "docker compose --progress plain build backend && docker compose --progress plain build frontend && docker compose up -d --remove-orphans",
     "docker:start:fresh": "docker compose --progress plain build --no-cache --pull backend && docker compose --progress plain build --no-cache --pull frontend && docker compose up -d --remove-orphans",
     "docker:start:guided": "node scripts/docker-start.mjs",
     "docker:stop": "docker compose down",
     "docker:logs": "docker compose logs -f --tail=100"
+  },
+  "devDependencies": {
+    "electron": "^35.2.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.yloader.app",
+    "productName": "yLoader",
+    "executableName": "yLoader",
+    "icon": "frontend/public/web-app-manifest-512x512.png",
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": ".electron-build/backend",
+        "to": "backend"
+      },
+      {
+        "from": ".electron-build/tools",
+        "to": "tools"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "frontend/public/favicon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "icon": "frontend/public/web-app-manifest-512x512.png",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "icon": "frontend/public/web-app-manifest-512x512.png",
+      "category": "Utility"
+    },
+    "nsis": {
+      "shortcutName": "yLoader",
+      "uninstallDisplayName": "yLoader"
+    }
   }
 }

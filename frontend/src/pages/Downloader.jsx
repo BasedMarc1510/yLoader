@@ -107,18 +107,17 @@ export default function Downloader({
   React.useEffect(() => {
     const urlParam = params.get('url')
     const shouldUsePrefetch = params.get('prefetch') === '1'
-    const shouldUsePrefetchError = params.get('prefetchError') === '1'
     if (urlParam && typeof urlParam === 'string') {
       setValue(urlParam)
       const effectiveService = detectService(urlParam) || serviceFromQuery || serviceKey || 'generic'
 
-      if (shouldUsePrefetch || shouldUsePrefetchError) {
+      if (shouldUsePrefetch) {
         try {
           const raw = sessionStorage.getItem(HOME_PREFETCH_CACHE_KEY)
           if (raw) {
             const parsed = JSON.parse(raw)
             if (parsed?.url === urlParam) {
-              if (parsed?.type === 'error' || shouldUsePrefetchError) {
+              if (parsed?.type === 'error') {
                 setMeta(null)
                 setFetchError({
                   url: urlParam,

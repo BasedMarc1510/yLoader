@@ -42,6 +42,8 @@ const FFMPEG_URLS = {
 const DEFAULT_YTDLP_CANDIDATES = IS_WINDOWS
   ? ['yt-dlp.exe', 'yt-dlp']
   : ['yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp']
+const CLI_ARGS = new Set(process.argv.slice(2))
+const PREPARE_ONLY = CLI_ARGS.has('--prepare-only')
 
 function info(message) {
   process.stdout.write(`[yloader] ${message}\n`)
@@ -527,8 +529,10 @@ async function main() {
   fs.mkdirSync(BACKEND_DATA_DIR, { recursive: true })
   fs.mkdirSync(LOCAL_TOOLS_DIR, { recursive: true })
 
-  await ensurePortFree(4000, 'backend')
-  await ensurePortFree(5173, 'frontend')
+  if (!PREPARE_ONLY) {
+    await ensurePortFree(4000, 'backend')
+    await ensurePortFree(5173, 'frontend')
+  }
 
   await ensureNodeDependencies(BACKEND_DIR, 'backend')
   await ensureNodeDependencies(FRONTEND_DIR, 'frontend')
@@ -549,6 +553,11 @@ async function main() {
     sharedEnv.FFPROBE_PATH = ffmpegSetup.ffprobePath
   }
   prependToPath(sharedEnv, ffmpegSetup.pathEntry)
+
+  if (PREPARE_ONLY) {
+    info('Preparation completed. Local dependencies and tool binaries are ready.')
+    return
+  }
 
   info('Starting backend and frontend...')
 

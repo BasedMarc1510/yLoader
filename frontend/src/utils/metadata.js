@@ -57,7 +57,13 @@ export async function fetchNoembed(rawUrl) {
 
 export function getApiBase() {
   if (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE
+  if (typeof window !== 'undefined' && window.yloaderRuntime && window.yloaderRuntime.apiBase) {
+    return String(window.yloaderRuntime.apiBase)
+  }
   if (import.meta && import.meta.env && import.meta.env.DEV) return ''
+  if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
+    return 'http://localhost:4000'
+  }
   return `${window.location.protocol}//${window.location.hostname}:4000`
 }
 

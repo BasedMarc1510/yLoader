@@ -1,0 +1,317 @@
+import { spawn } from 'child_process'
+import { createRequire } from 'module'
+import path from 'path'
+import process from 'process'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const ROOT_DIR = path.resolve(__dirname, '..')
+const IS_WINDOWS = process.platform === 'win32'
+const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
+const require = createRequire(import.meta.url)
+const ELECTRON_BINARY = require('electron')
+const YTDLP_BINARY_NAME = IS_WINDOWS ? 'yt-dlp.exe' : 'yt-dlp'
+const FFMPEG_BINARY_NAME = IS_WINDOWS ? 'ffmpeg.exe' : 'ffmpeg'
+const FFPROBE_BINARY_NAME = IS_WINDOWS ? 'ffprobe.exe' : 'ffprobe'
+
+function info(message) {
+  process.stdout.write(`[electron-dev] ${message}\n`)
+}
+
+function fail(message) {
+  process.stderr.write(`[electron-dev] ERROR: ${message}\n`)
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function npmArgs(args) {
+  return IS_WINDOWS ? ['/d', '/s', '/c', 'npm', ...args] : args
+}
+
+function streamWithPrefix(stream, prefix, target) {
+  if (!stream) return
+  let buffer = ''
+
+  stream.setEncoding('utf8')
+  stream.on('data', (chunk) => {
+    buffer += chunk
+    const lines = buffer.split(/\r?\n/)
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      target.write(`[${prefix}] ${line}\n`)
+    }
+  })
+
+  stream.on('end', () => {
+    if (buffer.trim()) {
+      target.write(`[${prefix}] ${buffer}\n`)
+    }
+  })
+}
+
+function prependToPath(envObj, entryPath) {
+  if (!entryPath) return
+
+  const key = Object.keys(envObj).find((item) => item.toLowerCase() === 'path') || 'PATH'
+  const current = String(envObj[key] || '')
+  const next = current ? `${entryPath}${path.delimiter}${current}` : entryPath
+  envObj[key] = next
+  if (key !== 'PATH') envObj.PATH = next
+  if (IS_WINDOWS && key !== 'Path') envObj.Path = next
+}
+
+function buildSharedServiceEnv() {
+  const env = { ...process.env }
+  const toolsRoot = path.join(ROOT_DIR, '.tools')
+  const ytdlpPath = path.join(toolsRoot, 'yt-dlp-bin', YTDLP_BINARY_NAME)
+  const ffmpegBinDir = path.join(toolsRoot, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin')
+  const ffmpegPath = path.join(ffmpegBinDir, FFMPEG_BINARY_NAME)
+  const ffprobePath = path.join(ffmpegBinDir, FFPROBE_BINARY_NAME)
+
+  env.YT_DLP_PATH = ytdlpPath
+  env.FFMPEG_PATH = ffmpegPath
+  env.FFPROBE_PATH = ffprobePath
+  prependToPath(env, ffmpegBinDir)
+
+  return env
+}
+
+function spawnServiceWithPrefix(command, args, options = {}) {
+  const {
+    cwd = ROOT_DIR,
+    env = process.env,
+    stdoutPrefix = 'service',
+    stderrPrefix = stdoutPrefix,
+  } = options
+
+  const child = spawn(command, args, {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  streamWithPrefix(child.stdout, stdoutPrefix, process.stdout)
+  streamWithPrefix(child.stderr, stderrPrefix, process.stderr)
+
+  return child
+}
+
+function runCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawnServiceWithPrefix(command, args, options)
+    child.on('error', (error) => reject(error))
+    child.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`${command} ${args.join(' ')} failed with exit code ${code}.`))
+    })
+  })
+}
+
+async function waitForHttp(url, timeoutMs, options = {}) {
+  const { accept } = options
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const response = await fetch(url)
+      const isAccepted = typeof accept === 'function'
+        ? Boolean(accept(response))
+        : (response.ok || response.status < 500)
+
+      if (isAccepted) {
+        return true
+      }
+    } catch {
+      // not ready yet
+    }
+
+    // eslint-disable-next-line no-await-in-loop
+    await delay(1000)
+  }
+
+  return false
+}
+
+async function main() {
+  const backendHealthUrl = 'http://127.0.0.1:4000/health'
+  const frontendUrl = 'http://127.0.0.1:5173'
+  const managedChildren = []
+
+  let shuttingDown = false
+  let electron = null
+  let electronSpawned = false
+  let electronExitHandled = false
+
+  const registerManagedChild = (child, label) => {
+    managedChildren.push({ child, label })
+
+    child.on('exit', (code, signal) => {
+      if (shuttingDown) return
+      fail(`${label} exited unexpectedly (code=${code ?? 'null'}, signal=${signal ?? 'none'}).`)
+      shutdown(code && code > 0 ? code : 1)
+    })
+  }
+
+  const shutdown = (exitCode) => {
+    if (shuttingDown) return
+    shuttingDown = true
+    process.exitCode = exitCode
+
+    if (electron && electron.exitCode === null) {
+      try {
+        electron.kill('SIGTERM')
+      } catch {
+        // ignore shutdown races
+      }
+    }
+
+    for (const entry of managedChildren) {
+      const child = entry?.child
+      if (!child || child.exitCode !== null) continue
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // ignore shutdown races
+      }
+    }
+
+    setTimeout(() => process.exit(exitCode), 300)
+  }
+
+  const finalizeElectronExit = (code, signal) => {
+    if (electronExitHandled) return
+    electronExitHandled = true
+
+    const rawCode = Number.isInteger(code) ? Number(code) : 0
+    const signedCode = rawCode > 0x7fffffff ? rawCode - 0x100000000 : rawCode
+    info(`Electron process exited (code=${code ?? 'null'}, signal=${signal ?? 'none'}).`)
+
+    // Electron can report code=1 for normal window-close in dev.
+    // On Windows, code can also be reported as unsigned -1 (4294967295).
+    // Also treat graceful termination signals as clean shutdown.
+    if (
+      signedCode === 0
+      || signedCode === 1
+      || signedCode === -1
+      || signal === 'SIGTERM'
+      || signal === 'SIGINT'
+    ) {
+      info('Electron window closed.')
+      shutdown(0)
+      return
+    }
+
+    shutdown(signedCode > 0 ? signedCode : 1)
+  }
+
+  process.on('SIGINT', () => shutdown(0))
+  process.on('SIGTERM', () => shutdown(0))
+
+  const backendAlreadyRunning = await waitForHttp(backendHealthUrl, 1500, {
+    accept: (response) => response.ok,
+  })
+  const frontendAlreadyRunning = await waitForHttp(frontendUrl, 1500, {
+    accept: (response) => response.ok || response.status < 500,
+  })
+
+  if (!backendAlreadyRunning && !frontendAlreadyRunning) {
+    info('Starting shared web stack (backend + frontend)...')
+    const stack = spawn(process.execPath, ['scripts/start.mjs'], {
+      cwd: ROOT_DIR,
+      env: process.env,
+      stdio: 'inherit',
+    })
+    registerManagedChild(stack, 'Web stack')
+  } else {
+    info('Detected existing local services. Preparing environment and starting only missing services...')
+    await runCommand(process.execPath, ['scripts/start.mjs', '--prepare-only'], {
+      cwd: ROOT_DIR,
+      env: process.env,
+      stdoutPrefix: 'prepare',
+      stderrPrefix: 'prepare',
+    })
+
+    const sharedServiceEnv = buildSharedServiceEnv()
+
+    if (backendAlreadyRunning) {
+      info('Reusing existing backend on :4000.')
+    } else {
+      info('Starting backend only...')
+      const backend = spawnServiceWithPrefix(NPM_CMD, npmArgs(['run', 'start', '--prefix', 'backend']), {
+        cwd: ROOT_DIR,
+        env: sharedServiceEnv,
+        stdoutPrefix: 'backend',
+        stderrPrefix: 'backend',
+      })
+      registerManagedChild(backend, 'Backend')
+    }
+
+    if (frontendAlreadyRunning) {
+      info('Reusing existing frontend on :5173.')
+    } else {
+      info('Starting frontend only...')
+      const frontend = spawnServiceWithPrefix(NPM_CMD, npmArgs(['run', 'dev', '--prefix', 'frontend']), {
+        cwd: ROOT_DIR,
+        env: process.env,
+        stdoutPrefix: 'frontend',
+        stderrPrefix: 'frontend',
+      })
+      registerManagedChild(frontend, 'Frontend')
+    }
+  }
+
+  info('Waiting for backend and frontend ports...')
+  const backendReady = await waitForHttp(backendHealthUrl, 180000, {
+    accept: (response) => response.ok,
+  })
+  const frontendReady = await waitForHttp(frontendUrl, 180000, {
+    accept: (response) => response.ok || response.status < 500,
+  })
+
+  if (!backendReady || !frontendReady) {
+    fail('Timed out waiting for backend/frontend readiness.')
+    shutdown(1)
+    return
+  }
+
+  info('Launching Electron window...')
+
+  const electronEnv = {
+    ...process.env,
+    ELECTRON_RENDERER_URL: 'http://127.0.0.1:5173',
+    ELECTRON_API_BASE: 'http://127.0.0.1:4000',
+    ELECTRON_BACKEND_MANAGED_EXTERNAL: '1',
+  }
+
+  electron = spawn(ELECTRON_BINARY, ['.'], {
+    cwd: ROOT_DIR,
+    env: electronEnv,
+    stdio: 'inherit',
+  })
+
+  electron.on('spawn', () => {
+    electronSpawned = true
+  })
+
+  electron.on('error', (error) => {
+    if (shuttingDown) return
+    fail(`Electron failed to start: ${error.message || String(error)}`)
+    shutdown(1)
+  })
+
+  electron.on('exit', (code, signal) => {
+    finalizeElectronExit(code, signal)
+  })
+
+  electron.on('close', (code, signal) => {
+    finalizeElectronExit(code, signal)
+  })
+}
+
+main().catch((error) => {
+  fail(error.message || String(error))
+  process.exit(1)
+})

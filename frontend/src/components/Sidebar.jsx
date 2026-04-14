@@ -35,6 +35,11 @@ export default function Sidebar({
   const logoLeftOffset = Math.max(0, (collapsedWidth - ICON_SIZE) / 2)
   const expandedLeftInset = 1
   const [openSettings, setOpenSettings] = React.useState(false)
+  const isElectron = Boolean(
+    typeof window !== 'undefined'
+    && window.yloaderRuntime
+    && window.yloaderRuntime.isElectron
+  )
 
   const withCollapsedTooltip = (node, title) => (
     collapsed
@@ -65,6 +70,7 @@ export default function Sidebar({
     if (collapsed) {
       return (
         <Box
+          className={`yl-sidebar-topbar ${isElectron ? 'is-electron' : ''}`}
           sx={{
             height: headerHeight,
             bgcolor: bg,
@@ -78,6 +84,7 @@ export default function Sidebar({
         >
           <Tooltip title={i18nT('sidebar.expand')}>
             <IconButton
+              className="yl-sidebar-topbar-action"
               size="small"
               onClick={onToggleCollapsed}
               aria-label={i18nT('sidebar.expand')}
@@ -92,6 +99,7 @@ export default function Sidebar({
 
     return (
       <Box
+        className={`yl-sidebar-topbar ${isElectron ? 'is-electron' : ''}`}
         sx={{
           height: headerHeight,
           bgcolor: bg,
@@ -105,6 +113,7 @@ export default function Sidebar({
       >
         <Box
           component="button"
+          className="yl-sidebar-topbar-brand"
           type="button"
           onClick={() => handleNavigate('/')}
           sx={{
@@ -113,7 +122,7 @@ export default function Sidebar({
             textDecoration: 'none',
             color: 'inherit',
             gap: 1,
-            flexGrow: 1,
+            flexShrink: 0,
             minWidth: 0,
             justifyContent: 'flex-start',
             pl: `calc(${logoLeftOffset}px + 8px)`,
@@ -135,8 +144,12 @@ export default function Sidebar({
             yLoader
           </Typography>
         </Box>
+
+        <Box className="yl-sidebar-topbar-drag-fill" aria-hidden="true" />
+
         <Tooltip title={i18nT('sidebar.collapse')}>
           <IconButton
+            className="yl-sidebar-topbar-action"
             size="small"
             onClick={onToggleCollapsed}
             aria-label={i18nT('sidebar.collapse')}

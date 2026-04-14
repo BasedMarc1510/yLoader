@@ -41,6 +41,11 @@ const en = {
     unnamedTab: 'Unnamed tab',
     cancel: 'Cancel',
     closeAnyway: 'Close anyway',
+    windowControlsAria: 'Window controls',
+    windowMinimizeAria: 'Minimize window',
+    windowMaximizeAria: 'Maximize window',
+    windowRestoreAria: 'Restore window',
+    windowCloseAria: 'Close window',
   },
   sidebar: {
     navigationAria: 'Navigation links',

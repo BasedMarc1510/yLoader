@@ -14,6 +14,14 @@ Run all commands from the repository root.
 npm run start
 ```
 
+### Local (Electron)
+
+```bash
+npm run start:electron
+```
+
+This keeps the same backend (`http://localhost:4000`) and frontend source (`Vite` dev server on `http://localhost:5173`) and only changes the wrapper from browser tab to Electron window.
+
 Local start is fully self-contained: `yLoader` uses project-local binaries from `.tools/` for `yt-dlp` and `ffmpeg` (no fallback to a globally installed ffmpeg on PATH).
 
 ### Docker
@@ -29,6 +37,7 @@ The backend Docker image installs `ffmpeg` during build, so no host-level ffmpeg
 | Mode | Frontend | Backend | Health |
 | --- | --- | --- | --- |
 | Local | `http://localhost:5173` | `http://localhost:4000` | `http://localhost:4000/health` |
+| Local Electron (dev) | Electron window (`http://localhost:5173`) | `http://localhost:4000` | `http://localhost:4000/health` |
 | Docker | `http://localhost:8080` | `http://localhost:4000` | `http://localhost:4000/health` |
 
 ## What You Get
@@ -101,6 +110,15 @@ npm run docker:start:fresh
 npm run docker:logs
 npm run docker:stop
 ```
+
+```bash
+npm run start
+npm run start:electron
+npm run build:electron
+npm run dist:win
+```
+
+`build:electron` prepares local tool binaries, builds the frontend, stages backend runtime files, rebuilds `sqlite3` for Electron, and then packages with `electron-builder`.
 
 ## Health Check
 

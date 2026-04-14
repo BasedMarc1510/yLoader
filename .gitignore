@@ -30,6 +30,8 @@ backend/downloads/
 /coverage/
 .vite/
 .cache/
+/.electron-build/
+/release/
 
 # Docker / Compose
 # Keep main docker-compose.yml, ignore local overrides

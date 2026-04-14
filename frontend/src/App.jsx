@@ -11,13 +11,14 @@ import {
   MenuItem,
   Divider,
   Switch,
+  Paper,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
 } from '@mui/material'
-import { ArrowRight, Plus, List, Zap } from 'lucide-react'
+import { ArrowRight, Plus, List, Zap, X, AlertTriangle } from 'lucide-react'
 import AppLayout from './layout/AppLayout'
 import Downloader from './pages/Downloader'
 import SupportPage from './pages/Support'
@@ -161,6 +162,14 @@ function hasUrlInSearch(search) {
   return Boolean(String(params.get('url') || '').trim())
 }
 
+function extractYtDlpError(msg) {
+  if (!msg) return ''
+  const lines = String(msg).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const errorLine = lines.find((line) => line.startsWith('ERROR:'))
+  const raw = errorLine ? errorLine.replace(/^ERROR:\s*/, '') : (lines[0] || msg)
+  return raw.replace(/\ufffd/g, '\u2019')
+}
+
 function HomePage({ onOpenDownloader }) {
   const { t } = useI18n()
   const [value, setValue] = React.useState('')
@@ -168,6 +177,7 @@ function HomePage({ onOpenDownloader }) {
   const [autoDownloadEnabled, setAutoDownloadEnabled] = React.useState(false)
   const [autoDownloadFormat, setAutoDownloadFormat] = React.useState('mp4')
   const [isResolving, setIsResolving] = React.useState(false)
+  const [fetchError, setFetchError] = React.useState(null)
 
   const trimmedValue = value.trim()
   const hasTypedInput = trimmedValue.length > 0
@@ -178,6 +188,7 @@ function HomePage({ onOpenDownloader }) {
     const serviceKey = detectService(target)
     if (!serviceKey || !target || isResolving) return
 
+    setFetchError(null)
     setIsResolving(true)
     try {
       const noembedP = fetchNoembed(target).catch(() => ({}))
@@ -201,20 +212,10 @@ function HomePage({ onOpenDownloader }) {
       onOpenDownloader?.(serviceKey, target, { prefetched: true })
     } catch (error) {
       const message = error?.message || String(error || '')
-      try {
-        sessionStorage.setItem(HOME_PREFETCH_CACHE_KEY, JSON.stringify({
-          type: 'error',
-          url: target,
-          service: serviceKey,
-          errorMessage: message,
-          createdAt: Date.now(),
-        }))
-      } catch {
-        // ignore sessionStorage write errors
-      }
-
-      // Jump directly into the downloader error panel state.
-      onOpenDownloader?.(serviceKey, target, { prefetchedError: true })
+      setFetchError({
+        url: target,
+        message,
+      })
     } finally {
       setIsResolving(false)
     }
@@ -238,6 +239,17 @@ function HomePage({ onOpenDownloader }) {
     if (serviceKey) resolveAndOpenDownloader(value)
   }, [resolveAndOpenDownloader, value])
 
+  const closeFetchError = React.useCallback(() => {
+    setFetchError(null)
+  }, [])
+
+  const retryFetchError = React.useCallback(() => {
+    const url = String(fetchError?.url || '').trim()
+    if (!url || isResolving) return
+    setFetchError(null)
+    resolveAndOpenDownloader(url)
+  }, [fetchError?.url, isResolving, resolveAndOpenDownloader])
+
   return (
     <Box sx={{ position: 'relative', height: '100%' }}>
       <Box sx={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '100%', maxWidth: 780, px: 2 }}>
@@ -248,7 +260,10 @@ function HomePage({ onOpenDownloader }) {
           size="medium"
           autoFocus
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            if (fetchError) setFetchError(null)
+            setValue(e.target.value)
+          }}
           onFocus={(e) => e.target.select()}
           onClick={(e) => e.target.select()}
           onMouseUp={(e) => e.preventDefault()}
@@ -482,10 +497,21 @@ function HomePage({ onOpenDownloader }) {
           }}
           onPaste={(e) => {
             const pasted = e.clipboardData.getData('text')
-            const serviceKey = detectService(pasted)
+            if (!pasted) return
+
+            e.preventDefault()
+
+            const input = e.currentTarget
+            const start = Number.isFinite(input.selectionStart) ? input.selectionStart : value.length
+            const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : value.length
+            const nextValue = `${value.slice(0, start)}${pasted}${value.slice(end)}`
+
+            if (fetchError) setFetchError(null)
+            setValue(nextValue)
+
+            const serviceKey = detectService(nextValue)
             if (serviceKey) {
-              setValue(pasted)
-              setTimeout(() => resolveAndOpenDownloader(pasted), 0)
+              setTimeout(() => resolveAndOpenDownloader(nextValue), 0)
             }
           }}
           sx={(muiTheme) => ({
@@ -539,6 +565,100 @@ function HomePage({ onOpenDownloader }) {
           {t('app.subtitle')}
         </Typography>
       </Stack>
+
+      {fetchError && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            px: 2,
+            zIndex: 4,
+            pointerEvents: 'none',
+          }}
+        >
+          <Box sx={{ width: '100%', maxWidth: 450, pointerEvents: 'auto' }}>
+            <Paper elevation={0} sx={(muiTheme) => ({
+              width: '100%',
+              borderRadius: 2,
+              border: 'none',
+              overflow: 'hidden',
+              bgcolor: muiTheme.palette.mode === 'dark' ? '#181818' : '#ffffff',
+              boxShadow: muiTheme.palette.mode === 'dark' ? '0 8px 16px rgba(0, 0, 0, 0.2)' : '0 4px 24px rgba(0, 0, 0, 0.06)',
+            })}>
+              <Box sx={(muiTheme) => ({
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 2,
+                py: 1.5,
+                borderBottom: `1px solid ${muiTheme.palette.mode === 'dark' ? '#2a2a2a' : '#f0f0f0'}`,
+              })}>
+                <AlertTriangle size={18} style={{ color: '#e8a420', flexShrink: 0 }} />
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, flexGrow: 1 }}>
+                  {t('fetchError.title')}
+                </Typography>
+                <IconButton
+                  size="small"
+                  aria-label={t('fetchError.closeAria')}
+                  onClick={closeFetchError}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <X size={16} />
+                </IconButton>
+              </Box>
+
+              <Box
+                sx={(muiTheme) => ({
+                  maxHeight: 160,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  bgcolor: muiTheme.palette.mode === 'dark' ? '#111' : '#f5f5f5',
+                })}
+              >
+                <Typography variant="body2" sx={(muiTheme) => ({
+                  display: 'block',
+                  pl: 2,
+                  pr: 1.5,
+                  py: 1.5,
+                  color: muiTheme.palette.text.secondary,
+                  wordBreak: 'break-word',
+                  fontFamily: 'monospace',
+                  fontSize: '0.78rem',
+                  lineHeight: 1.6,
+                })}>
+                  {extractYtDlpError(fetchError.message)}
+                </Typography>
+              </Box>
+
+              <Box sx={{ px: 2, pb: 2 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  disableElevation
+                  onClick={retryFetchError}
+                  disabled={isResolving}
+                  sx={(muiTheme) => ({
+                    borderRadius: 9999,
+                    fontWeight: 700,
+                    textTransform: 'none',
+                    bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                    '&:hover': {
+                      bgcolor: muiTheme.palette.mode === 'dark' ? '#f0f0f0' : '#111111',
+                    },
+                    cursor: isResolving ? 'default' : 'pointer',
+                  })}
+                >
+                  {t('fetchError.retry')}
+                </Button>
+              </Box>
+            </Paper>
+          </Box>
+        </Box>
+      )}
     </Box>
   )
 }
@@ -695,7 +815,6 @@ export default function App() {
     params.set('service', detected)
     if (trimmedUrl) params.set('url', trimmedUrl)
     if (options?.prefetched) params.set('prefetch', '1')
-    if (options?.prefetchedError) params.set('prefetchError', '1')
     const search = params.toString() ? `?${params.toString()}` : ''
     navigateTab(tabId, path, search)
   }, [navigateTab])
