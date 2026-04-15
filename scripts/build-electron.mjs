@@ -14,6 +14,7 @@ const STAGE_DIR = path.join(ROOT_DIR, '.electron-build')
 const STAGE_BACKEND_DIR = path.join(STAGE_DIR, 'backend')
 const STAGE_TOOLS_DIR = path.join(STAGE_DIR, 'tools')
 const SQLITE_SMOKE_FILE = path.join(STAGE_BACKEND_DIR, '.sqlite3-electron-smoke.cjs')
+const ICONS_SCRIPT = path.join(ROOT_DIR, 'scripts', 'generate-icons.mjs')
 
 const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
@@ -84,6 +85,10 @@ function getElectronVersion() {
   return parsed[0]
 }
 
+function isMacTargetRequested(builderArgs) {
+  return builderArgs.some((arg) => arg === '--mac' || arg === '-m' || arg.startsWith('--mac='))
+}
+
 function stageBackendFiles() {
   fs.rmSync(STAGE_DIR, { recursive: true, force: true })
   fs.mkdirSync(STAGE_BACKEND_DIR, { recursive: true })
@@ -147,8 +152,15 @@ async function main() {
   const builderArgs = process.argv.slice(2)
   const electronVersion = getElectronVersion()
 
+  if (isMacTargetRequested(builderArgs) && process.platform !== 'darwin') {
+    throw new Error('macOS artifacts must be built on macOS. Building --mac on this host can produce unusable apps.')
+  }
+
   info('Preparing local dependencies and tool binaries...')
   await runCommand(process.execPath, ['scripts/start.mjs', '--prepare-only'], { prefix: 'prepare' })
+
+  info('Generating icon assets...')
+  await runCommand(process.execPath, [ICONS_SCRIPT], { prefix: 'icons' })
 
   info('Building frontend bundle...')
   await runCommand(NPM_CMD, npmArgs(['run', 'build', '--prefix', 'frontend']), { prefix: 'frontend:build' })

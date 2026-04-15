@@ -37,6 +37,22 @@ let shuttingDown = false
 let windowStateSaveTimer = null
 let windowIpcRegistered = false
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+if (!hasSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+
+    mainWindow.focus()
+  })
+}
+
 function log(message) {
   process.stdout.write(`[electron] ${message}\n`)
 }
@@ -377,9 +393,14 @@ function startBackendProcessIfNeeded() {
   }
 
   const backendEnv = buildBackendEnv()
+  backendEnv.ELECTRON_RUN_AS_NODE = '1'
+  delete backendEnv.ELECTRON_RENDERER_URL
+  delete backendEnv.ELECTRON_API_BASE
+
   backendProcess = spawn(process.execPath, [backendEntry], {
     cwd: path.dirname(backendEntry),
     env: backendEnv,
+    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
@@ -485,17 +506,19 @@ function createMainWindow() {
   }
 }
 
-app.whenReady().then(() => {
-  registerWindowIpcHandlers()
-  startBackendProcessIfNeeded()
-  createMainWindow()
+if (hasSingleInstanceLock) {
+  app.whenReady().then(() => {
+    registerWindowIpcHandlers()
+    startBackendProcessIfNeeded()
+    createMainWindow()
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow()
-    }
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow()
+      }
+    })
   })
-})
+}
 
 app.on('before-quit', () => {
   shuttingDown = true

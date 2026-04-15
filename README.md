@@ -120,6 +120,12 @@ npm run dist:win
 
 `build:electron` prepares local tool binaries, builds the frontend, stages backend runtime files, rebuilds `sqlite3` for Electron, and then packages with `electron-builder`.
 
+Electron packaging notes:
+
+- `build:electron` now regenerates all app icons from `frontend/public/yloader-icon.svg` into web assets plus `build/icons/icon.ico` and `build/icons/icon.icns`.
+- macOS targets must be built on macOS (`--mac` on other hosts is blocked to avoid broken app bundles).
+- To avoid Gatekeeper "damaged" messages on distributed mac builds, set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`; these are picked up automatically by `scripts/notarize.cjs` via `electron-builder` `afterSign`.
+
 ## Health Check
 
 `GET /health` reports backend status including:

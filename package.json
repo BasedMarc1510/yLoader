@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node scripts/start.mjs",
     "start:electron": "node scripts/start-electron.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "build:electron": "node scripts/build-electron.mjs",
     "dist:win": "npm run build:electron -- --win",
     "dist:mac": "npm run build:electron -- --mac",
@@ -20,6 +21,7 @@
     "docker:logs": "docker compose logs -f --tail=100"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.2.1",
     "electron": "^35.2.1",
     "electron-builder": "^24.13.3"
   },
@@ -27,11 +29,12 @@
     "appId": "com.yloader.app",
     "productName": "yLoader",
     "executableName": "yLoader",
-    "icon": "frontend/public/web-app-manifest-512x512.png",
+    "icon": "build/icons/icon.png",
     "directories": {
       "output": "release"
     },
     "asar": true,
+    "afterSign": "scripts/notarize.cjs",
     "files": [
       "electron/**/*",
       "package.json"
@@ -54,15 +57,21 @@
       "target": [
         "nsis"
       ],
-      "icon": "frontend/public/favicon.ico",
+      "icon": "build/icons/icon.ico",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
-      "icon": "frontend/public/web-app-manifest-512x512.png",
-      "category": "public.app-category.utilities"
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icons/icon.icns",
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "linux": {
-      "icon": "frontend/public/web-app-manifest-512x512.png",
+      "icon": "build/icons/icon.png",
       "category": "Utility"
     },
     "nsis": {
