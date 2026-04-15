@@ -66,9 +66,7 @@ function pickSourceSvg() {
 }
 
 function renderPng(sourceSvgPath, size, outPath) {
-  const center = Math.floor(size / 2)
-  const basePath = `${outPath}.base.png`
-
+  // Rasterize directly from SVG so icon edges stay visually identical to source artwork.
   runMagick([
     sourceSvgPath,
     '-background', 'none',
@@ -77,25 +75,8 @@ function renderPng(sourceSvgPath, size, outPath) {
     '-resize', `${size}x${size}`,
     '-gravity', 'center',
     '-extent', `${size}x${size}`,
-    basePath,
-  ])
-
-  // Force transparent corners for round logos while preserving inner white details.
-  runMagick([
-    basePath,
-    '(',
-    '-size', `${size}x${size}`,
-    'xc:none',
-    '-fill', 'white',
-    '-draw', `circle ${center},${center} ${center},0`,
-    ')',
-    '-alpha', 'off',
-    '-compose', 'copyopacity',
-    '-composite',
     outPath,
   ])
-
-  fs.rmSync(basePath, { force: true })
 }
 
 function copyFile(sourcePath, targetPath) {

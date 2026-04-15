@@ -26,7 +26,12 @@ backend/downloads/
 
 # Build outputs / caches
 /dist/
-/build/
+/build/*
+!/build/icons/
+!/build/icons/icon.png
+!/build/icons/icon.ico
+!/build/icons/icon.icns
+!/build/icons/icon-512.png
 /coverage/
 .vite/
 .cache/

@@ -85,8 +85,7 @@
     },
     "nsis": {
       "shortcutName": "yLoader",
-      "uninstallDisplayName": "yLoader",
-      "differentialPackage": false
+      "uninstallDisplayName": "yLoader"
     }
   }
 }
