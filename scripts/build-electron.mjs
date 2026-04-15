@@ -19,6 +19,7 @@ const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
 const require = createRequire(import.meta.url)
 const ELECTRON_BINARY = require('electron')
+const ELECTRON_BUILDER_CLI = require.resolve('electron-builder/cli.js')
 
 function info(message) {
   process.stdout.write(`[electron-build] ${message}\n`)
@@ -197,7 +198,7 @@ async function main() {
   }
 
   info('Running electron-builder...')
-  await runCommand(NPM_CMD, npmArgs(['exec', 'electron-builder', ...builderArgs]), {
+  await runCommand(process.execPath, [ELECTRON_BUILDER_CLI, ...builderArgs], {
     prefix: 'builder',
   })
 
