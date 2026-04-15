@@ -19,7 +19,7 @@ const STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 const APP_NAME = 'yLoader'
 const APP_ID = 'com.yloader.app'
 const APP_UPDATER_EVENT_CHANNEL = 'app-updater:event'
-const APP_REPOSITORY_URL = 'https://github.com/michaelSant0s/yLoader'
+const APP_REPOSITORY_URL = 'https://github.com/BasedMarc1510/yLoader'
 
 app.setName(APP_NAME)
 if (IS_WINDOWS) {
