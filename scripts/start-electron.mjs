@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import process from 'process'
 import { fileURLToPath } from 'url'
+import { loadEnvFile } from './load-env.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -16,6 +17,7 @@ const ELECTRON_INSTALL_SCRIPT = path.join(ROOT_DIR, 'node_modules', 'electron', 
 const YTDLP_BINARY_NAME = IS_WINDOWS ? 'yt-dlp.exe' : 'yt-dlp'
 const FFMPEG_BINARY_NAME = IS_WINDOWS ? 'ffmpeg.exe' : 'ffmpeg'
 const FFPROBE_BINARY_NAME = IS_WINDOWS ? 'ffprobe.exe' : 'ffprobe'
+const ROOT_ENV = loadEnvFile(path.join(ROOT_DIR, '.env'))
 
 function info(message) {
   process.stdout.write(`[electron-dev] ${message}\n`)
@@ -66,7 +68,7 @@ function prependToPath(envObj, entryPath) {
 }
 
 function buildSharedServiceEnv() {
-  const env = { ...process.env }
+  const env = { ...ROOT_ENV, ...process.env }
   const toolsRoot = path.join(ROOT_DIR, '.tools')
   const ytdlpPath = path.join(toolsRoot, 'yt-dlp-bin', YTDLP_BINARY_NAME)
   const ffmpegBinDir = path.join(toolsRoot, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin')

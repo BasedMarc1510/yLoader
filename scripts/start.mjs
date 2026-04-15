@@ -6,6 +6,7 @@ import process from 'process'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import { fileURLToPath } from 'url'
+import { loadEnvFile } from './load-env.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -18,6 +19,7 @@ const LOCAL_TOOLS_DIR = path.join(ROOT_DIR, '.tools')
 const LOCAL_YTDLP_DIR = path.join(LOCAL_TOOLS_DIR, 'yt-dlp-bin')
 const LOCAL_NPM_CACHE_DIR = path.join(LOCAL_TOOLS_DIR, 'npm-cache')
 const LOCAL_FFMPEG_DIR = path.join(LOCAL_TOOLS_DIR, 'ffmpeg-bin')
+const ROOT_ENV = loadEnvFile(path.join(ROOT_DIR, '.env'))
 const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
 const FFMPEG_BINARY_NAME = IS_WINDOWS ? 'ffmpeg.exe' : 'ffmpeg'
@@ -541,6 +543,7 @@ async function main() {
   const ffmpegSetup = await ensureLocalFfmpeg()
 
   const sharedEnv = sanitizeEnv({
+    ...ROOT_ENV,
     ...process.env,
     DB_PATH: path.join(BACKEND_DATA_DIR, 'metadata.db'),
     DOWNLOAD_DIR: DOWNLOADS_DIR,
