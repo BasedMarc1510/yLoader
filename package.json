@@ -1,6 +1,6 @@
 {
   "name": "yloader",
-  "version": "1.0.0",
+  "version": "2026.1.0",
   "main": "electron/main.js",
   "repository": {
     "type": "git",
@@ -38,6 +38,7 @@
       "output": "release"
     },
     "asar": true,
+    "compression": "maximum",
     "afterSign": "scripts/notarize.cjs",
     "files": [
       "electron/**/*",
@@ -62,25 +63,30 @@
         "nsis"
       ],
       "icon": "build/icons/icon.ico",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "yLoaderSetup.${ext}"
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "icon": "build/icons/icon.icns",
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "artifactName": "yLoaderSetup.${ext}"
     },
     "linux": {
+      "target": [
+        "AppImage"
+      ],
       "icon": "build/icons/icon.png",
-      "category": "Utility"
+      "category": "Utility",
+      "artifactName": "yLoaderSetup.${ext}"
     },
     "nsis": {
       "shortcutName": "yLoader",
-      "uninstallDisplayName": "yLoader"
+      "uninstallDisplayName": "yLoader",
+      "differentialPackage": false
     }
   }
 }
