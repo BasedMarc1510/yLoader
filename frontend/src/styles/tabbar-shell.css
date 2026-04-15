@@ -1,0 +1,259 @@
+.yl-sidebar-topbar {
+  position: relative;
+}
+
+.yl-sidebar-topbar-drag-fill {
+  flex: 1;
+  min-width: 10px;
+  height: 100%;
+}
+
+.yl-sidebar-topbar.is-electron {
+  -webkit-app-region: drag;
+}
+
+.yl-sidebar-topbar.is-electron .yl-sidebar-topbar-brand,
+.yl-sidebar-topbar.is-electron .yl-sidebar-topbar-action {
+  -webkit-app-region: no-drag;
+}
+
+.yl-tabbar {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  background: var(--yl-surface, transparent);
+  height: 49px;
+  overflow: hidden;
+  user-select: none;
+}
+
+.yl-tabbar.is-electron {
+  -webkit-app-region: drag;
+}
+
+.yl-tabbar-drag-strip {
+  display: none;
+}
+
+.yl-tabbar.is-electron .yl-tabbar-drag-strip {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 35;
+}
+
+.yl-tabbar.is-electron .yl-tab,
+.yl-tabbar.is-electron .yl-tab-hit,
+.yl-tabbar.is-electron .yl-tab-close,
+.yl-tabbar.is-electron .yl-add-btn,
+.yl-tabbar.is-electron .yl-scroll-controls,
+.yl-tabbar.is-electron .yl-scroll-btn,
+.yl-tabbar.is-electron .yl-window-controls,
+.yl-tabbar.is-electron .yl-window-btn {
+  -webkit-app-region: no-drag;
+}
+
+.yl-tabbar.is-electron .yl-tabstrip {
+  -webkit-app-region: drag;
+}
+
+.yl-tabbar-bottom-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--yl-border, transparent);
+  z-index: 10;
+}
+
+.yl-tabbar-inner {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-end;
+  padding: 0;
+}
+
+.yl-tabbar.has-electron-controls .yl-tabbar-inner {
+  padding-right: 132px;
+}
+
+.yl-tabstrip-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+}
+
+.yl-scroll-fade {
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  width: 44px;
+  pointer-events: none;
+  z-index: 36;
+}
+
+.yl-scroll-fade.left {
+  left: 0;
+  background: linear-gradient(to right, var(--yl-surface, transparent), transparent);
+}
+
+.yl-scroll-fade.right {
+  right: 0;
+  bottom: 1px;
+  background: linear-gradient(to left, var(--yl-surface, transparent), transparent);
+}
+
+.yl-tabstrip {
+  display: flex;
+  align-items: flex-end;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-y: none;
+  flex: 1;
+  min-width: 0;
+  padding: 0 6px 0 10px;
+  box-sizing: border-box;
+}
+
+.yl-tabbar.is-mac-electron .yl-tabstrip {
+  padding-left: 24px;
+}
+
+.yl-tab-free-drag {
+  flex: 1 0 28px;
+  min-width: 28px;
+  height: 100%;
+  align-self: stretch;
+}
+
+.yl-tabbar.is-electron .yl-tab-free-drag {
+  -webkit-app-region: drag;
+}
+
+.yl-tab {
+  --yl-tab-width: 236px;
+  --yl-tab-bg: transparent;
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: var(--yl-tab-width);
+  min-width: 0;
+  max-width: none;
+  /* All tabs same height – active tab sits flush at bottom via align-self */
+  height: 40px;
+  align-self: flex-end;
+    will-change: transform, opacity;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  /* overflow:hidden clips everything; we handle curves via JS-rendered spans */
+  overflow: hidden;
+  /* No visible border on inactive tabs */
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  color: color-mix(in srgb, var(--yl-foreground, #111) 70%, transparent);
+  margin: 0;
+  background: transparent;
+  transform-origin: bottom center;
+  transition:
+    width 230ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin 230ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    transform 180ms ease,
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.yl-tab.is-active {
+  --yl-tab-bg: var(--yl-card, transparent);
+  background: var(--yl-card, transparent);
+  color: var(--yl-foreground, inherit);
+  border-color: var(--yl-border, transparent);
+  box-shadow: none;
+  border-bottom: 0;
+  z-index: 30;
+  overflow: visible;
+}
+
+.yl-tab.is-active .yl-tab-hit::before {
+  display: none;
+}
+
+.yl-tab.is-active .yl-tab-hit::before {
+  left: 0;
+}
+
+.yl-tab.is-active::before {
+  display: none;
+}
+
+/* Cover the bottom 1px of the tabbar bottom line */
+.yl-tab.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--yl-card, transparent);
+  z-index: 32;
+  pointer-events: none;
+}
+
+.yl-tab.is-dragging {
+  cursor: grabbing;
+  z-index: 50;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  opacity: 0.96;
+  overflow: visible;
+}
+
+.yl-tab.is-entering {
+  animation: yl-tab-enter-width 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes yl-tab-enter-width {
+  0% {
+    width: 0;
+    margin-left: 0;
+    margin-right: 0;
+    opacity: 0;
+  }
+  100% {
+    width: var(--yl-tab-width);
+    margin-left: 0;
+    margin-right: 0;
+    opacity: 1;
+  }
+}
+
+.yl-tab.is-closing {
+  width: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  opacity: 0;
+  /* translateY must NOT shift surrounding tabs. Tabs stay in flow at their
+     full height. Only opacity/width animate visibly. */
+  border-color: transparent !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+  transition:
+    width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    border-color 0.15s ease !important;
+}

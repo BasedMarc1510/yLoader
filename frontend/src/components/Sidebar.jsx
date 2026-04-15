@@ -34,12 +34,31 @@ export default function Sidebar({
   const ICON_SIZE = 20
   const logoLeftOffset = Math.max(0, (collapsedWidth - ICON_SIZE) / 2)
   const expandedLeftInset = 1
+  const MAC_TRAFFIC_LIGHTS_LEFT_GUTTER = 72
+  const MAC_TRAFFIC_LIGHTS_TOP_OFFSET = 8
   const [openSettings, setOpenSettings] = React.useState(false)
+  const [settingsSection, setSettingsSection] = React.useState('general')
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const isElectron = Boolean(
-    typeof window !== 'undefined'
-    && window.yloaderRuntime
-    && window.yloaderRuntime.isElectron
+    runtime
+    && runtime.isElectron
   )
+  const isMacElectron = Boolean(runtime?.platform === 'darwin')
+  const showMacInlineExpand = collapsed && isMacElectron
+  const brandLeftPadding = logoLeftOffset + 8
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const onOpenSettings = (event) => {
+      const requestedSection = String(event?.detail?.section || 'general').trim() || 'general'
+      setSettingsSection(requestedSection)
+      setOpenSettings(true)
+    }
+
+    window.addEventListener('yloader:open-settings', onOpenSettings)
+    return () => window.removeEventListener('yloader:open-settings', onOpenSettings)
+  }, [])
 
   const withCollapsedTooltip = (node, title) => (
     collapsed
@@ -68,6 +87,20 @@ export default function Sidebar({
 
   const SidebarTopBar = ({ bg }) => {
     if (collapsed) {
+      if (isMacElectron) {
+        return (
+          <Box
+            className={`yl-sidebar-topbar ${isElectron ? 'is-electron' : ''}`}
+            sx={{
+              height: headerHeight,
+              bgcolor: bg,
+              borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+              borderRight: 'none',
+            }}
+          />
+        )
+      }
+
       return (
         <Box
           className={`yl-sidebar-topbar ${isElectron ? 'is-electron' : ''}`}
@@ -104,13 +137,27 @@ export default function Sidebar({
           height: headerHeight,
           bgcolor: bg,
           display: 'flex',
-          alignItems: 'center',
+          alignItems: isMacElectron ? 'flex-end' : 'center',
           px: 0,
           position: 'relative',
+          pt: isMacElectron ? `${MAC_TRAFFIC_LIGHTS_TOP_OFFSET}px` : 0,
+          pb: isMacElectron ? 0.5 : 0,
           borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
           borderRight: 'none',
         }}
       >
+        {isMacElectron && (
+          <Box
+            aria-hidden="true"
+            sx={{
+              width: `${MAC_TRAFFIC_LIGHTS_LEFT_GUTTER}px`,
+              flexShrink: 0,
+              alignSelf: 'stretch',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+
         <Box
           component="button"
           className="yl-sidebar-topbar-brand"
@@ -125,7 +172,7 @@ export default function Sidebar({
             flexShrink: 0,
             minWidth: 0,
             justifyContent: 'flex-start',
-            pl: `calc(${logoLeftOffset}px + 8px)`,
+            pl: `${brandLeftPadding}px`,
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
@@ -167,6 +214,43 @@ export default function Sidebar({
       <SidebarTopBar bg={sidebarBg} />
 
       <List sx={{ px: 1, py: 1 }}>
+        {showMacInlineExpand && (
+          <ListItem disablePadding sx={{ mb: 0.5 }}>
+            {withCollapsedTooltip(
+              <ListItemButton
+                onClick={onToggleCollapsed}
+                aria-label={i18nT('sidebar.expand')}
+                sx={{
+                  borderRadius: 1,
+                  minHeight: 28,
+                  px: 1,
+                  justifyContent: 'center',
+                  color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                  '@media (hover: hover) and (pointer: fine)': {
+                    '&:hover': {
+                      bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
+                    },
+                  },
+                }}
+              >
+                <ListItemIcon
+                  sx={{
+                    minWidth: 'auto',
+                    justifyContent: 'center',
+                    color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    display: 'flex',
+                    alignItems: 'center',
+                    height: '100%',
+                  }}
+                >
+                  <ChevronRight size={16} />
+                </ListItemIcon>
+              </ListItemButton>,
+              i18nT('sidebar.expand'),
+            )}
+          </ListItem>
+        )}
+
         {items.map((item) => {
           const isActive = activePath === item.to
           return (
@@ -237,7 +321,10 @@ export default function Sidebar({
           <ListItem disablePadding>
             {withCollapsedTooltip(
               <ListItemButton
-                onClick={() => setOpenSettings(true)}
+                onClick={() => {
+                  setSettingsSection('general')
+                  setOpenSettings(true)
+                }}
                 sx={{
                   borderRadius: 1,
                   minHeight: 28,
@@ -328,7 +415,11 @@ export default function Sidebar({
       >
         {drawerContent}
       </Drawer>
-      <SettingsModal open={openSettings} onClose={() => setOpenSettings(false)} />
+      <SettingsModal
+        open={openSettings}
+        onClose={() => setOpenSettings(false)}
+        requestedSection={settingsSection}
+      />
     </Box>
   )
 }

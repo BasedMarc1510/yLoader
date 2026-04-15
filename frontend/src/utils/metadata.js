@@ -64,7 +64,8 @@ export function getApiBase() {
   if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
     return 'http://localhost:4000'
   }
-  return `${window.location.protocol}//${window.location.hostname}:4000`
+  // In browser deployments (for example Docker + nginx), use same-origin and let reverse proxy route /api.
+  return ''
 }
 
 export async function fetchDuration(rawUrl) {

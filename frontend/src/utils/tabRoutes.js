@@ -84,6 +84,11 @@ export function getRouteTitle(path, t, search = '') {
   if (normalized === '/downloads') return t('routes.downloads')
   if (normalized === '/support') return t('routes.support')
   if (normalized === '/' && hasUrlInSearch(search)) {
+    const service = getServiceFromSearch(search)
+    if (service === 'youtube') return t('routes.youtubeDownloader')
+    if (service === 'reddit') return t('routes.redditDownloader')
+    if (service === 'x') return t('routes.xDownloader')
+    if (service === 'generic') return t('routes.genericDownloader')
     return t('routes.downloader')
   }
   return t('routes.home')

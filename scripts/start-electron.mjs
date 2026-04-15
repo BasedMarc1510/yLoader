@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import { createRequire } from 'module'
+import fs from 'fs'
 import path from 'path'
 import process from 'process'
 import { fileURLToPath } from 'url'
@@ -11,6 +12,7 @@ const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
 const require = createRequire(import.meta.url)
 const ELECTRON_BINARY = require('electron')
+const ELECTRON_INSTALL_SCRIPT = path.join(ROOT_DIR, 'node_modules', 'electron', 'install.js')
 const YTDLP_BINARY_NAME = IS_WINDOWS ? 'yt-dlp.exe' : 'yt-dlp'
 const FFMPEG_BINARY_NAME = IS_WINDOWS ? 'ffmpeg.exe' : 'ffmpeg'
 const FFPROBE_BINARY_NAME = IS_WINDOWS ? 'ffprobe.exe' : 'ffprobe'
@@ -135,6 +137,31 @@ async function waitForHttp(url, timeoutMs, options = {}) {
   return false
 }
 
+async function ensureElectronBinary() {
+  if (fs.existsSync(ELECTRON_BINARY)) return
+
+  if (!fs.existsSync(ELECTRON_INSTALL_SCRIPT)) {
+    throw new Error(
+      `Electron binary is missing at ${ELECTRON_BINARY}, and install script was not found at ${ELECTRON_INSTALL_SCRIPT}. Run npm install to restore Electron.`
+    )
+  }
+
+  info('Electron binary is missing. Attempting to restore it with electron/install.js...')
+
+  await runCommand(process.execPath, [ELECTRON_INSTALL_SCRIPT], {
+    cwd: ROOT_DIR,
+    env: process.env,
+    stdoutPrefix: 'electron:install',
+    stderrPrefix: 'electron:install',
+  })
+
+  if (!fs.existsSync(ELECTRON_BINARY)) {
+    throw new Error(
+      `Electron install completed but binary is still missing at ${ELECTRON_BINARY}. Run npm rebuild electron and try again.`
+    )
+  }
+}
+
 async function main() {
   const backendHealthUrl = 'http://127.0.0.1:4000/health'
   const frontendUrl = 'http://127.0.0.1:5173'
@@ -209,6 +236,8 @@ async function main() {
 
   process.on('SIGINT', () => shutdown(0))
   process.on('SIGTERM', () => shutdown(0))
+
+  await ensureElectronBinary()
 
   const backendAlreadyRunning = await waitForHttp(backendHealthUrl, 1500, {
     accept: (response) => response.ok,

@@ -1,0 +1,45 @@
+import React from 'react'
+import { Box, IconButton } from '@mui/material'
+import { Minus, Square, Copy, X } from 'lucide-react'
+
+export default function WindowControls({
+  show,
+  isWindowMaximized,
+  onMinimize,
+  onToggleMaximize,
+  onClose,
+  t,
+}) {
+  if (!show) return null
+
+  return (
+    <Box className="yl-window-controls" role="group" aria-label={t('tabs.windowControlsAria')}>
+      <IconButton
+        size="small"
+        className="yl-window-btn"
+        aria-label={t('tabs.windowMinimizeAria')}
+        onClick={onMinimize}
+      >
+        <Minus size={14} />
+      </IconButton>
+
+      <IconButton
+        size="small"
+        className="yl-window-btn"
+        aria-label={isWindowMaximized ? t('tabs.windowRestoreAria') : t('tabs.windowMaximizeAria')}
+        onClick={onToggleMaximize}
+      >
+        {isWindowMaximized ? <Copy size={12} /> : <Square size={12} />}
+      </IconButton>
+
+      <IconButton
+        size="small"
+        className="yl-window-btn is-close"
+        aria-label={t('tabs.windowCloseAria')}
+        onClick={onClose}
+      >
+        <X size={14} />
+      </IconButton>
+    </Box>
+  )
+}

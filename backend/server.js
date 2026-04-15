@@ -51,7 +51,19 @@ const ALLOWED_IMAGE_CONTAINERS = new Set(['jpg', 'png', 'webp'])
 const FORMAT_ID_REGEX = /^[A-Za-z0-9_.,:+\-\/=~*]+$/
 const MAX_PROXY_IMAGE_SIZE_BYTES = 15 * 1024 * 1024
 const TAB_STATE_SETTINGS_KEY = 'ui.tabs.state.v1'
+const AUTO_DOWNLOAD_SETTINGS_KEY = 'ui.autoDownload.settings.v1'
 const MAX_PERSISTED_TABS = 30
+const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
+const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
+const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
+const META_FORMATS_CACHE_MAX_ENTRIES = 150
+const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
+  useMetadata: true,
+  embedCoverArt: true,
+  maxAudioBitrateKbps: 0,
+  maxVideoHeight: 0,
+})
+const metaFormatsCache = new Map()
 const ALLOWED_TAB_PATHS = new Set([
   '/',
   '/downloads',
@@ -106,6 +118,35 @@ function createFallbackTab() {
     path: '/',
     search: '',
     pageTitle: '',
+  }
+}
+
+function normalizeAutoDownloadSettingsPayload(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+
+  const useMetadata = input.useMetadata !== undefined
+    ? Boolean(input.useMetadata)
+    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.useMetadata
+
+  const embedCoverArt = input.embedCoverArt !== undefined
+    ? Boolean(input.embedCoverArt)
+    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.embedCoverArt
+
+  const bitrateRaw = Number(input.maxAudioBitrateKbps)
+  const maxAudioBitrateKbps = AUTO_DOWNLOAD_BITRATE_OPTIONS.has(bitrateRaw)
+    ? bitrateRaw
+    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.maxAudioBitrateKbps
+
+  const heightRaw = Number(input.maxVideoHeight)
+  const maxVideoHeight = AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS.has(heightRaw)
+    ? heightRaw
+    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.maxVideoHeight
+
+  return {
+    useMetadata,
+    embedCoverArt,
+    maxAudioBitrateKbps,
+    maxVideoHeight,
   }
 }
 
@@ -192,6 +233,45 @@ app.put('/api/tabs/state', async (req, res) => {
   }
 })
 
+app.get('/api/auto-download/settings', async (_req, res) => {
+  try {
+    const raw = await readSettingValue(AUTO_DOWNLOAD_SETTINGS_KEY)
+    let parsed = {}
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        parsed = {}
+      }
+    }
+
+    return res.json(normalizeAutoDownloadSettingsPayload(parsed))
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to read auto-download settings', details: String(err?.message || err) })
+  }
+})
+
+app.put('/api/auto-download/settings', async (req, res) => {
+  try {
+    let existing = { ...DEFAULT_AUTO_DOWNLOAD_SETTINGS }
+    const raw = await readSettingValue(AUTO_DOWNLOAD_SETTINGS_KEY)
+    if (raw) {
+      try {
+        existing = normalizeAutoDownloadSettingsPayload(JSON.parse(raw))
+      } catch {
+        existing = { ...DEFAULT_AUTO_DOWNLOAD_SETTINGS }
+      }
+    }
+
+    const incoming = (req.body && typeof req.body === 'object') ? req.body : {}
+    const normalized = normalizeAutoDownloadSettingsPayload({ ...existing, ...incoming })
+    await writeSettingValue(AUTO_DOWNLOAD_SETTINGS_KEY, JSON.stringify(normalized))
+    return res.json(normalized)
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to save auto-download settings', details: String(err?.message || err) })
+  }
+})
+
 app.get('/api/downloads', (req, res) => {
   const { q, service } = req.query;
   let sql = `SELECT * FROM downloads WHERE 1=1`;
@@ -246,13 +326,7 @@ app.get('/health', async (_req, res) => {
   }
 
   checks.db = await checkDbHealth()
-
-  try {
-    const version = await runCmd(YT_DLP, ['--version'], { timeout: 5000, maxBuffer: 256 * 1024 })
-    checks.ytDlp = Boolean((version || '').trim())
-  } catch {
-    checks.ytDlp = false
-  }
+  checks.ytDlp = await checkYtDlpHealth()
 
   const healthy = checks.db && checks.ytDlp
   const status = healthy ? 'ok' : 'degraded'
@@ -606,6 +680,87 @@ function parseYtDlpJson(raw) {
   }
 }
 
+function formatDurationLabel(durationSeconds) {
+  const numeric = Number(durationSeconds)
+  if (!Number.isFinite(numeric)) return null
+
+  const total = Math.max(0, Math.round(numeric))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const pad2 = (value) => String(value).padStart(2, '0')
+
+  if (h > 0) {
+    return `${h}:${pad2(m)}:${pad2(s)}`
+  }
+  return `${pad2(m)}:${pad2(s)}`
+}
+
+function readCachedMetaFormats(url) {
+  const key = String(url || '').trim()
+  if (!key) return null
+
+  const cached = metaFormatsCache.get(key)
+  if (!cached) return null
+
+  if (cached.expiresAt <= Date.now()) {
+    metaFormatsCache.delete(key)
+    return null
+  }
+
+  return cached.payload
+}
+
+function writeCachedMetaFormats(url, payload) {
+  const key = String(url || '').trim()
+  if (!key || !payload || typeof payload !== 'object') return
+
+  const now = Date.now()
+  metaFormatsCache.set(key, {
+    expiresAt: now + META_FORMATS_CACHE_TTL_MS,
+    payload,
+  })
+
+  for (const [cacheKey, entry] of metaFormatsCache.entries()) {
+    if (entry.expiresAt > now) continue
+    metaFormatsCache.delete(cacheKey)
+  }
+
+  while (metaFormatsCache.size > META_FORMATS_CACHE_MAX_ENTRIES) {
+    const oldestKey = metaFormatsCache.keys().next().value
+    if (!oldestKey) break
+    metaFormatsCache.delete(oldestKey)
+  }
+}
+
+const YT_DLP_HEALTH_CACHE_TTL_MS = 60 * 1000
+let ytDlpHealthCache = {
+  checkedAt: 0,
+  ok: false,
+}
+
+async function checkYtDlpHealth() {
+  const now = Date.now()
+  if (ytDlpHealthCache.checkedAt > 0 && (now - ytDlpHealthCache.checkedAt) < YT_DLP_HEALTH_CACHE_TTL_MS) {
+    return ytDlpHealthCache.ok
+  }
+
+  let ok = false
+  try {
+    const version = await runCmd(YT_DLP, ['--version'], { timeout: 30000, maxBuffer: 256 * 1024 })
+    ok = Boolean((version || '').trim())
+  } catch {
+    ok = false
+  }
+
+  ytDlpHealthCache = {
+    checkedAt: Date.now(),
+    ok,
+  }
+
+  return ok
+}
+
 function checkDbHealth() {
   return new Promise((resolve) => {
     db.get('SELECT 1 AS ok', (err) => {
@@ -863,17 +1018,34 @@ function formatBytes(bytes) {
   return `${value.toFixed(digits)} ${units[idx]}`
 }
 
+function resolveExistingPath(filePath) {
+  const target = String(filePath || '').trim()
+  if (!target) return ''
+  try {
+    return fs.realpathSync(target)
+  } catch {
+    return target
+  }
+}
+
+function isProjectManagedFfmpegBinary() {
+  const normalizedBinaryPath = path.normalize(String(FFMPEG_BIN || '')).toLowerCase()
+  const marker = path.normalize(path.join('.tools', 'ffmpeg-bin')).toLowerCase()
+  return normalizedBinaryPath.includes(marker)
+}
+
 function getFileSizeInfo(filePath) {
   const target = String(filePath || '').trim()
-  if (!target) return { bytes: null, human: '' }
+  if (!target) return { bytes: null, human: '', resolvedPath: '' }
 
   try {
-    if (!fs.existsSync(target)) return { bytes: null, human: '' }
-    const stat = fs.statSync(target)
-    if (!stat.isFile()) return { bytes: null, human: '' }
-    return { bytes: stat.size, human: formatBytes(stat.size) }
+    const resolvedPath = resolveExistingPath(target)
+    if (!fs.existsSync(resolvedPath)) return { bytes: null, human: '', resolvedPath: '' }
+    const stat = fs.statSync(resolvedPath)
+    if (!stat.isFile()) return { bytes: null, human: '', resolvedPath: '' }
+    return { bytes: stat.size, human: formatBytes(stat.size), resolvedPath }
   } catch {
-    return { bytes: null, human: '' }
+    return { bytes: null, human: '', resolvedPath: '' }
   }
 }
 
@@ -931,7 +1103,7 @@ app.get('/api/yt-dlp/status', async (_req, res) => {
 
 // GET /api/ffmpeg/status -> { available, version, path, ffprobeVersion }
 app.get('/api/ffmpeg/status', async (_req, res) => {
-  const projectManaged = true
+  const projectManaged = isProjectManagedFfmpegBinary()
 
   if (!FFMPEG_BIN) {
     return res.json({
@@ -953,6 +1125,7 @@ app.get('/api/ffmpeg/status', async (_req, res) => {
     const versionLine = await readBinaryVersionLine(FFMPEG_BIN)
     const version = extractVersionToken(versionLine)
     const ffmpegFileSize = getFileSizeInfo(FFMPEG_BIN)
+    const ffmpegPath = ffmpegFileSize.resolvedPath || resolveExistingPath(FFMPEG_BIN) || FFMPEG_BIN
 
     let ffprobePath = FFPROBE_BIN
     if (!ffprobePath) {
@@ -970,6 +1143,7 @@ app.get('/api/ffmpeg/status', async (_req, res) => {
         const ffprobeVersionLine = await readBinaryVersionLine(ffprobePath)
         ffprobeVersion = extractVersionToken(ffprobeVersionLine)
         ffprobeFileSize = getFileSizeInfo(ffprobePath)
+        ffprobePath = ffprobeFileSize.resolvedPath || resolveExistingPath(ffprobePath) || ffprobePath
       } catch {
         ffprobeVersion = ''
       }
@@ -978,7 +1152,7 @@ app.get('/api/ffmpeg/status', async (_req, res) => {
     return res.json({
       available: true,
       projectManaged,
-      path: FFMPEG_BIN,
+      path: ffmpegPath,
       version,
       fileSizeBytes: ffmpegFileSize.bytes,
       fileSizeHuman: ffmpegFileSize.human,
@@ -1024,20 +1198,7 @@ app.get('/api/meta/duration', async (req, res) => {
     const strRaw = parts.join('|')
     const duration = secRaw ? Number(secRaw) : null
 
-    // Manually format duration to ensure consistency (e.g. 00:46 instead of just 46)
-    let formattedDuration = null
-    if (duration !== null && Number.isFinite(duration)) {
-      const d = Math.round(duration)
-      const h = Math.floor(d / 3600)
-      const m = Math.floor((d % 3600) / 60)
-      const s = d % 60
-      const pp = (n) => n.toString().padStart(2, '0')
-      if (h > 0) {
-        formattedDuration = `${h}:${pp(m)}:${pp(s)}`
-      } else {
-        formattedDuration = `${pp(m)}:${pp(s)}`
-      }
-    }
+    const formattedDuration = formatDurationLabel(duration)
 
     // Prefer our robust formatting, fallback to yt-dlp string, then null
     const durationString = formattedDuration || (strRaw && strRaw.trim()) || null
@@ -1054,6 +1215,11 @@ app.get('/api/meta/formats', async (req, res) => {
   const url = (req.query.url || '').toString().trim()
   if (!url) return res.status(400).json({ error: 'Missing url' })
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
+
+  const cachedPayload = readCachedMetaFormats(url)
+  if (cachedPayload) {
+    return res.json(cachedPayload)
+  }
 
   try {
     // Get format list as JSON
@@ -1136,11 +1302,26 @@ app.get('/api/meta/formats', async (req, res) => {
       return bw - aw
     })
 
-    res.json({
+    const numericDuration = Number(data?.duration)
+    const duration = Number.isFinite(numericDuration) ? numericDuration : null
+    const rawDurationString = String(data?.duration_string || '').trim()
+    const durationString = formatDurationLabel(duration) || rawDurationString || null
+
+    const payload = {
+      title: String(data?.title || '').trim(),
+      author: String(data?.uploader || data?.channel || data?.creator || data?.uploader_id || '').trim(),
+      extractor: String(data?.extractor_key || data?.extractor || '').trim(),
+      thumbnail: String(data?.thumbnail || thumbnails?.[0]?.url || '').trim() || null,
+      duration,
+      durationString,
       audioFormats: audioFormats,
       videoFormats: videoFormats,
       thumbnails: thumbnails,
-    })
+    }
+
+    writeCachedMetaFormats(url, payload)
+
+    res.json(payload)
   } catch (err) {
     console.error('Error fetching formats:', err)
     res.status(500).json({ error: 'Failed to query formats', details: String(err?.message || err) })
@@ -1356,7 +1537,7 @@ app.get('/api/proxy-image', async (req, res) => {
 })
 
 // POST /api/download/stream -> SSE with live yt-dlp download progress
-// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover?, audioCuts?, videoCuts? }
+// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover?, cuts? }
 app.post('/api/download/stream', async (req, res) => {
   const {
     url: rawUrl,
@@ -1442,10 +1623,11 @@ app.post('/api/download/stream', async (req, res) => {
     coverUploadHash = crypto.createHash('sha256').update(buffer).digest('hex').substring(0, 12)
   }
 
-  // Parse and validate cuts (new payload: req.body.cuts, legacy fallback: req.body.audioCuts).
+  // Parse and validate cuts (new payload: req.body.cuts, legacy fallback: req.body.audioCuts/videoCuts).
+  const legacyCuts = type === 'video' ? req.body.videoCuts : req.body.audioCuts
   const rawCuts = (req.body.cuts && typeof req.body.cuts === 'object')
     ? req.body.cuts
-    : ((req.body.audioCuts && typeof req.body.audioCuts === 'object') ? req.body.audioCuts : null)
+    : ((legacyCuts && typeof legacyCuts === 'object') ? legacyCuts : null)
 
   let cuts = null
   if (rawCuts?.enabled) {
@@ -1463,9 +1645,6 @@ app.post('/api/download/stream', async (req, res) => {
 
     cuts = { enabled: true, mode, trimStart, trimEnd, segments }
   }
-
-  const audioCuts = type === 'audio' ? normalizeCutPayload(req.body.audioCuts) : null
-  const videoCuts = type === 'video' ? normalizeCutPayload(req.body.videoCuts) : null
 
   // Setup SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
@@ -1498,26 +1677,6 @@ app.post('/api/download/stream', async (req, res) => {
   }
 
   try {
-    // Generate unique hash for this download configuration
-    const hashPayload = {
-      url,
-      type,
-      format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
-      audioFormat: normalizedAudioFormatId || '',
-      videoFormat: normalizedVideoFormatId || '',
-      videoTitle: req.body.videoTitle || null,
-      metadata: metadata || null,
-      cover: {
-        enabled: coverEnabled,
-        source: coverSource,
-        upload: coverUploadHash || null,
-      },
-      audioCuts: audioCuts || null,
-    }
-    if (type === 'video' && videoCuts) {
-      hashPayload.videoCuts = videoCuts
-    }
-
     const downloadHash = crypto.createHash('sha256')
       .update(JSON.stringify({
         url,
@@ -1687,31 +1846,40 @@ app.post('/api/download/stream', async (req, res) => {
     let lastPercent = 0
     let errorOutput = []
 
-    // Parse yt-dlp output for progress
-    const parseProgress = (line) => {
-      // yt-dlp progress format: [download]  45.2% of 10.5MiB at 1.2MiB/s ETA 00:05
-      const match = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/)
-      if (match) {
-        const percent = parseFloat(match[1])
-        if (percent > lastPercent) {
-          lastPercent = percent
-          send('progress', { percent: Math.min(percent, 99), stage: 'downloading' })
-        }
+    // Parse yt-dlp output for progress. Some yt-dlp builds emit many updates in one
+    // chunk with carriage returns, so we scan the whole chunk and take the highest %.
+    const parseProgress = (textChunk) => {
+      const text = String(textChunk || '')
+      if (!text) return
+
+      let nextPercent = null
+      for (const match of text.matchAll(/\[download\][^\r\n]*?(\d+(?:[\.,]\d+)?)%/gi)) {
+        const parsed = Number.parseFloat(String(match[1] || '').replace(',', '.'))
+        if (!Number.isFinite(parsed)) continue
+        nextPercent = nextPercent == null ? parsed : Math.max(nextPercent, parsed)
       }
+
+      if (nextPercent != null && nextPercent > lastPercent) {
+        lastPercent = nextPercent
+        send('progress', { percent: Math.min(nextPercent, 99), stage: 'downloading' })
+      }
+
       // Also check for merge/post-processing
-      if (line.includes('[Merger]') || line.includes('Merging formats')) {
+      if (text.includes('[Merger]') || text.includes('Merging formats')) {
         send('progress', { percent: 99, stage: 'merging' })
       }
-      if (line.includes('[ffmpeg]')) {
+      if (text.includes('[ffmpeg]')) {
         send('progress', { percent: 99, stage: 'processing' })
       }
     }
 
     child.stdout.on('data', (chunk) => {
-      const lines = chunk.toString().split(/\r?\n/)
+      const text = chunk.toString()
+      parseProgress(text)
+
+      const lines = text.split(/\r?\n|\r/)
       for (const line of lines) {
         if (line.trim()) {
-          parseProgress(line)
           send('message', line)
         }
       }
@@ -1725,13 +1893,14 @@ app.post('/api/download/stream', async (req, res) => {
         return
       }
 
-      const lines = text.split(/\r?\n/)
+      parseProgress(text)
+
+      const lines = text.split(/\r?\n|\r/)
       for (const line of lines) {
         if (line.trim()) {
           errorOutput.push(line.trim())
           if (errorOutput.length > 50) errorOutput.shift()
           console.error('yt-dlp stderr:', line)
-          parseProgress(line)
           send('message', line)
         }
       }
@@ -1792,41 +1961,6 @@ app.post('/api/download/stream', async (req, res) => {
                   } catch (cutErr) {
                     console.error('Media cut failed:', cutErr)
                     send('message', 'Media cutting failed, continuing with original file')
-                  }
-                }
-              }
-            }
-
-            // Apply video cuts (trim + removals) if requested
-            if (type === 'video' && videoCuts?.enabled) {
-              if (!HAS_FFMPEG) {
-                send('message', '⚠️ ffmpeg required for video cutting – skipping cuts')
-              } else {
-                const keepSegments = computeKeepSegments(videoCuts, mediaDuration)
-                if (keepSegments) {
-                  const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
-                  send('progress', { percent: 99, stage: 'processing' })
-                  try {
-                    let hasAudio = await detectAudioStream(sourcePath)
-                    let ffArgs = buildVideoCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext, hasAudio)
-                    try {
-                      await runCmd(FFMPEG_BIN, ffArgs)
-                    } catch (ffErr) {
-                      const stderr = String(ffErr?.stderr || ffErr?.message || '')
-                      const noAudioHint = /matches no streams|Stream map .*a:0|Cannot find a matching stream/i.test(stderr)
-                      if (!hasAudio || !noAudioHint) throw ffErr
-
-                      hasAudio = false
-                      ffArgs = buildVideoCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext, false)
-                      await runCmd(FFMPEG_BIN, ffArgs)
-                    }
-
-                    if (fs.existsSync(cutOutputPath)) {
-                      sourcePath = cutOutputPath
-                    }
-                  } catch (cutErr) {
-                    console.error('Video cut failed:', cutErr)
-                    send('message', 'Video cutting failed, continuing with original video')
                   }
                 }
               }

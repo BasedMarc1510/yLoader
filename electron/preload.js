@@ -24,5 +24,6 @@ const windowControls = {
 contextBridge.exposeInMainWorld('yloaderRuntime', {
   apiBase,
   isElectron: true,
+  platform: process.platform,
   windowControls,
 })

@@ -1,193 +1,11 @@
 import React from 'react'
 import { Box, Slider, Typography } from '@mui/material'
-import { Plus, X } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useI18n } from '../../providers/I18nProvider'
-
-/** Format seconds → "m:ss" or "h:mm:ss" */
-const formatTime = (totalSec) => {
-  const s = Math.max(0, Math.round(totalSec || 0))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const ss = s % 60
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`
-  return `${m}:${ss.toString().padStart(2, '0')}`
-}
-
-/** Parse "m:ss" or "h:mm:ss" → seconds, clamped to [0, max] */
-const parseTime = (str, max) => {
-  if (!str || typeof str !== 'string') return 0
-  const parts = str.trim().split(':').map(p => {
-    const n = parseInt(p, 10)
-    return isNaN(n) ? 0 : n
-  })
-  let v = 0
-  if (parts.length >= 3) v = parts[0] * 3600 + parts[1] * 60 + parts[2]
-  else if (parts.length === 2) v = parts[0] * 60 + parts[1]
-  else v = parts[0]
-  return Math.max(0, Math.min(max, v))
-}
-
-const mergeSegments = (segments) => {
-  const sorted = [...(segments || [])]
-    .filter(s => s && typeof s.start === 'number' && typeof s.end === 'number' && s.end > s.start)
-    .sort((a, b) => a.start - b.start)
-
-  const merged = []
-  for (const seg of sorted) {
-    const prev = merged[merged.length - 1]
-    if (!prev) {
-      merged.push({ start: seg.start, end: seg.end })
-      continue
-    }
-    if (seg.start <= prev.end) {
-      prev.end = Math.max(prev.end, seg.end)
-    } else {
-      merged.push({ start: seg.start, end: seg.end })
-    }
-  }
-  return merged
-}
-
-const invertSegments = (segments, start, end) => {
-  if (end <= start) return []
-  const merged = mergeSegments(segments)
-  if (!merged.length) return [{ start, end }]
-
-  const inverted = []
-  let cursor = start
-  for (const seg of merged) {
-    const clampedStart = Math.max(start, seg.start)
-    const clampedEnd = Math.min(end, seg.end)
-    if (clampedEnd <= clampedStart) continue
-    if (clampedStart > cursor) {
-      inverted.push({ start: cursor, end: clampedStart })
-    }
-    cursor = Math.max(cursor, clampedEnd)
-  }
-  if (cursor < end) {
-    inverted.push({ start: cursor, end })
-  }
-  return inverted
-}
-
-/**
- * Build CSS linear-gradient for slider rail highlighting cut zones.
- * sliderMin/sliderMax define the slider's range; zones are clamped to it.
- */
-const buildRailGradient = (zones, sliderMin, sliderMax, baseColor, zoneColor) => {
-  const span = sliderMax - sliderMin
-  if (!span || !zones || !zones.length) return baseColor
-
-  const valid = zones
-    .filter(z => z && typeof z.start === 'number' && typeof z.end === 'number' && z.end > z.start)
-    .sort((a, b) => a.start - b.start)
-
-  if (!valid.length) return baseColor
-
-  const stops = [`${baseColor} 0%`]
-  for (const z of valid) {
-    const cs = Math.max(z.start, sliderMin)
-    const ce = Math.min(z.end, sliderMax)
-    if (ce <= cs) continue
-    const sp = ((cs - sliderMin) / span * 100).toFixed(3)
-    const ep = ((ce - sliderMin) / span * 100).toFixed(3)
-    stops.push(
-      `${baseColor} ${sp}%`,
-      `${zoneColor} ${sp}%`,
-      `${zoneColor} ${ep}%`,
-      `${baseColor} ${ep}%`,
-    )
-  }
-  stops.push(`${baseColor} 100%`)
-  return `linear-gradient(to right, ${stops.join(', ')})`
-}
-
-/** Small labeled time-text input */
-const TimeField = ({ label, value, onChange, onCommit, isDark, disabled, textColor }) => (
-  <Box sx={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-    <Typography
-      variant="caption"
-      sx={{ color: isDark ? '#777' : '#888', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}
-    >
-      {label}
-    </Typography>
-    <Box
-      component="input"
-      type="text"
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      onBlur={e => onCommit(e.target.value)}
-      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-      disabled={disabled}
-      sx={{
-        width: 72,
-        px: 1,
-        py: '4px',
-        border: `1px solid ${isDark ? '#3a3a3a' : '#d0d0d0'}`,
-        borderRadius: '6px',
-        bgcolor: isDark ? '#1a1a1a' : '#fff',
-        color: textColor,
-        fontSize: '0.82rem',
-        fontFamily: 'monospace',
-        textAlign: 'center',
-        outline: 'none',
-        cursor: disabled ? 'default' : 'text',
-        boxSizing: 'border-box',
-        transition: 'border-color 0.15s',
-        '&:focus': { borderColor: isDark ? '#666' : '#aaa' },
-        '&:disabled': { opacity: 0.45, cursor: 'default' },
-      }}
-    />
-  </Box>
-)
-
-/** Shared MUI Slider sx – pass trackVisible=false for the combined-cuts slider */
-const makeSliderSx = (brandColor, railGradient, trackVisible = true) => ({
-  color: brandColor,
-  py: '10px',
-  '& .MuiSlider-thumb': {
-    width: 14,
-    height: 14,
-    bgcolor: brandColor,
-    '&:hover, &.Mui-focusVisible': { boxShadow: `0 0 0 6px ${brandColor}33` },
-    '&.Mui-active': { boxShadow: `0 0 0 10px ${brandColor}26` },
-  },
-  '& .MuiSlider-track': trackVisible
-    ? { bgcolor: brandColor, opacity: 0.85, height: 4, border: 'none' }
-    : { display: 'none' },
-  '& .MuiSlider-rail': {
-    background: railGradient,
-    opacity: 1,
-    height: 4,
-  },
-})
-
-const makeModeButtonSx = ({ active, isDark, brandColor, disabled }) => ({
-  flex: 1,
-  borderRadius: '9px',
-  py: 0.7,
-  px: 1,
-  border: `1px solid ${active ? brandColor : (isDark ? '#3a3a3a' : '#d0d0d0')}`,
-  bgcolor: active
-    ? (isDark ? `${brandColor}2E` : `${brandColor}1F`)
-    : (isDark ? '#1b1b1b' : '#fff'),
-  color: active ? brandColor : (isDark ? '#cfcfcf' : '#444'),
-  fontSize: '0.78rem',
-  fontWeight: 700,
-  textAlign: 'center',
-  cursor: disabled ? 'default' : 'pointer',
-  opacity: disabled ? 0.5 : 1,
-  userSelect: 'none',
-  transition: 'all 0.15s ease',
-  '&:hover': disabled
-    ? {}
-    : {
-      borderColor: active ? brandColor : (isDark ? '#6b6b6b' : '#a0a0a0'),
-      bgcolor: active
-        ? (isDark ? `${brandColor}33` : `${brandColor}26`)
-        : (isDark ? '#222' : '#f7f7f7'),
-    },
-})
+import CutSegmentsList from './audio-cut/CutSegmentsList'
+import TimeField from './audio-cut/TimeField'
+import { makeModeButtonSx, makeSliderSx } from './audio-cut/styles'
+import { buildRailGradient, formatTime, invertSegments, mergeSegments, parseTime } from './audio-cut/utils'
 
 /**
  * AudioCutSection
@@ -575,90 +393,29 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
           </Box>
 
           {/* ── Per-cut sliders ── */}
-          {cuts.length > 0 && (
-            <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${dividerColor}` }}>
-              <Typography variant="caption" sx={{
-                fontWeight: 700, color: mutedColor,
-                textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.68rem',
-              }}>
-                {mode === 'keep' ? t('downloader.cutModeKeep') : t('downloader.cutRemoveSections')}
-              </Typography>
-
-              {/* Per-cut time inputs */}
-              {cuts.map((cut, idx) => {
-                const strs = cutStrs[cut.id] || { startStr: formatTime(cut.start), endStr: formatTime(cut.end) }
-                const others = cuts.filter(c => c.id !== cut.id)
-                const otherRemovals = getRemovalZones(others, mode, trimStart, trimEnd)
-                const railGradient = buildRailGradient(
-                  otherRemovals,
-                  trimStart,
-                  Math.max(trimEnd, trimStart + 1),
-                  railBase,
-                  cutZoneColor
-                )
-                return (
-                  <Box key={cut.id} sx={{ mt: 1.25 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" sx={{
-                        fontWeight: 700, color: mutedColor,
-                        textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.68rem',
-                      }}>
-                        {t('downloader.cutSegmentLabel', { n: idx + 1 })}
-                      </Typography>
-                      <Box
-                        onClick={() => !disabled && removeCut(cut.id)}
-                        sx={{
-                          cursor: disabled ? 'default' : 'pointer',
-                          color: isDark ? '#666' : '#aaa',
-                          display: 'flex',
-                          alignItems: 'center',
-                          '&:hover': { color: isDark ? '#ccc' : '#555' },
-                        }}
-                      >
-                        <X size={13} />
-                      </Box>
-                    </Box>
-
-                    <Box sx={{ px: 0.5, mt: 0.25 }}>
-                      <Slider
-                        value={[cut.start, cut.end]}
-                        min={trimStart}
-                        max={Math.max(trimEnd, trimStart + 1)}
-                        step={1}
-                        disableSwap
-                        disabled={disabled || dur === 0}
-                        onChange={(_, value) => handleCutSlider(cut.id, value)}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={(v, i) => `${i % 2 === 1 ? t('downloader.cutEnd') : t('downloader.cutStart')}: ${formatTime(v)}`}
-                        sx={makeSliderSx(brandColor, railGradient, true)}
-                      />
-                    </Box>
-
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <TimeField
-                        label={t('downloader.cutStart')}
-                        value={strs.startStr}
-                        onChange={v => setCutStrs(prev => ({ ...prev, [cut.id]: { ...prev[cut.id], startStr: v } }))}
-                        onCommit={v => commitCutStart(cut.id, v)}
-                        isDark={isDark}
-                        disabled={disabled || dur === 0}
-                        textColor={textColor}
-                      />
-                      <TimeField
-                        label={t('downloader.cutEnd')}
-                        value={strs.endStr}
-                        onChange={v => setCutStrs(prev => ({ ...prev, [cut.id]: { ...prev[cut.id], endStr: v } }))}
-                        onCommit={v => commitCutEnd(cut.id, v)}
-                        isDark={isDark}
-                        disabled={disabled || dur === 0}
-                        textColor={textColor}
-                      />
-                    </Box>
-                  </Box>
-                )
-              })}
-            </Box>
-          )}
+          <CutSegmentsList
+            cuts={cuts}
+            cutStrs={cutStrs}
+            setCutStrs={setCutStrs}
+            mode={mode}
+            isDark={isDark}
+            brandColor={brandColor}
+            disabled={disabled}
+            dur={dur}
+            trimStart={trimStart}
+            trimEnd={trimEnd}
+            railBase={railBase}
+            cutZoneColor={cutZoneColor}
+            textColor={textColor}
+            mutedColor={mutedColor}
+            dividerColor={dividerColor}
+            handleCutSlider={handleCutSlider}
+            commitCutStart={commitCutStart}
+            commitCutEnd={commitCutEnd}
+            removeCut={removeCut}
+            getRemovalZones={getRemovalZones}
+            t={t}
+          />
 
           {/* ── Add cut button ── */}
           <Box

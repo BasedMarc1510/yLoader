@@ -1,0 +1,340 @@
+.yl-tab.is-closing .yl-tab-curve-left,
+.yl-tab.is-closing .yl-tab-curve-right {
+  opacity: 0;
+}
+
+.yl-tab.is-entering .yl-tab-curve-left,
+.yl-tab.is-entering .yl-tab-curve-right {
+  opacity: 0.92;
+}
+
+.yl-tab-hit {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border-radius: inherit;
+  padding: 0 24px 0 14px !important;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  color: inherit;
+  z-index: 10;
+  overflow: hidden;
+  border-radius: 10px 10px 0 0;
+  cursor: pointer;
+}
+
+.yl-tab:not(.is-active) .yl-tab-hit::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 8px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 1;
+  transition: background 0.12s ease;
+}
+
+.yl-tab:not(.is-active) .yl-tab-fade {
+  right: 2px;
+  width: 40px;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 0 8px 8px 0;
+}
+
+.yl-tab:focus-visible {
+  outline: none;
+}
+
+.yl-tab:focus-visible .yl-tab-hit {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--yl-foreground, #111) 28%, transparent);
+}
+
+.yl-tab:not(.is-active):hover {
+  --yl-tab-bg: color-mix(in srgb, var(--yl-foreground, #fff) 10%, var(--yl-surface, #181818));
+  color: var(--yl-foreground, inherit);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.yl-tab:not(.is-active):hover .yl-tab-hit::after {
+  background: var(--yl-tab-bg);
+}
+
+.yl-tab:not(.is-active):has(.yl-tab-hit:active) {
+  --yl-tab-bg: color-mix(in srgb, var(--yl-foreground, #fff) 18%, var(--yl-surface, #181818));
+}
+
+.yl-tab:not(.is-active):has(.yl-tab-hit:active) .yl-tab-hit::after {
+  background: var(--yl-tab-bg);
+}
+
+.yl-tab-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-right: 0;
+  flex: 1;
+  padding-right: 4px;
+  position: relative;
+  z-index: 10;
+  transition: opacity 120ms ease;
+}
+
+.yl-tab.is-closing .yl-tab-content {
+  opacity: 0;
+}
+
+.yl-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.yl-tab-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  box-sizing: border-box;
+  animation: yl-tab-loading-spin 0.72s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes yl-tab-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.yl-tab-close {
+  position: absolute !important;
+  right: 6px;
+  top: 50%;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  min-height: 20px !important;
+  border-radius: 999px !important;
+  color: var(--yl-muted-foreground, inherit);
+  opacity: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 20;
+  flex-shrink: 0;
+  padding: 0 !important;
+  margin-right: 0;
+  transform: translateY(-50%);
+}
+
+.yl-tab.is-active .yl-tab-close,
+.yl-tab:hover .yl-tab-close,
+.yl-tab:focus-within .yl-tab-close {
+  opacity: 1;
+}
+
+.yl-tab-close:hover {
+  background: color-mix(in srgb, var(--yl-destructive, #ef4444) 12%, transparent);
+  color: var(--yl-destructive, #ef4444);
+}
+
+.yl-tab.is-closing .yl-tab-close {
+  opacity: 0 !important;
+}
+
+@media (hover: none) {
+  .yl-tab-close {
+    opacity: 1;
+  }
+}
+
+.yl-tab-fade {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 1px;
+  width: 42px;
+  background: linear-gradient(to right, transparent, var(--yl-tab-bg));
+  pointer-events: none;
+  z-index: 15;
+  border-radius: 0 10px 0 0;
+  transition: background 0.12s ease;
+}
+
+.yl-tab.is-closing .yl-tab-fade {
+  opacity: 0;
+}
+
+.yl-tab-curve-left,
+.yl-tab-curve-right {
+  position: absolute;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+  z-index: 34;
+  display: none;
+}
+
+.yl-tab.is-active .yl-tab-curve-left,
+.yl-tab.is-active .yl-tab-curve-right {
+  display: block;
+}
+
+.yl-tab-curve-left {
+  left: -8px;
+  background: radial-gradient(
+    circle at 0 0,
+    transparent 7px,
+    var(--yl-border, transparent) 7px,
+    var(--yl-border, transparent) 8px,
+    var(--yl-card, transparent) 8px
+  );
+}
+
+.yl-tab-curve-right {
+  right: -8px;
+  background: radial-gradient(
+    circle at 100% 0,
+    transparent 7px,
+    var(--yl-border, transparent) 7px,
+    var(--yl-border, transparent) 8px,
+    var(--yl-card, transparent) 8px
+  );
+}
+
+.yl-tab.show-divider::after,
+.yl-tab.show-trailing-divider::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 1px;
+  background: var(--yl-border, transparent);
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.yl-add-btn {
+  margin-left: 3px !important;
+  margin-right: 4px !important;
+  margin-top: 0;
+  margin-bottom: 0;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  border-radius: 999px !important;
+  background: transparent;
+  color: var(--yl-muted-foreground, inherit);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 !important;
+  align-self: center;
+}
+
+.yl-add-btn.is-hidden-while-drag {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.yl-add-btn.yl-add-btn-drag-proxy {
+  position: absolute !important;
+  right: -36px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0 !important;
+  z-index: 45;
+}
+
+.yl-add-btn:hover {
+  background: var(--yl-accent, transparent);
+}
+
+.yl-scroll-controls {
+  display: none;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 0;
+  margin-right: 6px;
+  padding-right: 2px;
+  z-index: 20;
+  margin-left: 8px;
+  align-self: center;
+}
+
+.yl-scroll-controls.show {
+  display: flex;
+}
+
+.yl-scroll-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  border: 1px solid color-mix(in srgb, var(--yl-border, transparent) 70%, transparent);
+  border-radius: 6px !important;
+  background: transparent;
+  color: var(--yl-muted-foreground, inherit);
+  display: grid;
+  place-items: center;
+  cursor: pointer !important;
+  padding: 0 !important;
+}
+
+.yl-scroll-btn:hover {
+  background: var(--yl-accent, transparent);
+  color: var(--yl-foreground, inherit);
+}
+
+.yl-scroll-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.yl-window-controls {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 32px;
+  margin-left: 0;
+  z-index: 40;
+}
+
+.yl-window-btn {
+  width: 44px !important;
+  min-width: 44px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 0 !important;
+  color: var(--yl-muted-foreground, inherit);
+  cursor: default !important;
+}
+
+.yl-window-btn:hover {
+  background: var(--yl-accent, transparent);
+  color: var(--yl-foreground, inherit);
+}
+
+.yl-window-btn.is-close:hover {
+  background: color-mix(in srgb, var(--yl-destructive, #ef4444) 90%, #ffffff 10%);
+  color: #ffffff;
+}

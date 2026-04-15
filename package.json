@@ -2,6 +2,10 @@
   "name": "yloader",
   "version": "1.0.0",
   "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michaelSant0s/yLoader.git"
+  },
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "Self-hosted yt-dlp web wrapper with React UI and Node backend",

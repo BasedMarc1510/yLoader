@@ -126,6 +126,41 @@ Electron packaging notes:
 - macOS targets must be built on macOS (`--mac` on other hosts is blocked to avoid broken app bundles).
 - To avoid Gatekeeper "damaged" messages on distributed mac builds, set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`; these are picked up automatically by `scripts/notarize.cjs` via `electron-builder` `afterSign`.
 
+## GitHub Actions (Electron Builds and Releases)
+
+This repository includes a cross-platform Electron workflow in `.github/workflows/electron-release.yml`.
+
+### What it builds
+
+- Windows installer (`nsis`, `.exe`)
+- macOS disk image (`dmg`, `.dmg`)
+- Linux portable package (`AppImage`, `.AppImage`)
+
+### Safe test run (no release publish)
+
+1. Open **Actions** on GitHub.
+2. Select **Electron Build and Release**.
+3. Click **Run workflow** on your branch.
+4. Leave `publish` set to `false`.
+
+Result: all three OS builds run and upload artifacts to the workflow run, but nothing is published to GitHub Releases.
+
+### Real release publish
+
+Push a version tag (for example `v1.0.1`):
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+Result: the same matrix build runs, and electron-builder uploads the platform artifacts to the matching GitHub Release.
+
+### Manual publish from a tag
+
+You can also manually run the workflow on an existing `v*` tag and set `publish=true`.
+On non-tag refs, `publish=true` is ignored to avoid accidental release uploads.
+
 ## Health Check
 
 `GET /health` reports backend status including:
@@ -141,9 +176,21 @@ Unlike cloud-based downloaders, yLoader is completely private. You avoid ads, tr
 
 ## Support
 
-- Buy Me a Coffee: `https://buymeacoffee.com/michaelsant0s`
-- Bitcoin: `bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f`
-- Dogecoin: `DASGta7VgHuxUCvDh9v5cfRCFLirjs611B`
+If you find this useful, consider supporting development:
+
+<a href="https://buymeacoffee.com/michaelsant0s">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200">
+</a>
+
+BTC donations:  
+`bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f`
+
+![BTC Donation QR](frontend/src/assets/btc-qr.png)
+
+DOGE donations:  
+`DASGta7VgHuxUCvDh9v5cfRCFLirjs611B`
+
+![DOGE Donation QR](frontend/src/assets/doge-qr.png)
 
 ## License
 
