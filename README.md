@@ -126,6 +126,13 @@ Electron packaging notes:
 - macOS targets must be built on macOS (`--mac` on other hosts is blocked to avoid broken app bundles).
 - To avoid Gatekeeper "damaged" messages on distributed mac builds, set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`; these are picked up automatically by `scripts/notarize.cjs` via `electron-builder` `afterSign`.
 
+Electron auto-update flow:
+
+- Packaged Electron builds perform a silent update check on startup.
+- Downloads are user-driven in **Settings > General** (`Check for updates` -> `Download update` -> `Restart & Install`).
+- While an app update is downloading, closing the app is blocked to prevent interrupted installers.
+- Pre-release detection is enabled (`allowPrerelease=true`) so beta tags from GitHub Releases can be used for update testing.
+
 ## GitHub Actions (Electron Builds and Releases)
 
 This repository includes a cross-platform Electron workflow in `.github/workflows/electron-release.yml`.

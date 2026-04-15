@@ -40,6 +40,11 @@
     "asar": true,
     "compression": "maximum",
     "afterSign": "scripts/notarize.cjs",
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ],
     "files": [
       "electron/**/*",
       "package.json"
@@ -89,5 +94,8 @@
       "installerIcon": "build/icons/installer-icon.ico",
       "uninstallerIcon": "build/icons/installer-icon.ico"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
   }
 }

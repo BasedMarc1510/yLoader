@@ -1,4 +1,5 @@
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron')
+const { autoUpdater } = require('electron-updater')
 const { spawn } = require('child_process')
 const fs = require('fs')
 const path = require('path')
@@ -13,8 +14,10 @@ const DEFAULT_WINDOW_WIDTH = 1320
 const DEFAULT_WINDOW_HEIGHT = 860
 const MIN_WINDOW_WIDTH = 1024
 const MIN_WINDOW_HEIGHT = 700
+const STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 const APP_NAME = 'yLoader'
 const APP_ID = 'com.yloader.app'
+const APP_UPDATER_EVENT_CHANNEL = 'app-updater:event'
 
 app.setName(APP_NAME)
 if (IS_WINDOWS) {
@@ -36,6 +39,27 @@ let backendProcess = null
 let shuttingDown = false
 let windowStateSaveTimer = null
 let windowIpcRegistered = false
+let updaterIpcRegistered = false
+let updaterConfigured = false
+let isInstallingUpdate = false
+
+const UPDATE_PROGRESS_EMPTY = Object.freeze({
+  percent: 0,
+  bytesPerSecond: 0,
+  transferred: 0,
+  total: 0,
+})
+
+const updateState = {
+  phase: 'idle',
+  currentVersion: app.getVersion(),
+  availableVersion: '',
+  downloadedVersion: '',
+  progress: { ...UPDATE_PROGRESS_EMPTY },
+  error: '',
+  canAutoUpdate: false,
+  closeBlocked: false,
+}
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
 
@@ -84,6 +108,271 @@ function isFiniteNumber(value) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function createEmptyUpdateProgress() {
+  return { ...UPDATE_PROGRESS_EMPTY }
+}
+
+function resolveReleaseVersion(info) {
+  const raw = String(info?.version || info?.tag || info?.releaseName || '').trim()
+  return raw || ''
+}
+
+function normalizeUpdateProgress(progress) {
+  const percent = Number(progress?.percent)
+  const bytesPerSecond = Number(progress?.bytesPerSecond)
+  const transferred = Number(progress?.transferred)
+  const total = Number(progress?.total)
+
+  return {
+    percent: Number.isFinite(percent) ? clamp(percent, 0, 100) : 0,
+    bytesPerSecond: Number.isFinite(bytesPerSecond) ? Math.max(0, Math.round(bytesPerSecond)) : 0,
+    transferred: Number.isFinite(transferred) ? Math.max(0, Math.round(transferred)) : 0,
+    total: Number.isFinite(total) ? Math.max(0, Math.round(total)) : 0,
+  }
+}
+
+function getUpdateStateSnapshot() {
+  return {
+    ...updateState,
+    progress: { ...updateState.progress },
+  }
+}
+
+function setUpdateState(patch = {}) {
+  if (!patch || typeof patch !== 'object') return
+
+  if (patch.progress && typeof patch.progress === 'object') {
+    updateState.progress = { ...patch.progress }
+  }
+
+  const next = { ...patch }
+  delete next.progress
+  Object.assign(updateState, next)
+}
+
+function emitUpdaterEvent(type, payload = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+
+  try {
+    mainWindow.webContents.send(APP_UPDATER_EVENT_CHANNEL, {
+      type,
+      payload,
+      state: getUpdateStateSnapshot(),
+    })
+  } catch {
+    // ignore temporary dispatch errors during navigation
+  }
+}
+
+function isUpdateDownloadInProgress() {
+  return updateState.phase === 'downloading' && !isInstallingUpdate
+}
+
+function notifyCloseBlockedWhileDownloading() {
+  setUpdateState({ closeBlocked: true })
+  emitUpdaterEvent('close-blocked', { reason: 'download-in-progress' })
+}
+
+async function checkForAppUpdates(source = 'manual') {
+  if (!updateState.canAutoUpdate) {
+    return { ok: false, reason: 'unsupported' }
+  }
+
+  if (isUpdateDownloadInProgress()) {
+    notifyCloseBlockedWhileDownloading()
+    return { ok: false, reason: 'download-in-progress' }
+  }
+
+  if (updateState.phase === 'checking') {
+    return { ok: true, reason: 'already-checking' }
+  }
+
+  try {
+    await autoUpdater.checkForUpdates()
+    return { ok: true, source }
+  } catch (error) {
+    const message = String(error?.message || error || 'Unknown updater error')
+    setUpdateState({
+      phase: 'error',
+      error: message,
+      closeBlocked: false,
+    })
+    emitUpdaterEvent('error', { message, source })
+    return { ok: false, error: message }
+  }
+}
+
+async function downloadAppUpdate() {
+  if (!updateState.canAutoUpdate) {
+    return { ok: false, reason: 'unsupported' }
+  }
+
+  if (updateState.phase === 'downloading') {
+    return { ok: true, reason: 'already-downloading' }
+  }
+
+  if (updateState.phase !== 'update-available') {
+    return { ok: false, reason: 'no-update-available' }
+  }
+
+  setUpdateState({
+    phase: 'downloading',
+    error: '',
+    closeBlocked: false,
+    progress: createEmptyUpdateProgress(),
+  })
+
+  try {
+    await autoUpdater.downloadUpdate()
+    return { ok: true }
+  } catch (error) {
+    const message = String(error?.message || error || 'Unknown updater error')
+    setUpdateState({
+      phase: 'error',
+      error: message,
+      closeBlocked: false,
+    })
+    emitUpdaterEvent('error', { message, source: 'download' })
+    return { ok: false, error: message }
+  }
+}
+
+function quitAndInstallAppUpdate() {
+  if (!updateState.canAutoUpdate) {
+    return { ok: false, reason: 'unsupported' }
+  }
+
+  if (updateState.phase !== 'downloaded') {
+    return { ok: false, reason: 'update-not-downloaded' }
+  }
+
+  isInstallingUpdate = true
+  setUpdateState({ closeBlocked: false })
+
+  setImmediate(() => {
+    try {
+      autoUpdater.quitAndInstall()
+    } catch (error) {
+      isInstallingUpdate = false
+      const message = String(error?.message || error || 'Unknown updater error')
+      setUpdateState({
+        phase: 'error',
+        error: message,
+        closeBlocked: false,
+      })
+      emitUpdaterEvent('error', { message, source: 'quit-and-install' })
+    }
+  })
+
+  return { ok: true }
+}
+
+function configureAutoUpdater() {
+  if (updaterConfigured) return
+  updaterConfigured = true
+
+  setUpdateState({
+    phase: 'idle',
+    currentVersion: app.getVersion(),
+    availableVersion: '',
+    downloadedVersion: '',
+    progress: createEmptyUpdateProgress(),
+    error: '',
+    canAutoUpdate: app.isPackaged,
+    closeBlocked: false,
+  })
+
+  if (!app.isPackaged) return
+
+  // Best-practice updater defaults for explicit, user-driven downloads.
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = false
+  autoUpdater.allowPrerelease = true
+
+  autoUpdater.on('checking-for-update', () => {
+    setUpdateState({
+      phase: 'checking',
+      error: '',
+      closeBlocked: false,
+    })
+    emitUpdaterEvent('checking-for-update')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    const version = resolveReleaseVersion(info)
+    setUpdateState({
+      phase: 'update-available',
+      availableVersion: version,
+      downloadedVersion: '',
+      progress: createEmptyUpdateProgress(),
+      error: '',
+      closeBlocked: false,
+    })
+    emitUpdaterEvent('update-available', { version })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    setUpdateState({
+      phase: 'up-to-date',
+      availableVersion: '',
+      downloadedVersion: '',
+      progress: createEmptyUpdateProgress(),
+      error: '',
+      closeBlocked: false,
+    })
+    emitUpdaterEvent('update-not-available')
+  })
+
+  autoUpdater.on('download-progress', (progressPayload) => {
+    const progress = normalizeUpdateProgress(progressPayload)
+    setUpdateState({
+      phase: 'downloading',
+      progress,
+      error: '',
+      closeBlocked: false,
+    })
+    emitUpdaterEvent('download-progress', progress)
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    const version = resolveReleaseVersion(info) || updateState.availableVersion
+    const doneProgress = {
+      ...updateState.progress,
+      percent: 100,
+      transferred: updateState.progress.total > 0 ? updateState.progress.total : updateState.progress.transferred,
+    }
+
+    setUpdateState({
+      phase: 'downloaded',
+      downloadedVersion: version,
+      progress: doneProgress,
+      error: '',
+      closeBlocked: false,
+    })
+    emitUpdaterEvent('update-downloaded', { version })
+  })
+
+  autoUpdater.on('error', (error) => {
+    const message = String(error?.message || error || 'Unknown updater error')
+    setUpdateState({
+      phase: 'error',
+      error: message,
+      closeBlocked: false,
+    })
+    emitUpdaterEvent('error', { message })
+  })
+}
+
+function scheduleStartupUpdateCheck() {
+  if (!updateState.canAutoUpdate) return
+
+  setTimeout(() => {
+    checkForAppUpdates('startup').catch(() => {
+      // event handlers already publish failures
+    })
+  }, STARTUP_UPDATE_CHECK_DELAY_MS)
 }
 
 function getWindowStatePath() {
@@ -281,6 +570,23 @@ function registerWindowIpcHandlers() {
   })
 
   ipcMain.handle('window:get-state', () => getWindowStatePayload())
+}
+
+function registerUpdaterIpcHandlers() {
+  if (updaterIpcRegistered) return
+  updaterIpcRegistered = true
+
+  // Renderer sync: read the latest updater snapshot after mount/reload.
+  ipcMain.handle('app-updater:get-state', () => getUpdateStateSnapshot())
+
+  // Renderer action: manually check GitHub releases for a newer app build.
+  ipcMain.handle('app-updater:check-for-updates', async () => checkForAppUpdates('manual'))
+
+  // Renderer action: begin update download only after explicit user confirmation.
+  ipcMain.handle('app-updater:download-update', async () => downloadAppUpdate())
+
+  // Renderer action: restart process and hand over install to electron-updater.
+  ipcMain.handle('app-updater:quit-and-install', () => quitAndInstallAppUpdate())
 }
 
 function prependToPath(envObj, entryPath) {
@@ -515,6 +821,12 @@ function createMainWindow() {
     emitWindowState()
   })
 
+  mainWindow.on('close', (event) => {
+    if (!isUpdateDownloadInProgress()) return
+    event.preventDefault()
+    notifyCloseBlockedWhileDownloading()
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -523,6 +835,7 @@ function createMainWindow() {
     if (!mainWindow) return
     mainWindow.show()
     emitWindowState()
+    emitUpdaterEvent('state-sync')
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -559,8 +872,11 @@ function createMainWindow() {
 if (hasSingleInstanceLock) {
   app.whenReady().then(() => {
     registerWindowIpcHandlers()
+    registerUpdaterIpcHandlers()
+    configureAutoUpdater()
     startBackendProcessIfNeeded()
     createMainWindow()
+    scheduleStartupUpdateCheck()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -570,7 +886,13 @@ if (hasSingleInstanceLock) {
   })
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (isUpdateDownloadInProgress()) {
+    event.preventDefault()
+    notifyCloseBlockedWhileDownloading()
+    return
+  }
+
   shuttingDown = true
   if (windowStateSaveTimer) {
     clearTimeout(windowStateSaveTimer)

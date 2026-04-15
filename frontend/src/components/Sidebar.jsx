@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+  Badge,
   Box,
   Drawer,
   List,
@@ -15,6 +16,7 @@ import { useTheme } from '@mui/material/styles'
 import Typography from '@mui/material/Typography'
 import SettingsModal from './SettingsModal'
 import { useI18n } from '../providers/I18nProvider'
+import useElectronAppUpdater from '../hooks/useElectronAppUpdater'
 
 const drawerWidth = 240
 
@@ -38,6 +40,13 @@ export default function Sidebar({
   const MAC_TRAFFIC_LIGHTS_TOP_OFFSET = 8
   const [openSettings, setOpenSettings] = React.useState(false)
   const [settingsSection, setSettingsSection] = React.useState('general')
+  const {
+    state: appUpdateState,
+    isElectronUpdaterAvailable,
+    checkForUpdates: checkForAppUpdates,
+    downloadUpdate: downloadAppUpdate,
+    quitAndInstall: installAppUpdate,
+  } = useElectronAppUpdater()
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const isElectron = Boolean(
     runtime
@@ -47,6 +56,10 @@ export default function Sidebar({
   const showMacInlineExpand = collapsed && isMacElectron
   const brandLeftPadding = logoLeftOffset + 8
   const brandIconSrc = `${import.meta.env.BASE_URL}yloader-icon.svg`
+  const updatePhase = String(appUpdateState?.phase || 'idle').trim()
+  const showSettingsUpdateBadge = isElectronUpdaterAvailable
+    && (updatePhase === 'update-available' || updatePhase === 'downloading' || updatePhase === 'downloaded')
+  const settingsBadgeColor = updatePhase === 'downloaded' ? 'error' : 'info'
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -350,7 +363,15 @@ export default function Sidebar({
                     height: '100%',
                   }}
                 >
-                  <Settings size={16} />
+                  <Badge
+                    variant="dot"
+                    color={settingsBadgeColor}
+                    overlap="circular"
+                    invisible={!showSettingsUpdateBadge}
+                    anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                  >
+                    <Settings size={16} />
+                  </Badge>
                 </ListItemIcon>
                 {!collapsed && (
                   <ListItemText
@@ -420,6 +441,11 @@ export default function Sidebar({
         open={openSettings}
         onClose={() => setOpenSettings(false)}
         requestedSection={settingsSection}
+        appUpdateState={appUpdateState}
+        isElectronUpdaterAvailable={isElectronUpdaterAvailable}
+        checkForAppUpdates={checkForAppUpdates}
+        downloadAppUpdate={downloadAppUpdate}
+        installAppUpdate={installAppUpdate}
       />
     </Box>
   )

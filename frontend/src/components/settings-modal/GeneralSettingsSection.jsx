@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Select, MenuItem } from '@mui/material'
 import SettingRow from './SettingRow'
+import AppVersionUpdateSection from './AppVersionUpdateSection'
 
 export default function GeneralSettingsSection({
   language,
@@ -9,6 +10,11 @@ export default function GeneralSettingsSection({
   setPreference,
   selectSx,
   t,
+  appUpdateState,
+  isElectronUpdaterAvailable,
+  checkForAppUpdates,
+  downloadAppUpdate,
+  installAppUpdate,
 }) {
   return (
     <Box sx={{ px: 3, pt: 1, pb: 3 }}>
@@ -35,6 +41,15 @@ export default function GeneralSettingsSection({
           <MenuItem value="dark" sx={{ fontSize: 13 }}>{t('settings.dark')}</MenuItem>
         </Select>
       </SettingRow>
+
+      <AppVersionUpdateSection
+        t={t}
+        appUpdateState={appUpdateState}
+        isElectronUpdaterAvailable={isElectronUpdaterAvailable}
+        checkForAppUpdates={checkForAppUpdates}
+        downloadAppUpdate={downloadAppUpdate}
+        installAppUpdate={installAppUpdate}
+      />
     </Box>
   )
 }

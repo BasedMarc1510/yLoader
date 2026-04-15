@@ -21,9 +21,29 @@ const windowControls = {
   },
 }
 
+const appUpdater = {
+  getState: () => ipcRenderer.invoke('app-updater:get-state'),
+  checkForUpdates: () => ipcRenderer.invoke('app-updater:check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('app-updater:download-update'),
+  quitAndInstall: () => ipcRenderer.invoke('app-updater:quit-and-install'),
+  onEvent: (callback) => {
+    if (typeof callback !== 'function') return () => {}
+
+    const listener = (_event, payload) => {
+      callback(payload || {})
+    }
+
+    ipcRenderer.on('app-updater:event', listener)
+    return () => {
+      ipcRenderer.removeListener('app-updater:event', listener)
+    }
+  },
+}
+
 contextBridge.exposeInMainWorld('yloaderRuntime', {
   apiBase,
   isElectron: true,
   platform: process.platform,
   windowControls,
+  appUpdater,
 })

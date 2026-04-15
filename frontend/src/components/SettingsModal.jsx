@@ -27,7 +27,16 @@ import {
   normalizeAutoDownloadSettings,
 } from './settings-modal/autoDownloadUtils'
 
-export default function SettingsModal({ open, onClose, requestedSection = 'general' }) {
+export default function SettingsModal({
+  open,
+  onClose,
+  requestedSection = 'general',
+  appUpdateState,
+  isElectronUpdaterAvailable = false,
+  checkForAppUpdates,
+  downloadAppUpdate,
+  installAppUpdate,
+}) {
   const { t } = useI18n()
   const { mode, setPreference } = useContext(ColorModeContext)
   const { language, setLanguage } = useContext(SettingsContext)
@@ -63,6 +72,7 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
   const [autoDownloadLoading, setAutoDownloadLoading] = useState(false)
   const [autoDownloadSaving, setAutoDownloadSaving] = useState(false)
   const [autoDownloadError, setAutoDownloadError] = useState('')
+  const isAppUpdateDownloading = appUpdateState?.phase === 'downloading'
 
   const fetchStatus = async () => {
     setYtInfo((state) => ({ ...state, loading: true, error: '' }))
@@ -239,6 +249,11 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
     }
   }, [section, saveAutoDownloadSettings, setLanguage, setPreference])
 
+  const handleDialogClose = React.useCallback(() => {
+    if (isAppUpdateDownloading) return
+    onClose?.()
+  }, [isAppUpdateDownloading, onClose])
+
   const selectSx = {
     fontSize: 13,
     height: 32,
@@ -253,7 +268,8 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={handleDialogClose}
+      disableEscapeKeyDown={isAppUpdateDownloading}
       fullWidth
       maxWidth="md"
       PaperProps={{
@@ -288,7 +304,8 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
               <Typography sx={{ fontWeight: 700, fontSize: 15 }}>{t('settings.title')}</Typography>
               <Tooltip title={t('settings.close')}>
                 <IconButton
-                  onClick={onClose}
+                  onClick={handleDialogClose}
+                  disabled={isAppUpdateDownloading}
                   size="small"
                   aria-label={t('settings.closeAria')}
                   sx={{
@@ -381,6 +398,11 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
                   setPreference={setPreference}
                   selectSx={selectSx}
                   t={t}
+                  appUpdateState={appUpdateState}
+                  isElectronUpdaterAvailable={isElectronUpdaterAvailable}
+                  checkForAppUpdates={checkForAppUpdates}
+                  downloadAppUpdate={downloadAppUpdate}
+                  installAppUpdate={installAppUpdate}
                 />
               )}
 
