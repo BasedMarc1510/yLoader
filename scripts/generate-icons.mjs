@@ -46,7 +46,7 @@ function ensureMagickAvailable() {
   }
 }
 
-function pickSourceSvg() {
+function pickSourceIcon() {
   const argIndex = process.argv.indexOf('--source')
   if (argIndex >= 0 && process.argv[argIndex + 1]) {
     const candidate = path.resolve(ROOT_DIR, process.argv[argIndex + 1])
@@ -56,21 +56,23 @@ function pickSourceSvg() {
     return candidate
   }
 
+  const pngPreferred = path.join(FRONTEND_PUBLIC_DIR, 'icon-source.png')
   const preferred = path.join(FRONTEND_PUBLIC_DIR, 'yloader-icon.svg')
   const fallback = path.join(FRONTEND_PUBLIC_DIR, 'favicon.svg')
 
+  if (fs.existsSync(pngPreferred)) return pngPreferred
   if (fs.existsSync(preferred)) return preferred
   if (fs.existsSync(fallback)) return fallback
 
-  throw new Error('No SVG icon source found. Expected frontend/public/yloader-icon.svg or frontend/public/favicon.svg.')
+  throw new Error('No icon source found. Expected frontend/public/icon-source.png, frontend/public/yloader-icon.svg, or frontend/public/favicon.svg.')
 }
 
-function renderPng(sourceSvgPath, size, outPath) {
+function renderPng(sourcePath, size, outPath) {
   const rasterPath = `${outPath}.raster.png`
 
-  // Rasterize directly from SVG so icon edges stay visually identical to source artwork.
+  // Rasterize from configured source asset (PNG or SVG).
   runMagick([
-    sourceSvgPath,
+    sourcePath,
     '-background', 'none',
     '-alpha', 'on',
     '-colorspace', 'sRGB',
@@ -101,8 +103,9 @@ function copyFile(sourcePath, targetPath) {
 function main() {
   ensureMagickAvailable()
 
-  const sourceSvgPath = pickSourceSvg()
-  info(`Using source SVG: ${path.relative(ROOT_DIR, sourceSvgPath)}`)
+  const sourcePath = pickSourceIcon()
+  const isSourceSvg = path.extname(sourcePath).toLowerCase() === '.svg'
+  info(`Using source icon: ${path.relative(ROOT_DIR, sourcePath)}`)
 
   fs.mkdirSync(TMP_DIR, { recursive: true })
   fs.mkdirSync(BUILD_ICONS_DIR, { recursive: true })
@@ -111,15 +114,17 @@ function main() {
 
   for (const size of PNG_SIZES) {
     const outPath = path.join(TMP_DIR, `icon-${size}.png`)
-    renderPng(sourceSvgPath, size, outPath)
+    renderPng(sourcePath, size, outPath)
     rendered.set(size, outPath)
   }
 
-  // Keep both SVG references aligned for web usage.
-  const faviconSvgPath = path.join(FRONTEND_PUBLIC_DIR, 'favicon.svg')
-  const yloaderSvgPath = path.join(FRONTEND_PUBLIC_DIR, 'yloader-icon.svg')
-  copyFile(sourceSvgPath, faviconSvgPath)
-  copyFile(sourceSvgPath, yloaderSvgPath)
+  // Keep both SVG references aligned only when source itself is SVG.
+  if (isSourceSvg) {
+    const faviconSvgPath = path.join(FRONTEND_PUBLIC_DIR, 'favicon.svg')
+    const yloaderSvgPath = path.join(FRONTEND_PUBLIC_DIR, 'yloader-icon.svg')
+    copyFile(sourcePath, faviconSvgPath)
+    copyFile(sourcePath, yloaderSvgPath)
+  }
 
   // Web icon assets.
   copyFile(rendered.get(96), path.join(FRONTEND_PUBLIC_DIR, 'favicon-96x96.png'))
