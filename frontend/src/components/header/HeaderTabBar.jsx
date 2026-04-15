@@ -1,6 +1,7 @@
 import React from 'react'
 import {
   Box,
+  CircularProgress,
   IconButton,
   Typography,
 } from '@mui/material'
@@ -449,7 +450,14 @@ export default function HeaderTabBar({
                   >
                     <Box className="yl-tab-content">
                       {isTabBusy
-                        ? <Box component="span" className="yl-tab-loading-spinner" aria-hidden="true" />
+                        ? (
+                          <CircularProgress
+                            size={13}
+                            thickness={5}
+                            aria-hidden="true"
+                            sx={{ color: 'inherit', flexShrink: 0, display: 'block' }}
+                          />
+                        )
                         : <RouteIcon iconKey={iconKey} />}
                       <Typography component="span" className="yl-tab-title">
                         {tabTitle}

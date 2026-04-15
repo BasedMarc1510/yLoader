@@ -407,6 +407,44 @@ export function useTabsController({ t }) {
     setActiveTabId(newTab.id)
   }, [])
 
+  // Animates a set of tab IDs out (is-closing), then removes them in one state
+  // update after the animation completes. All tabs share a single 240ms timer.
+  const startBulkCloseAnimation = React.useCallback((tabIdsToClose) => {
+    const validIds = tabIdsToClose
+      .map((id) => String(id || '').trim())
+      .filter((id) => id && !closeTimersRef.current.has(id))
+
+    if (!validIds.length) return
+
+    setClosingTabIds((prev) => {
+      const next = new Set(prev)
+      validIds.forEach((id) => next.add(id))
+      return next
+    })
+
+    const idSet = new Set(validIds)
+    const timer = setTimeout(() => {
+      validIds.forEach((id) => closeTimersRef.current.delete(id))
+      setClosingTabIds((prev) => {
+        if (!prev.size) return prev
+        const next = new Set(prev)
+        validIds.forEach((id) => next.delete(id))
+        return next
+      })
+      setTabs((prevTabs) => {
+        const remaining = prevTabs.filter((t) => !idSet.has(t.id))
+        if (!remaining.length) {
+          const fallback = createDefaultTab('tab-home')
+          setActiveTabId(fallback.id)
+          return [fallback]
+        }
+        return remaining
+      })
+    }, 240)
+
+    validIds.forEach((id) => closeTimersRef.current.set(id, timer))
+  }, [])
+
   const handleCloneTab = React.useCallback((tabId) => {
     const sourceTab = tabs.find((t) => t.id === tabId)
     if (!sourceTab) return
@@ -425,31 +463,27 @@ export function useTabsController({ t }) {
   }, [tabs])
 
   const handleCloseOtherTabs = React.useCallback((tabId) => {
-    setTabs((prevTabs) => {
-      const target = prevTabs.find((t) => t.id === tabId)
-      if (!target || prevTabs.length <= 1) return prevTabs
-      return [target]
-    })
+    const toClose = tabs.filter((t) => t.id !== tabId).map((t) => t.id)
+    if (!toClose.length) return
     setActiveTabId(tabId)
-  }, [])
+    startBulkCloseAnimation(toClose)
+  }, [tabs, startBulkCloseAnimation])
 
   const handleCloseTabsToLeft = React.useCallback((tabId) => {
-    setTabs((prevTabs) => {
-      const index = prevTabs.findIndex((t) => t.id === tabId)
-      if (index <= 0) return prevTabs
-      return prevTabs.slice(index)
-    })
+    const index = tabs.findIndex((t) => t.id === tabId)
+    if (index <= 0) return
+    const toClose = tabs.slice(0, index).map((t) => t.id)
     setActiveTabId(tabId)
-  }, [])
+    startBulkCloseAnimation(toClose)
+  }, [tabs, startBulkCloseAnimation])
 
   const handleCloseTabsToRight = React.useCallback((tabId) => {
-    setTabs((prevTabs) => {
-      const index = prevTabs.findIndex((t) => t.id === tabId)
-      if (index < 0 || index >= prevTabs.length - 1) return prevTabs
-      return prevTabs.slice(0, index + 1)
-    })
+    const index = tabs.findIndex((t) => t.id === tabId)
+    if (index < 0 || index >= tabs.length - 1) return
+    const toClose = tabs.slice(index + 1).map((t) => t.id)
     setActiveTabId(tabId)
-  }, [])
+    startBulkCloseAnimation(toClose)
+  }, [tabs, startBulkCloseAnimation])
 
   const handleTabsReorder = React.useCallback((orderedIds = []) => {
     if (!Array.isArray(orderedIds) || !orderedIds.length) return
@@ -527,7 +561,10 @@ export function useTabsController({ t }) {
     const normalizedId = String(tabId || '').trim()
     if (!normalizedId) return
 
-    runtimeQueueRef.current.set(normalizedId, runtime || {})
+    // Merge into existing queued entry so rapid partial updates (e.g. pageTitle
+    // immediately followed by loading:false) don't silently drop earlier fields.
+    const existing = runtimeQueueRef.current.get(normalizedId) || {}
+    runtimeQueueRef.current.set(normalizedId, { ...existing, ...(runtime || {}) })
 
     if (runtimeFlushTimerRef.current) return
     runtimeFlushTimerRef.current = setTimeout(flushQueuedRuntimeUpdates, 90)

@@ -100,22 +100,6 @@
   line-height: 1;
 }
 
-.yl-tab-loading-spinner {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
-  border-top-color: currentColor;
-  box-sizing: border-box;
-  animation: yl-tab-loading-spin 0.72s linear infinite;
-  flex-shrink: 0;
-}
-
-@keyframes yl-tab-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 .yl-tab-close {
   position: absolute !important;
