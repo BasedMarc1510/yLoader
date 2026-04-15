@@ -41,7 +41,10 @@ export default function AppVersionUpdateSection({
   const [runningAction, setRunningAction] = React.useState('')
 
   const phase = String(appUpdateState?.phase || 'idle').trim()
+  const canCheckForUpdates = Boolean(isElectronUpdaterAvailable && appUpdateState?.canCheckForUpdates)
   const canAutoUpdate = Boolean(isElectronUpdaterAvailable && appUpdateState?.canAutoUpdate)
+  const manualDownloadOnly = Boolean(isElectronUpdaterAvailable && appUpdateState?.manualDownloadOnly)
+  const releasePageUrl = String(appUpdateState?.releasePageUrl || '').trim()
   const currentVersion = String(appUpdateState?.currentVersion || '-').trim() || '-'
   const targetVersion = String(appUpdateState?.availableVersion || appUpdateState?.downloadedVersion || '').trim()
   const versionText = targetVersion || t('settings.appUpdateVersionUnknown')
@@ -61,9 +64,13 @@ export default function AppVersionUpdateSection({
 
   const statusText = React.useMemo(() => {
     if (!isElectronUpdaterAvailable) return t('settings.appUpdateWebVersionOnly')
-    if (!canAutoUpdate) return t('settings.appUpdateNotSupported')
+    if (!canCheckForUpdates) return t('settings.appUpdateNotSupported')
     if (isChecking) return t('settings.appUpdateChecking')
-    if (isUpdateAvailable) return t('settings.appUpdateAvailableVersion', { version: versionText })
+    if (isUpdateAvailable) {
+      return manualDownloadOnly
+        ? t('settings.appUpdateAvailableVersionManual', { version: versionText })
+        : t('settings.appUpdateAvailableVersion', { version: versionText })
+    }
     if (isDownloading) return t('settings.appUpdateDownloading')
     if (isReadyToInstall) return t('settings.appUpdateReady')
     if (isError) {
@@ -74,11 +81,13 @@ export default function AppVersionUpdateSection({
     return t('settings.appUpdateIdle')
   }, [
     appUpdateState?.error,
+    canCheckForUpdates,
     canAutoUpdate,
     isChecking,
     isDownloading,
     isElectronUpdaterAvailable,
     isError,
+    manualDownloadOnly,
     isReadyToInstall,
     isUpdateAvailable,
     isUpToDate,
@@ -113,12 +122,12 @@ export default function AppVersionUpdateSection({
     )
   }
 
-  const showCheckButton = canAutoUpdate
+  const showCheckButton = canCheckForUpdates
     && !isChecking
     && !isUpdateAvailable
     && !isDownloading
     && !isReadyToInstall
-  const showDownloadButton = canAutoUpdate && isUpdateAvailable
+  const showDownloadButton = canCheckForUpdates && isUpdateAvailable
   const showInstallButton = canAutoUpdate && isReadyToInstall
 
   const isActionRunning = Boolean(runningAction)
@@ -145,6 +154,18 @@ export default function AppVersionUpdateSection({
             {statusText}
           </Typography>
         </Box>
+
+        {manualDownloadOnly && (
+          <Typography variant="caption" sx={{ mt: 0.75, display: 'block', color: 'text.secondary' }}>
+            {t('settings.appUpdateManualMacHint')}
+          </Typography>
+        )}
+
+        {manualDownloadOnly && releasePageUrl && (
+          <Typography variant="caption" sx={{ mt: 0.25, display: 'block', color: 'text.secondary', wordBreak: 'break-all' }}>
+            {releasePageUrl}
+          </Typography>
+        )}
 
         {isDownloading && (
           <Box sx={{ mt: 1.25 }}>
@@ -196,7 +217,7 @@ export default function AppVersionUpdateSection({
               onClick={() => runAction('download', downloadAppUpdate)}
               sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '4px' }}
             >
-              {t('settings.appUpdateDownloadButton')}
+              {manualDownloadOnly ? t('settings.appUpdateOpenReleaseButton') : t('settings.appUpdateDownloadButton')}
             </Button>
           )}
 

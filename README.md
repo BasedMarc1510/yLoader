@@ -115,8 +115,17 @@ npm run docker:stop
 npm run start
 npm run start:electron
 npm run build:electron
+npm run release:publish
 npm run dist:win
 ```
+
+`release:publish` asks for the next version (or accepts one via `npm run release:publish -- 2026.1.2-beta`) and then automatically:
+
+- updates root/frontend/backend package versions,
+- creates a commit,
+- creates and pushes a `v*` tag,
+- waits for the GitHub Actions release workflow,
+- waits until the GitHub Release and its assets are available.
 
 `build:electron` prepares local tool binaries, builds the frontend, stages backend runtime files, rebuilds `sqlite3` for Electron, and then packages with `electron-builder`.
 
@@ -132,6 +141,7 @@ Electron auto-update flow:
 - Downloads are user-driven in **Settings > General** (`Check for updates` -> `Download update` -> `Restart & Install`).
 - While an app update is downloading, closing the app is blocked to prevent interrupted installers.
 - Pre-release detection is enabled (`allowPrerelease=true`) so beta tags from GitHub Releases can be used for update testing.
+- On macOS, updates are still detected and shown in Settings, but in-place updater download/install is disabled. `Download update` opens the matching GitHub Release page so the DMG can be installed manually.
 
 ## GitHub Actions (Electron Builds and Releases)
 

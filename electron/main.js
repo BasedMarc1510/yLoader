@@ -5,6 +5,7 @@ const fs = require('fs')
 const path = require('path')
 
 const IS_WINDOWS = process.platform === 'win32'
+const IS_MAC = process.platform === 'darwin'
 const YTDLP_BINARY_NAME = IS_WINDOWS ? 'yt-dlp.exe' : 'yt-dlp'
 const FFMPEG_BINARY_NAME = IS_WINDOWS ? 'ffmpeg.exe' : 'ffmpeg'
 const FFPROBE_BINARY_NAME = IS_WINDOWS ? 'ffprobe.exe' : 'ffprobe'
@@ -18,6 +19,7 @@ const STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 const APP_NAME = 'yLoader'
 const APP_ID = 'com.yloader.app'
 const APP_UPDATER_EVENT_CHANNEL = 'app-updater:event'
+const APP_REPOSITORY_URL = 'https://github.com/michaelSant0s/yLoader'
 
 app.setName(APP_NAME)
 if (IS_WINDOWS) {
@@ -57,7 +59,10 @@ const updateState = {
   downloadedVersion: '',
   progress: { ...UPDATE_PROGRESS_EMPTY },
   error: '',
+  canCheckForUpdates: false,
   canAutoUpdate: false,
+  manualDownloadOnly: false,
+  releasePageUrl: `${APP_REPOSITORY_URL}/releases`,
   closeBlocked: false,
 }
 
@@ -112,6 +117,18 @@ function clamp(value, min, max) {
 
 function createEmptyUpdateProgress() {
   return { ...UPDATE_PROGRESS_EMPTY }
+}
+
+function ensureVersionTag(version) {
+  const normalized = String(version || '').trim()
+  if (!normalized) return ''
+  return normalized.startsWith('v') ? normalized : `v${normalized}`
+}
+
+function buildReleasePageUrl(version = '') {
+  const tag = ensureVersionTag(version)
+  if (!tag) return `${APP_REPOSITORY_URL}/releases`
+  return `${APP_REPOSITORY_URL}/releases/tag/${encodeURIComponent(tag)}`
 }
 
 function resolveReleaseVersion(info) {
@@ -176,7 +193,7 @@ function notifyCloseBlockedWhileDownloading() {
 }
 
 async function checkForAppUpdates(source = 'manual') {
-  if (!updateState.canAutoUpdate) {
+  if (!updateState.canCheckForUpdates) {
     return { ok: false, reason: 'unsupported' }
   }
 
@@ -205,8 +222,38 @@ async function checkForAppUpdates(source = 'manual') {
 }
 
 async function downloadAppUpdate() {
-  if (!updateState.canAutoUpdate) {
+  if (!updateState.canCheckForUpdates) {
     return { ok: false, reason: 'unsupported' }
+  }
+
+  if (updateState.manualDownloadOnly) {
+    if (updateState.phase !== 'update-available') {
+      return { ok: false, reason: 'no-update-available' }
+    }
+
+    const version = updateState.availableVersion || updateState.downloadedVersion || ''
+    const releasePageUrl = buildReleasePageUrl(version)
+
+    setUpdateState({
+      releasePageUrl,
+      error: '',
+      closeBlocked: false,
+    })
+
+    try {
+      await shell.openExternal(releasePageUrl)
+      emitUpdaterEvent('manual-download-opened', { url: releasePageUrl, version })
+      return { ok: true, manual: true, url: releasePageUrl }
+    } catch (error) {
+      const message = String(error?.message || error || 'Failed to open release page')
+      setUpdateState({
+        phase: 'error',
+        error: message,
+        closeBlocked: false,
+      })
+      emitUpdaterEvent('error', { message, source: 'manual-download-open' })
+      return { ok: false, error: message }
+    }
   }
 
   if (updateState.phase === 'downloading') {
@@ -273,6 +320,10 @@ function configureAutoUpdater() {
   if (updaterConfigured) return
   updaterConfigured = true
 
+  const canCheckForUpdates = app.isPackaged
+  const manualDownloadOnly = app.isPackaged && IS_MAC
+  const canAutoUpdate = canCheckForUpdates && !manualDownloadOnly
+
   setUpdateState({
     phase: 'idle',
     currentVersion: app.getVersion(),
@@ -280,11 +331,14 @@ function configureAutoUpdater() {
     downloadedVersion: '',
     progress: createEmptyUpdateProgress(),
     error: '',
-    canAutoUpdate: app.isPackaged,
+    canCheckForUpdates,
+    canAutoUpdate,
+    manualDownloadOnly,
+    releasePageUrl: buildReleasePageUrl(),
     closeBlocked: false,
   })
 
-  if (!app.isPackaged) return
+  if (!canCheckForUpdates) return
 
   // Best-practice updater defaults for explicit, user-driven downloads.
   autoUpdater.autoDownload = false
@@ -308,6 +362,7 @@ function configureAutoUpdater() {
       downloadedVersion: '',
       progress: createEmptyUpdateProgress(),
       error: '',
+      releasePageUrl: buildReleasePageUrl(version),
       closeBlocked: false,
     })
     emitUpdaterEvent('update-available', { version })
@@ -320,6 +375,7 @@ function configureAutoUpdater() {
       downloadedVersion: '',
       progress: createEmptyUpdateProgress(),
       error: '',
+      releasePageUrl: buildReleasePageUrl(),
       closeBlocked: false,
     })
     emitUpdaterEvent('update-not-available')
@@ -349,6 +405,7 @@ function configureAutoUpdater() {
       downloadedVersion: version,
       progress: doneProgress,
       error: '',
+      releasePageUrl: buildReleasePageUrl(version),
       closeBlocked: false,
     })
     emitUpdaterEvent('update-downloaded', { version })
@@ -366,7 +423,7 @@ function configureAutoUpdater() {
 }
 
 function scheduleStartupUpdateCheck() {
-  if (!updateState.canAutoUpdate) return
+  if (!updateState.canCheckForUpdates) return
 
   setTimeout(() => {
     checkForAppUpdates('startup').catch(() => {

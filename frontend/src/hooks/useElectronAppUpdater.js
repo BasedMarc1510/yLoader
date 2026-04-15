@@ -38,9 +38,14 @@ function normalizeUpdaterState(rawState, isElectronUpdaterAvailable) {
     downloadedVersion: downloadedVersionRaw,
     progress: normalizeProgress(input.progress || EMPTY_PROGRESS),
     error: String(input.error || '').trim(),
+    canCheckForUpdates: input.canCheckForUpdates !== undefined
+      ? Boolean(input.canCheckForUpdates)
+      : Boolean(isElectronUpdaterAvailable),
     canAutoUpdate: input.canAutoUpdate !== undefined
       ? Boolean(input.canAutoUpdate)
       : Boolean(isElectronUpdaterAvailable),
+    manualDownloadOnly: Boolean(input.manualDownloadOnly),
+    releasePageUrl: String(input.releasePageUrl || '').trim(),
     closeBlocked: Boolean(input.closeBlocked),
   }
 }
