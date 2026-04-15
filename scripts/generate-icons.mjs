@@ -66,6 +66,8 @@ function pickSourceSvg() {
 }
 
 function renderPng(sourceSvgPath, size, outPath) {
+  const rasterPath = `${outPath}.raster.png`
+
   // Rasterize directly from SVG so icon edges stay visually identical to source artwork.
   runMagick([
     sourceSvgPath,
@@ -75,8 +77,20 @@ function renderPng(sourceSvgPath, size, outPath) {
     '-resize', `${size}x${size}`,
     '-gravity', 'center',
     '-extent', `${size}x${size}`,
+    rasterPath,
+  ])
+
+  // Make only the outer background transparent while keeping inner white icon details.
+  runMagick([
+    rasterPath,
+    '-alpha', 'on',
+    '-fuzz', '5%',
+    '-fill', 'none',
+    '-draw', 'color 0,0 floodfill',
     outPath,
   ])
+
+  fs.rmSync(rasterPath, { force: true })
 }
 
 function copyFile(sourcePath, targetPath) {

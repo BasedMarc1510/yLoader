@@ -80,7 +80,7 @@ export default function SettingsModal({ open, onClose, requestedSection = 'gener
         outdated: !!data.outdated,
         updateSupported: data.updateSupported !== false,
         loading: false,
-        error: '',
+        error: data.error || '',
       })
     } catch (error) {
       setYtInfo((state) => ({

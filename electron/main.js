@@ -326,6 +326,50 @@ function resolveToolsRootPath() {
   return path.join(app.getAppPath(), '.tools')
 }
 
+function isRegularFile(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return false
+    return fs.statSync(filePath).isFile()
+  } catch {
+    return false
+  }
+}
+
+function resolveBundledYtDlpPath(toolsRoot) {
+  const candidates = [
+    path.join(toolsRoot, 'yt-dlp-bin', YTDLP_BINARY_NAME),
+    path.join(toolsRoot, 'yt-dlp-bin', 'yt-dlp.exe'),
+    path.join(toolsRoot, 'yt-dlp-bin', 'yt-dlp'),
+  ]
+
+  for (const candidate of candidates) {
+    if (isRegularFile(candidate)) return candidate
+  }
+
+  return ''
+}
+
+function resolveBundledFfmpegBinDir(toolsRoot) {
+  const ffmpegRoot = path.join(toolsRoot, 'ffmpeg-bin')
+  const preferredBinDir = path.join(ffmpegRoot, `${process.platform}-${process.arch}`, 'bin')
+  if (isRegularFile(path.join(preferredBinDir, FFMPEG_BINARY_NAME))) {
+    return preferredBinDir
+  }
+
+  if (!fs.existsSync(ffmpegRoot)) return ''
+
+  const entries = fs.readdirSync(ffmpegRoot, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const candidateBinDir = path.join(ffmpegRoot, entry.name, 'bin')
+    if (isRegularFile(path.join(candidateBinDir, FFMPEG_BINARY_NAME))) {
+      return candidateBinDir
+    }
+  }
+
+  return ''
+}
+
 function stopBackendProcess() {
   if (!backendProcess || backendProcess.exitCode !== null) return
   try {
@@ -358,22 +402,28 @@ function buildBackendEnv() {
     DOWNLOAD_DIR: downloadsDir,
   }
 
+  // Prevent stale externally configured tool paths from overriding bundled binaries.
+  delete env.YT_DLP_PATH
+  delete env.YT_DLP_UPDATE_METHOD
+  delete env.FFMPEG_PATH
+  delete env.FFPROBE_PATH
+
   const toolsRoot = resolveToolsRootPath()
-  const ytdlpPath = path.join(toolsRoot, 'yt-dlp-bin', YTDLP_BINARY_NAME)
-  if (fs.existsSync(ytdlpPath)) {
+  const ytdlpPath = resolveBundledYtDlpPath(toolsRoot)
+  if (isRegularFile(ytdlpPath)) {
     env.YT_DLP_PATH = ytdlpPath
-    env.YT_DLP_UPDATE_METHOD = env.YT_DLP_UPDATE_METHOD || 'self'
+    env.YT_DLP_UPDATE_METHOD = 'self'
   }
 
-  const ffmpegBinDir = path.join(toolsRoot, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin')
+  const ffmpegBinDir = resolveBundledFfmpegBinDir(toolsRoot)
   const ffmpegPath = path.join(ffmpegBinDir, FFMPEG_BINARY_NAME)
   const ffprobePath = path.join(ffmpegBinDir, FFPROBE_BINARY_NAME)
 
-  if (fs.existsSync(ffmpegPath)) {
+  if (isRegularFile(ffmpegPath)) {
     env.FFMPEG_PATH = ffmpegPath
     prependToPath(env, ffmpegBinDir)
   }
-  if (fs.existsSync(ffprobePath)) {
+  if (isRegularFile(ffprobePath)) {
     env.FFPROBE_PATH = ffprobePath
   }
 

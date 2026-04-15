@@ -46,6 +46,7 @@ export default function Sidebar({
   const isMacElectron = Boolean(runtime?.platform === 'darwin')
   const showMacInlineExpand = collapsed && isMacElectron
   const brandLeftPadding = logoLeftOffset + 8
+  const brandIconSrc = `${import.meta.env.BASE_URL}favicon.svg`
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -182,7 +183,7 @@ export default function Sidebar({
             pr: 0,
           }}
         >
-          <Box component="img" src="/favicon.svg" alt="yLoader" sx={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block' }} />
+          <Box component="img" src={brandIconSrc} alt="yLoader" sx={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block' }} />
           <Typography
             variant="h6"
             className="youtube-title"

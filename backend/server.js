@@ -78,8 +78,86 @@ const YT_DLP_JS_RUNTIME_ARGS = ['--js-runtimes', YT_DLP_JS_RUNTIMES]
 const YT_DLP_COOKIES_FILE = String(process.env.YT_DLP_COOKIES_FILE || '').trim()
 const YT_DLP_COOKIES_FROM_BROWSER = String(process.env.YT_DLP_COOKIES_FROM_BROWSER || '').trim()
 const YT_DLP_EXTRACTOR_ARGS = String(process.env.YT_DLP_EXTRACTOR_ARGS || '').trim()
-const FFMPEG_BIN = String(process.env.FFMPEG_PATH || '').trim()
-const FFPROBE_BIN = String(process.env.FFPROBE_PATH || '').trim()
+let FFMPEG_BIN = String(process.env.FFMPEG_PATH || '').trim()
+let FFPROBE_BIN = String(process.env.FFPROBE_PATH || '').trim()
+
+const TOOL_ROOT_CANDIDATES = [
+  path.resolve(process.cwd(), '..', 'tools'),
+  path.resolve(process.cwd(), 'tools'),
+  path.resolve(process.cwd(), '..', '.tools'),
+  path.resolve(process.cwd(), '.tools'),
+]
+
+function isRegularFile(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return false
+    return fs.statSync(filePath).isFile()
+  } catch {
+    return false
+  }
+}
+
+function looksLikeFilePath(target) {
+  const value = String(target || '').trim()
+  return value.includes('/') || value.includes('\\') || path.isAbsolute(value)
+}
+
+function getToolRoots() {
+  const uniqueCandidates = [...new Set(TOOL_ROOT_CANDIDATES.map((candidate) => path.resolve(candidate)))]
+  const roots = []
+
+  for (const candidate of uniqueCandidates) {
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        roots.push(candidate)
+      }
+    } catch {
+      // ignore unreadable candidates
+    }
+  }
+
+  return roots
+}
+
+function findBundledYtDlpBinary() {
+  const binaryCandidates = process.platform === 'win32'
+    ? ['yt-dlp.exe', 'yt-dlp']
+    : ['yt-dlp', 'yt-dlp.exe']
+
+  for (const root of getToolRoots()) {
+    for (const binaryName of binaryCandidates) {
+      const candidate = path.join(root, 'yt-dlp-bin', binaryName)
+      if (isRegularFile(candidate)) return candidate
+    }
+  }
+
+  return ''
+}
+
+function findBundledFfmpegBinary(binaryName) {
+  const platformArchDir = `${process.platform}-${process.arch}`
+
+  for (const root of getToolRoots()) {
+    const ffmpegRoot = path.join(root, 'ffmpeg-bin')
+    const preferred = path.join(ffmpegRoot, platformArchDir, 'bin', binaryName)
+    if (isRegularFile(preferred)) return preferred
+
+    if (!fs.existsSync(ffmpegRoot)) continue
+
+    try {
+      const entries = fs.readdirSync(ffmpegRoot, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const candidate = path.join(ffmpegRoot, entry.name, 'bin', binaryName)
+        if (isRegularFile(candidate)) return candidate
+      }
+    } catch {
+      // ignore lookup errors and continue with next root
+    }
+  }
+
+  return ''
+}
 
 // Basic CORS to allow browser access from other origins
 app.use((req, res, next) => {
@@ -769,7 +847,16 @@ function checkDbHealth() {
   })
 }
 
-let YT_DLP = process.env.YT_DLP_PATH || ''
+let YT_DLP = String(process.env.YT_DLP_PATH || '').trim()
+if (YT_DLP && looksLikeFilePath(YT_DLP) && !isRegularFile(YT_DLP)) {
+  YT_DLP = ''
+}
+
+const bundledYtDlp = findBundledYtDlpBinary()
+if (!YT_DLP && bundledYtDlp) {
+  YT_DLP = bundledYtDlp
+}
+
 if (!YT_DLP) {
   if (process.platform === 'win32') {
     YT_DLP = 'yt-dlp.exe'
@@ -778,14 +865,44 @@ if (!YT_DLP) {
   }
 }
 
+if (FFMPEG_BIN && looksLikeFilePath(FFMPEG_BIN) && !isRegularFile(FFMPEG_BIN)) {
+  FFMPEG_BIN = ''
+}
+const bundledFfmpeg = findBundledFfmpegBinary(process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
+if (!FFMPEG_BIN && bundledFfmpeg) {
+  FFMPEG_BIN = bundledFfmpeg
+}
+
+if (FFPROBE_BIN && looksLikeFilePath(FFPROBE_BIN) && !isRegularFile(FFPROBE_BIN)) {
+  FFPROBE_BIN = ''
+}
+const bundledFfprobe = findBundledFfmpegBinary(process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
+if (!FFPROBE_BIN && bundledFfprobe) {
+  FFPROBE_BIN = bundledFfprobe
+}
+if (!FFPROBE_BIN && isRegularFile(FFMPEG_BIN)) {
+  const siblingName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
+  const siblingPath = path.join(path.dirname(FFMPEG_BIN), siblingName)
+  if (isRegularFile(siblingPath)) {
+    FFPROBE_BIN = siblingPath
+  }
+}
+
 const YT_PIP = process.env.YT_PIP_PATH || ''
 const YT_DLP_UPDATE_METHOD = (process.env.YT_DLP_UPDATE_METHOD || (YT_PIP ? 'pip' : 'self')).toLowerCase()
 const DISABLED_UPDATE_METHODS = new Set(['disabled', 'none', 'system'])
+const YTDLP_PATH_MARKERS = [
+  path.normalize(path.join('.tools', 'yt-dlp-bin')).toLowerCase(),
+  path.normalize(path.join('tools', 'yt-dlp-bin')).toLowerCase(),
+]
+const FFMPEG_PATH_MARKERS = [
+  path.normalize(path.join('.tools', 'ffmpeg-bin')).toLowerCase(),
+  path.normalize(path.join('tools', 'ffmpeg-bin')).toLowerCase(),
+]
 
 function isProjectManagedYtDlpBinary() {
   const normalizedBinaryPath = path.normalize(String(YT_DLP || '')).toLowerCase()
-  const marker = path.normalize(path.join('.tools', 'yt-dlp-bin')).toLowerCase()
-  return normalizedBinaryPath.includes(marker)
+  return YTDLP_PATH_MARKERS.some((marker) => normalizedBinaryPath.includes(marker))
 }
 
 function getEffectiveYtDlpUpdateMethod() {
@@ -1030,8 +1147,7 @@ function resolveExistingPath(filePath) {
 
 function isProjectManagedFfmpegBinary() {
   const normalizedBinaryPath = path.normalize(String(FFMPEG_BIN || '')).toLowerCase()
-  const marker = path.normalize(path.join('.tools', 'ffmpeg-bin')).toLowerCase()
-  return normalizedBinaryPath.includes(marker)
+  return FFMPEG_PATH_MARKERS.some((marker) => normalizedBinaryPath.includes(marker))
 }
 
 function getFileSizeInfo(filePath) {
@@ -1057,6 +1173,9 @@ async function readBinaryVersionLine(binaryPath) {
 
 // GET /api/yt-dlp/status -> { currentVersion, latestVersion, outdated }
 app.get('/api/yt-dlp/status', async (_req, res) => {
+  const ytDlpPath = YT_DLP
+  const ytDlpFileSize = getFileSizeInfo(ytDlpPath)
+
   try {
     // Current version from configured yt-dlp binary path
     const currentRaw = await runCmd(YT_DLP, ['--version'])
@@ -1065,9 +1184,6 @@ app.get('/api/yt-dlp/status', async (_req, res) => {
 
     let latestVersion = currentVersion
     let outdated = false
-
-    const ytDlpPath = YT_DLP
-    const ytDlpFileSize = getFileSizeInfo(ytDlpPath)
 
     try {
       // Fetch latest version directly from PyPI (faster & more reliable than pip list --outdated)
@@ -1086,6 +1202,7 @@ app.get('/api/yt-dlp/status', async (_req, res) => {
     }
 
     res.json({
+      available: true,
       currentVersion,
       latestVersion,
       outdated,
@@ -1095,9 +1212,22 @@ app.get('/api/yt-dlp/status', async (_req, res) => {
       binaryPath: ytDlpPath,
       binarySizeBytes: ytDlpFileSize.bytes,
       binarySizeHuman: ytDlpFileSize.human,
+      error: '',
     })
   } catch (err) {
-    res.status(500).json({ error: 'Failed to query yt-dlp status', details: String(err?.message || err) })
+    res.json({
+      available: false,
+      currentVersion: '',
+      latestVersion: '',
+      outdated: false,
+      platform: os.platform(),
+      updateMethod: getEffectiveYtDlpUpdateMethod(),
+      updateSupported: !isYtDlpUpdateDisabled(),
+      binaryPath: ytDlpPath,
+      binarySizeBytes: ytDlpFileSize.bytes,
+      binarySizeHuman: ytDlpFileSize.human,
+      error: String(err?.message || err),
+    })
   }
 })
 
