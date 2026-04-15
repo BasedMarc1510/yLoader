@@ -1,0 +1,66 @@
+name: Release Cleanup On Tag Delete
+
+on:
+  delete:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.ref_type == 'tag' && startsWith(github.event.ref, 'v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete release for removed tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ github.event.ref }}
+        run: |
+          set -euo pipefail
+
+          get_url="https://api.github.com/repos/${REPOSITORY}/releases/tags/${TAG_NAME}"
+          status=$(curl -sS -o release.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "$get_url")
+
+          if [ "$status" = "404" ]; then
+            echo "No release found for tag ${TAG_NAME}. Nothing to delete."
+            exit 0
+          fi
+
+          if [ "$status" -ge 300 ]; then
+            echo "Failed to resolve release for tag ${TAG_NAME} (HTTP ${status})."
+            cat release.json
+            exit 1
+          fi
+
+          release_id=$(python3 - <<'PY'
+import json
+with open('release.json', 'r', encoding='utf-8') as fh:
+    data = json.load(fh)
+print(data.get('id', ''))
+PY
+)
+
+          if [ -z "$release_id" ]; then
+            echo "Release id missing for tag ${TAG_NAME}."
+            cat release.json
+            exit 1
+          fi
+
+          delete_url="https://api.github.com/repos/${REPOSITORY}/releases/${release_id}"
+          delete_status=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -X DELETE \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "$delete_url")
+
+          if [ "$delete_status" -ge 300 ]; then
+            echo "Failed to delete release ${release_id} for tag ${TAG_NAME} (HTTP ${delete_status})."
+            exit 1
+          fi
+
+          echo "Deleted release ${release_id} for tag ${TAG_NAME}."
