@@ -72,6 +72,14 @@ export default function OptionsTabs({
   const tabInactiveBorder = isDark ? '#1a1a1a' : '#f5f5f5'
   const tabHoverBorder = isDark ? '#555555' : '#909090'
   const tabTextColor = isDark ? '#ffffff' : theme.palette.text.primary
+  const skeletonSx = React.useMemo(() => ({
+    bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
+    '&::after': {
+      background: isDark
+        ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent)'
+        : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent)',
+    },
+  }), [isDark])
 
   return (
     <Box>
@@ -91,7 +99,7 @@ export default function OptionsTabs({
       >
         <Button
           variant="contained"
-          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} /> : <Music2 size={20} />}
+          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} sx={skeletonSx} /> : <Music2 size={20} />}
           onClick={() => data.handleTabChange('audio')}
           disabled={interactionsDisabled}
           sx={{
@@ -112,12 +120,12 @@ export default function OptionsTabs({
             },
           }}
         >
-          {loadingState ? <Skeleton variant="text" animation="wave" width={70} /> : i18nT('downloader.tabAudio')}
+          {loadingState ? <Skeleton variant="text" animation="wave" width={70} sx={skeletonSx} /> : i18nT('downloader.tabAudio')}
         </Button>
 
         <Button
           variant="contained"
-          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} /> : <Video size={20} />}
+          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} sx={skeletonSx} /> : <Video size={20} />}
           onClick={() => data.handleTabChange('video')}
           disabled={interactionsDisabled}
           sx={{
@@ -138,7 +146,7 @@ export default function OptionsTabs({
             },
           }}
         >
-          {loadingState ? <Skeleton variant="text" animation="wave" width={70} /> : i18nT('downloader.tabVideo')}
+          {loadingState ? <Skeleton variant="text" animation="wave" width={70} sx={skeletonSx} /> : i18nT('downloader.tabVideo')}
         </Button>
 
         <Button
@@ -166,7 +174,7 @@ export default function OptionsTabs({
             },
           }}
         >
-          {loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} /> : <ImageIcon size={20} />}
+          {loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} sx={skeletonSx} /> : <ImageIcon size={20} />}
         </Button>
       </Box>
 
@@ -185,11 +193,11 @@ export default function OptionsTabs({
       >
         {loadingState && (
           <Box sx={{ pt: 0.5 }}>
-            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ borderRadius: 1.25 }} />
-            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ borderRadius: 1.25, mt: 1 }} />
-            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ borderRadius: 1.25, mt: 1 }} />
-            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ borderRadius: 1.25, mt: 1 }} />
-            <Skeleton variant="rounded" animation="wave" width="100%" height={50} sx={{ borderRadius: 999, mt: 2 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ ...skeletonSx, borderRadius: 1.25 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ ...skeletonSx, borderRadius: 1.25, mt: 1 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ ...skeletonSx, borderRadius: 1.25, mt: 1 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={46} sx={{ ...skeletonSx, borderRadius: 1.25, mt: 1 }} />
+            <Skeleton variant="rounded" animation="wave" width="100%" height={50} sx={{ ...skeletonSx, borderRadius: 999, mt: 2 }} />
           </Box>
         )}
 

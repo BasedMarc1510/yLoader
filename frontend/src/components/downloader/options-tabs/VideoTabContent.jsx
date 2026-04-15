@@ -5,6 +5,7 @@ import AudioCutSection from '../AudioCutSection'
 import CombinedFilenameInput from '../CombinedFilenameInput'
 import CustomSelect from '../CustomSelect'
 import CollapsibleSection from './CollapsibleSection'
+import { getDownloadProgressLabel } from './downloadProgressLabel'
 import { buildVideoOptions } from './formatOptions'
 import { adjustColorBrightness } from './styleUtils'
 
@@ -151,9 +152,7 @@ export default function VideoTabContent({
               <>
                 <CircularProgress size={22} sx={{ color: '#ffffff' }} thickness={5} />
                 <Typography sx={{ fontSize: '1.125rem', fontWeight: 700 }}>
-                  {downloadStage === 'merging'
-                    ? i18nT('downloader.merging')
-                    : (downloadStage === 'processing' ? i18nT('downloader.processing') : `${Math.round(downloadProgress)}%`)}
+                  {getDownloadProgressLabel(i18nT, downloadStage, downloadProgress)}
                 </Typography>
               </>
             ) : (

@@ -6,6 +6,14 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
   const { t } = useI18n()
   const theme = useTheme()
   const interactive = !loading && Boolean(url)
+  const skeletonSx = React.useMemo(() => ({
+    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
+    '&::after': {
+      background: theme.palette.mode === 'dark'
+        ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)'
+        : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.72), transparent)',
+    },
+  }), [theme.palette.mode])
 
   const handleClick = () => {
     if (!interactive) return
@@ -22,13 +30,13 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
         gap: 1.5,
         p: 1.25,
         borderRadius: 1,
-        bgcolor: t.palette.mode === 'dark' ? '#0a0a0a' : '#e8e8e8',
+        bgcolor: t.palette.mode === 'dark' ? '#0a0a0a' : '#f3f4f6',
         boxShadow: t.palette.mode === 'dark' ? '0 2px 4px rgba(0, 0, 0, 0.2)' : '0 2px 4px rgba(0, 0, 0, 0.08)',
         cursor: interactive ? 'pointer' : 'default',
         opacity: loading ? 0.78 : 1,
         '&:hover': interactive
           ? {
-              bgcolor: t.palette.mode === 'dark' ? '#0d0d0d' : '#f0f0f0',
+              bgcolor: t.palette.mode === 'dark' ? '#0d0d0d' : '#f8f9fb',
             }
           : undefined,
       })}>
@@ -43,11 +51,11 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
         aspectRatio: '16/9',
       }}>
         {loading ? (
-          <Skeleton variant="rectangular" width="100%" height="100%" animation="wave" sx={{ borderRadius: 0.75 }} />
+          <Skeleton variant="rectangular" width="100%" height="100%" animation="wave" sx={{ ...skeletonSx, borderRadius: 0.75 }} />
         ) : thumbnail ? (
           <Box component="img" src={thumbnail} alt={title || t('mediaSummary.thumbnailAlt')} sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: 0.75 }} />
         ) : (
-          <Box sx={{ width: '100%', height: '100%', bgcolor: 'grey.800' }} />
+          <Box sx={{ width: '100%', height: '100%', bgcolor: theme.palette.mode === 'dark' ? 'grey.800' : '#d5dae1' }} />
         )}
         {loading ? (
           <Box sx={{
@@ -55,7 +63,7 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
             right: 4,
             bottom: 4,
           }}>
-            <Skeleton variant="rounded" width={46} height={18} animation="wave" sx={{ borderRadius: 0.75 }} />
+            <Skeleton variant="rounded" width={46} height={18} animation="wave" sx={{ ...skeletonSx, borderRadius: 0.75 }} />
           </Box>
         ) : duration && (
           <Box sx={{
@@ -92,8 +100,8 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
       <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
         {loading ? (
           <>
-            <Skeleton variant="text" animation="wave" width="92%" height={28} />
-            <Skeleton variant="text" animation="wave" width="64%" height={22} sx={{ mt: 0.4 }} />
+            <Skeleton variant="text" animation="wave" width="92%" height={28} sx={skeletonSx} />
+            <Skeleton variant="text" animation="wave" width="64%" height={22} sx={{ ...skeletonSx, mt: 0.4 }} />
           </>
         ) : (
           <>

@@ -5,6 +5,7 @@ import path from 'path'
 import { URL as NodeURL } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
+import { EventEmitter } from 'events'
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const sqlite3 = require("sqlite3").verbose();
@@ -52,9 +53,12 @@ const FORMAT_ID_REGEX = /^[A-Za-z0-9_.,:+\-\/=~*]+$/
 const MAX_PROXY_IMAGE_SIZE_BYTES = 15 * 1024 * 1024
 const TAB_STATE_SETTINGS_KEY = 'ui.tabs.state.v1'
 const AUTO_DOWNLOAD_SETTINGS_KEY = 'ui.autoDownload.settings.v1'
+const DOWNLOAD_SETTINGS_KEY = 'ui.download.settings.v1'
 const MAX_PERSISTED_TABS = 30
 const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
+const DOWNLOAD_CONCURRENT_OPTIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8])
+const DOWNLOAD_STAGGER_OPTIONS = new Set([0, 100, 150, 250, 500, 1000])
 const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
 const META_FORMATS_CACHE_MAX_ENTRIES = 150
 const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
@@ -62,6 +66,13 @@ const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
   embedCoverArt: true,
   maxAudioBitrateKbps: 0,
   maxVideoHeight: 0,
+})
+const DEFAULT_DOWNLOAD_SETTINGS = Object.freeze({
+  maxConcurrentDownloads: 3,
+  staggerDownloadsMs: 150,
+  defaultAudioContainer: 'mp3',
+  defaultVideoContainer: 'mp4',
+  defaultEmbedCoverArt: true,
 })
 const metaFormatsCache = new Map()
 const ALLOWED_TAB_PATHS = new Set([
@@ -234,6 +245,29 @@ function normalizeAutoDownloadSettingsPayload(value) {
   }
 }
 
+function normalizeDownloadSettingsPayload(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+
+  const maxConcurrentRaw = Number(input.maxConcurrentDownloads)
+  const staggerRaw = Number(input.staggerDownloadsMs)
+  const audioContainerRaw = normalizeAudioContainer(input.defaultAudioContainer)
+  const videoContainerRaw = normalizeVideoContainer(input.defaultVideoContainer)
+
+  return {
+    maxConcurrentDownloads: DOWNLOAD_CONCURRENT_OPTIONS.has(maxConcurrentRaw)
+      ? maxConcurrentRaw
+      : DEFAULT_DOWNLOAD_SETTINGS.maxConcurrentDownloads,
+    staggerDownloadsMs: DOWNLOAD_STAGGER_OPTIONS.has(staggerRaw)
+      ? staggerRaw
+      : DEFAULT_DOWNLOAD_SETTINGS.staggerDownloadsMs,
+    defaultAudioContainer: audioContainerRaw || DEFAULT_DOWNLOAD_SETTINGS.defaultAudioContainer,
+    defaultVideoContainer: videoContainerRaw || DEFAULT_DOWNLOAD_SETTINGS.defaultVideoContainer,
+    defaultEmbedCoverArt: input.defaultEmbedCoverArt !== undefined
+      ? Boolean(input.defaultEmbedCoverArt)
+      : DEFAULT_DOWNLOAD_SETTINGS.defaultEmbedCoverArt,
+  }
+}
+
 function normalizeTabsStatePayload(value) {
   const inputTabs = Array.isArray(value?.tabs) ? value.tabs : []
   const normalizedTabs = []
@@ -287,6 +321,20 @@ function writeSettingValue(key, value) {
       }
     )
   })
+}
+
+async function readDownloadSettings() {
+  let parsed = {}
+  const raw = await readSettingValue(DOWNLOAD_SETTINGS_KEY)
+  if (raw) {
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      parsed = {}
+    }
+  }
+
+  return normalizeDownloadSettingsPayload(parsed)
 }
 
 app.get('/api/tabs/state', async (_req, res) => {
@@ -353,6 +401,26 @@ app.put('/api/auto-download/settings', async (req, res) => {
     return res.json(normalized)
   } catch (err) {
     return res.status(500).json({ error: 'Failed to save auto-download settings', details: String(err?.message || err) })
+  }
+})
+
+app.get('/api/download/settings', async (_req, res) => {
+  try {
+    return res.json(await readDownloadSettings())
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to read download settings', details: String(err?.message || err) })
+  }
+})
+
+app.put('/api/download/settings', async (req, res) => {
+  try {
+    const existing = await readDownloadSettings()
+    const incoming = (req.body && typeof req.body === 'object') ? req.body : {}
+    const normalized = normalizeDownloadSettingsPayload({ ...existing, ...incoming })
+    await writeSettingValue(DOWNLOAD_SETTINGS_KEY, JSON.stringify(normalized))
+    return res.json(normalized)
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to save download settings', details: String(err?.message || err) })
   }
 })
 
@@ -432,6 +500,102 @@ function runCmd(cmd, args = [], opts = {}) {
         return reject(err)
       }
       resolve(stdout?.toString?.() || '')
+    })
+  })
+}
+
+function parseClockToSeconds(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+
+  const match = raw.match(/^(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)$/)
+  if (!match) return null
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = Number(match[3])
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) return null
+
+  return (hours * 3600) + (minutes * 60) + seconds
+}
+
+function extractFfmpegProgressSeconds(textChunk) {
+  const text = String(textChunk || '')
+  if (!text) return null
+
+  let bestSeconds = null
+
+  for (const match of text.matchAll(/out_time_ms=(\d+)/g)) {
+    const micros = Number(match[1])
+    if (!Number.isFinite(micros) || micros < 0) continue
+    const seconds = micros / 1000000
+    bestSeconds = bestSeconds == null ? seconds : Math.max(bestSeconds, seconds)
+  }
+
+  for (const match of text.matchAll(/(?:out_time=|time=)(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/g)) {
+    const seconds = parseClockToSeconds(match[1])
+    if (!Number.isFinite(seconds) || seconds < 0) continue
+    bestSeconds = bestSeconds == null ? seconds : Math.max(bestSeconds, seconds)
+  }
+
+  return bestSeconds
+}
+
+function runFfmpegWithProgress(ffmpegArgs, { durationSeconds = null, onProgress = null } = {}) {
+  const args = Array.isArray(ffmpegArgs) ? [...ffmpegArgs] : []
+  if (!FFMPEG_BIN) return Promise.reject(new Error('ffmpeg is not configured'))
+  if (!args.length) return Promise.reject(new Error('Missing ffmpeg arguments'))
+
+  const outputArg = args.pop()
+  const runArgs = [...args, '-progress', 'pipe:1', '-nostats', outputArg]
+  const hasDuration = Number.isFinite(durationSeconds) && durationSeconds > 0
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(FFMPEG_BIN, runArgs)
+    let stderrTail = ''
+
+    const sendProgress = (rawValue) => {
+      if (typeof onProgress !== 'function') return
+      const numeric = Number(rawValue)
+      if (!Number.isFinite(numeric)) return
+      onProgress(Math.max(0, Math.min(1, numeric)))
+    }
+
+    const handleChunk = (chunk) => {
+      if (!hasDuration) return
+      const seconds = extractFfmpegProgressSeconds(chunk)
+      if (!Number.isFinite(seconds)) return
+      sendProgress(seconds / durationSeconds)
+    }
+
+    proc.stdout.on('data', handleChunk)
+    proc.stderr.on('data', (chunk) => {
+      const text = String(chunk || '')
+      stderrTail = `${stderrTail}${text}`.slice(-24000)
+      handleChunk(text)
+    })
+
+    proc.on('error', (err) => {
+      reject(err)
+    })
+
+    proc.on('close', (code) => {
+      sendProgress(1)
+
+      if (code === 0) {
+        resolve()
+        return
+      }
+
+      const tailLines = stderrTail
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .slice(-3)
+        .join(' ')
+
+      const suffix = tailLines ? ` ${tailLines}` : ''
+      reject(new Error(`ffmpeg exited with code ${code}.${suffix}`.trim()))
     })
   })
 }
@@ -585,6 +749,24 @@ async function detectHasAudioStream(inputPath) {
     return String(output || '').trim().length > 0
   } catch {
     return true
+  }
+}
+
+async function getMediaDurationSeconds(inputPath) {
+  const ffprobe = resolveFfprobeBinary()
+  if (!ffprobe) return null
+
+  try {
+    const output = await runCmd(
+      ffprobe,
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', inputPath],
+      { timeout: 5000, maxBuffer: 256 * 1024 }
+    )
+
+    const parsed = Number(String(output || '').trim())
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  } catch {
+    return null
   }
 }
 
@@ -1004,6 +1186,82 @@ if (YT_DLP_COOKIES_FROM_BROWSER) {
 const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOAD_DIR || './downloads')
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000 // 24 hours
 const activeDownloads = new Map() // Track active downloads by hash
+const downloadSlotEmitter = new EventEmitter()
+let nextDownloadStartAtMs = 0
+
+function notifyDownloadSlotsChanged() {
+  downloadSlotEmitter.emit('changed')
+}
+
+function waitForMilliseconds(ms, isResponseClosed) {
+  const delay = Math.max(0, Number(ms) || 0)
+  if (delay <= 0) return Promise.resolve()
+
+  return new Promise((resolve, reject) => {
+    let interval = null
+    const timer = setTimeout(() => {
+      if (interval) clearInterval(interval)
+      resolve()
+    }, delay)
+
+    if (typeof isResponseClosed !== 'function') return
+
+    interval = setInterval(() => {
+      if (!isResponseClosed()) return
+      clearTimeout(timer)
+      clearInterval(interval)
+      reject(new Error('Client disconnected'))
+    }, Math.min(250, delay))
+
+    timer.unref?.()
+    interval.unref?.()
+  })
+}
+
+async function waitForDownloadSlot(limit, { isResponseClosed = null, onQueued = null } = {}) {
+  const maxConcurrent = Math.max(1, Number(limit) || 1)
+  let queuedNotified = false
+
+  while (activeDownloads.size >= maxConcurrent) {
+    if (typeof isResponseClosed === 'function' && isResponseClosed()) {
+      throw new Error('Client disconnected')
+    }
+
+    if (!queuedNotified && typeof onQueued === 'function') {
+      onQueued()
+      queuedNotified = true
+    }
+
+    await new Promise((resolve) => {
+      let settled = false
+
+      const finish = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        downloadSlotEmitter.off('changed', finish)
+        resolve()
+      }
+
+      const timeout = setTimeout(finish, 1000)
+      timeout.unref?.()
+
+      downloadSlotEmitter.once('changed', finish)
+    })
+  }
+}
+
+async function waitForDownloadStagger(staggerMs, isResponseClosed = null) {
+  const stagger = Math.max(0, Number(staggerMs) || 0)
+  if (stagger <= 0) return
+
+  const now = Date.now()
+  const waitMs = Math.max(0, nextDownloadStartAtMs - now)
+  nextDownloadStartAtMs = Math.max(nextDownloadStartAtMs, now) + stagger
+
+  if (waitMs <= 0) return
+  await waitForMilliseconds(waitMs, isResponseClosed)
+}
 
 // Ensure downloads directory exists
 if (!fs.existsSync(DOWNLOADS_DIR)) {
@@ -1817,6 +2075,7 @@ app.post('/api/download/stream', async (req, res) => {
   const container = String(rawContainer || '').trim().toLowerCase()
   const audioFormat = String(rawAudioFormat || '').trim()
   const videoFormat = String(rawVideoFormat || '').trim()
+  const effectiveDownloadSettings = await readDownloadSettings().catch(() => ({ ...DEFAULT_DOWNLOAD_SETTINGS }))
 
   if (!url || !type) {
     return res.status(400).json({ error: 'Missing required fields: url, type' })
@@ -1828,8 +2087,12 @@ app.post('/api/download/stream', async (req, res) => {
     return res.status(400).json({ error: 'Invalid type. Must be audio or video' })
   }
 
-  const requestedAudioContainer = type === 'audio' ? normalizeAudioContainer(container || 'mp3') : ''
-  const requestedVideoContainer = type === 'video' ? normalizeVideoContainer(container || 'mp4') : ''
+  const requestedAudioContainer = type === 'audio'
+    ? normalizeAudioContainer(container || effectiveDownloadSettings.defaultAudioContainer)
+    : ''
+  const requestedVideoContainer = type === 'video'
+    ? normalizeVideoContainer(container || effectiveDownloadSettings.defaultVideoContainer)
+    : ''
   if (type === 'audio' && !requestedAudioContainer) {
     return res.status(400).json({ error: 'Unsupported audio format' })
   }
@@ -1847,7 +2110,9 @@ app.post('/api/download/stream', async (req, res) => {
   }
 
   const coverConfig = (cover && typeof cover === 'object') ? cover : {}
-  const coverEnabled = type === 'audio' ? coverConfig.enabled !== false : false
+  const coverEnabled = type === 'audio'
+    ? (coverConfig.enabled !== undefined ? coverConfig.enabled !== false : Boolean(effectiveDownloadSettings.defaultEmbedCoverArt))
+    : false
   const coverSource = coverConfig.source === 'upload' ? 'upload' : 'video'
   let coverUpload = null
   let coverUploadHash = null
@@ -1938,6 +2203,9 @@ app.post('/api/download/stream', async (req, res) => {
   }
 
   try {
+    const maxConcurrentDownloads = Math.max(1, Number(effectiveDownloadSettings.maxConcurrentDownloads) || DEFAULT_DOWNLOAD_SETTINGS.maxConcurrentDownloads)
+    const staggerDownloadsMs = Math.max(0, Number(effectiveDownloadSettings.staggerDownloadsMs) || 0)
+
     const downloadHash = crypto.createHash('sha256')
       .update(JSON.stringify({
         url,
@@ -2036,8 +2304,24 @@ app.post('/api/download/stream', async (req, res) => {
       return
     }
 
+    await waitForDownloadSlot(maxConcurrentDownloads, {
+      isResponseClosed: () => responseClosed,
+      onQueued: () => {
+        send('progress', { percent: 0, stage: 'queued' })
+        send('info', `Waiting for a free download slot (${activeDownloads.size}/${maxConcurrentDownloads})...`)
+      },
+    })
+
+    await waitForDownloadStagger(staggerDownloadsMs, () => responseClosed)
+
+    if (responseClosed) return
+
     // Mark download as active
-    activeDownloads.set(downloadHash, true)
+    activeDownloads.set(downloadHash, {
+      startedAt: Date.now(),
+      type,
+    })
+    notifyDownloadSlotsChanged()
 
     // Create a temporary directory for this download to avoid naming conflicts and quoting issues
     const tempDirName = `temp_${downloadHash}`
@@ -2049,6 +2333,7 @@ app.post('/api/download/stream', async (req, res) => {
     } catch (err) {
       console.error('Failed to create temp dir:', err)
       activeDownloads.delete(downloadHash)
+      notifyDownloadSlotsChanged()
       send('error', 'Failed to create temporary directory')
       send('end', 'failed')
       safeEnd()
@@ -2104,8 +2389,40 @@ app.post('/api/download/stream', async (req, res) => {
     // LocalHub-style: use configured yt-dlp path
     const child = spawn(YT_DLP, args)
 
-    let lastPercent = 0
+    const knownDurationSeconds = Number.isFinite(Number(duration)) && Number(duration) > 0
+      ? Number(duration)
+      : null
+    let maxDownloadPercent = 0
+    let lastProgressPercent = -1
+    let lastProgressStage = ''
     let errorOutput = []
+
+    const emitProgress = (percent, stage, extra = null) => {
+      const numeric = Number(percent)
+      if (!Number.isFinite(numeric)) return
+
+      const clamped = Math.max(0, Math.min(100, numeric))
+      const rounded = Math.round(clamped * 10) / 10
+      const monotonic = Math.max(lastProgressPercent, rounded)
+      const nextStage = String(stage || lastProgressStage || 'downloading').trim() || 'downloading'
+      const stageChanged = nextStage !== lastProgressStage
+
+      if (!stageChanged && monotonic === lastProgressPercent) return
+
+      lastProgressPercent = monotonic
+      lastProgressStage = nextStage
+
+      const payload = { percent: monotonic, stage: nextStage }
+      if (extra && typeof extra === 'object') Object.assign(payload, extra)
+      send('progress', payload)
+    }
+
+    const mapDownloadPercentToOverall = (downloadPercent) => {
+      const bounded = Math.max(0, Math.min(100, Number(downloadPercent) || 0))
+      return 5 + (bounded * 0.85)
+    }
+
+    emitProgress(1, 'initializing')
 
     // Parse yt-dlp output for progress. Some yt-dlp builds emit many updates in one
     // chunk with carriage returns, so we scan the whole chunk and take the highest %.
@@ -2120,17 +2437,24 @@ app.post('/api/download/stream', async (req, res) => {
         nextPercent = nextPercent == null ? parsed : Math.max(nextPercent, parsed)
       }
 
-      if (nextPercent != null && nextPercent > lastPercent) {
-        lastPercent = nextPercent
-        send('progress', { percent: Math.min(nextPercent, 99), stage: 'downloading' })
+      if (nextPercent != null) {
+        maxDownloadPercent = Math.max(maxDownloadPercent, nextPercent)
+        emitProgress(mapDownloadPercentToOverall(maxDownloadPercent), 'downloading')
       }
 
       // Also check for merge/post-processing
       if (text.includes('[Merger]') || text.includes('Merging formats')) {
-        send('progress', { percent: 99, stage: 'merging' })
+        emitProgress(Math.max(lastProgressPercent, 91), 'merging')
       }
-      if (text.includes('[ffmpeg]')) {
-        send('progress', { percent: 99, stage: 'processing' })
+
+      if (text.includes('[ffmpeg]') || text.toLowerCase().includes('post-process')) {
+        const ffmpegSeconds = extractFfmpegProgressSeconds(text)
+        if (knownDurationSeconds && Number.isFinite(ffmpegSeconds)) {
+          const ratio = Math.max(0, Math.min(1, ffmpegSeconds / knownDurationSeconds))
+          emitProgress(90 + (ratio * 5), 'processing')
+        } else {
+          emitProgress(Math.max(lastProgressPercent, 94), 'processing')
+        }
       }
     }
 
@@ -2169,6 +2493,7 @@ app.post('/api/download/stream', async (req, res) => {
 
     child.on('error', (e) => {
       activeDownloads.delete(downloadHash)
+      notifyDownloadSlotsChanged()
       console.error('yt-dlp spawn error:', e)
       // Attempt cleanup
       try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
@@ -2179,6 +2504,7 @@ app.post('/api/download/stream', async (req, res) => {
 
     child.on('close', async (code, signal) => {
       activeDownloads.delete(downloadHash)
+      notifyDownloadSlotsChanged()
       console.log(`yt-dlp closed with code ${code}`)
 
       let finalFile = null
@@ -2195,62 +2521,102 @@ app.post('/api/download/stream', async (req, res) => {
             let sourcePath = path.join(tempDir, contentFile)
             const parsedDuration = Number(duration)
             const mediaDuration = Number.isFinite(parsedDuration) ? parsedDuration : null
+            const postProcessSteps = []
+
+            const emitPostProcessProgress = (stepIndex, stepProgress, stage = 'processing') => {
+              const totalSteps = Math.max(1, postProcessSteps.length)
+              const boundedStepProgress = Math.max(0, Math.min(1, Number(stepProgress) || 0))
+              const aggregate = (stepIndex + boundedStepProgress) / totalSteps
+              emitProgress(90 + (aggregate * 9), stage)
+            }
 
             // Apply media cuts (trim + remove/keep segments) if requested
             if ((type === 'audio' || type === 'video') && cuts?.enabled) {
               if (!HAS_FFMPEG) {
                 send('message', '⚠️ ffmpeg required for media cutting – skipping cuts')
               } else {
-                const keepSegments = computeMediaKeepSegments(cuts, duration || null)
+                const keepSegments = computeMediaKeepSegments(cuts, mediaDuration)
                 if (keepSegments) {
-                  const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
-                  send('progress', { percent: 99, stage: 'processing' })
-                  try {
-                    const ffArgs = type === 'audio'
-                      ? buildAudioCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext)
-                      : buildVideoCutFfmpegArgs(
-                        sourcePath,
-                        cutOutputPath,
-                        keepSegments,
-                        ext,
-                        await detectHasAudioStream(sourcePath)
-                      )
-                    await runCmd(FFMPEG_BIN, ffArgs)
-                    if (fs.existsSync(cutOutputPath)) {
-                      sourcePath = cutOutputPath
+                  postProcessSteps.push(async (stepIndex) => {
+                    const cutOutputPath = path.join(tempDir, `content_cut${ext}`)
+                    try {
+                      const ffArgs = type === 'audio'
+                        ? buildAudioCutFfmpegArgs(sourcePath, cutOutputPath, keepSegments, ext)
+                        : buildVideoCutFfmpegArgs(
+                          sourcePath,
+                          cutOutputPath,
+                          keepSegments,
+                          ext,
+                          await detectHasAudioStream(sourcePath)
+                        )
+
+                      const segmentedDuration = keepSegments
+                        .map((segment) => Math.max(0, Number(segment.end) - Number(segment.start)))
+                        .reduce((sum, value) => sum + value, 0)
+
+                      const ffmpegDuration = segmentedDuration > 0
+                        ? segmentedDuration
+                        : (mediaDuration || await getMediaDurationSeconds(sourcePath))
+
+                      emitPostProcessProgress(stepIndex, 0)
+                      await runFfmpegWithProgress(ffArgs, {
+                        durationSeconds: ffmpegDuration,
+                        onProgress: (progress) => emitPostProcessProgress(stepIndex, progress),
+                      })
+
+                      if (fs.existsSync(cutOutputPath)) {
+                        sourcePath = cutOutputPath
+                      }
+                    } catch (cutErr) {
+                      console.error('Media cut failed:', cutErr)
+                      send('message', 'Media cutting failed, continuing with original file')
                     }
-                  } catch (cutErr) {
-                    console.error('Media cut failed:', cutErr)
-                    send('message', 'Media cutting failed, continuing with original file')
-                  }
+                  })
                 }
               }
             }
 
             if (type === 'audio' && coverEnabled && coverSource === 'upload' && coverUpload) {
-              try {
-                const coverPath = path.join(tempDir, `cover${coverUpload.ext}`)
-                fs.writeFileSync(coverPath, coverUpload.buffer)
-                const withCoverPath = path.join(tempDir, `content_cover${ext}`)
-                send('progress', { percent: 99, stage: 'processing' })
-                await runCmd(FFMPEG_BIN, [
-                  '-y',
-                  '-i', sourcePath,
-                  '-i', coverPath,
-                  '-map', '0:0',
-                  '-map', '1:0',
-                  '-c', 'copy',
-                  '-map_metadata', '0',
-                  '-id3v2_version', '3',
-                  '-metadata:s:v', 'title=Album cover',
-                  '-metadata:s:v', 'comment=Cover (front)',
-                  withCoverPath,
-                ])
-                sourcePath = withCoverPath
-              } catch (err) {
-                console.error('Failed to embed custom cover:', err)
-                send('message', 'Cover embedding failed, continuing without custom cover')
+              postProcessSteps.push(async (stepIndex) => {
+                try {
+                  const coverPath = path.join(tempDir, `cover${coverUpload.ext}`)
+                  fs.writeFileSync(coverPath, coverUpload.buffer)
+                  const withCoverPath = path.join(tempDir, `content_cover${ext}`)
+                  const coverDuration = mediaDuration || await getMediaDurationSeconds(sourcePath)
+
+                  emitPostProcessProgress(stepIndex, 0)
+                  await runFfmpegWithProgress([
+                    '-y',
+                    '-i', sourcePath,
+                    '-i', coverPath,
+                    '-map', '0:0',
+                    '-map', '1:0',
+                    '-c', 'copy',
+                    '-map_metadata', '0',
+                    '-id3v2_version', '3',
+                    '-metadata:s:v', 'title=Album cover',
+                    '-metadata:s:v', 'comment=Cover (front)',
+                    withCoverPath,
+                  ], {
+                    durationSeconds: coverDuration,
+                    onProgress: (progress) => emitPostProcessProgress(stepIndex, progress),
+                  })
+
+                  if (fs.existsSync(withCoverPath)) {
+                    sourcePath = withCoverPath
+                  }
+                } catch (err) {
+                  console.error('Failed to embed custom cover:', err)
+                  send('message', 'Cover embedding failed, continuing without custom cover')
+                }
+              })
+            }
+
+            if (postProcessSteps.length > 0) {
+              for (let stepIndex = 0; stepIndex < postProcessSteps.length; stepIndex += 1) {
+                await postProcessSteps[stepIndex](stepIndex)
               }
+              emitProgress(99, 'processing')
             }
 
             const destFilename = `${finalBaseFilename}${ext}`
@@ -2332,7 +2698,7 @@ app.post('/api/download/stream', async (req, res) => {
 
       if (finalFile) {
         console.log(`Download successful: ${finalFile}`)
-        send('progress', { percent: 100, stage: 'complete' })
+        emitProgress(100, 'complete')
         send('complete', {
           filename: finalFile,
           url: `/api/download/file/${encodeURIComponent(finalFile)}`

@@ -8,6 +8,10 @@ import {
   youtubeThumb,
   fetchNoembed,
 } from '../../../utils/metadata'
+import {
+  DOWNLOAD_SETTINGS_DEFAULTS,
+  normalizeDownloadSettings,
+} from '../../../utils/downloadSettings'
 
 export default function useOptionsTabsData({
   i18nT,
@@ -45,6 +49,9 @@ export default function useOptionsTabsData({
   const [coverSource, setCoverSource] = React.useState('video')
   const [coverUpload, setCoverUpload] = React.useState(null)
   const [coverUploadError, setCoverUploadError] = React.useState('')
+  const [downloadSettings, setDownloadSettings] = React.useState(() => ({ ...DOWNLOAD_SETTINGS_DEFAULTS }))
+  const [downloadSettingsLoaded, setDownloadSettingsLoaded] = React.useState(false)
+  const defaultsAppliedRef = React.useRef(false)
 
   const toggleSection = React.useCallback((section) => {
     setActiveSection((prev) => (prev === section ? null : section))
@@ -99,6 +106,43 @@ export default function useOptionsTabsData({
     setAlbumValue(parsed.album || '')
     setFilenameValue(videoTitle)
   }, [videoTitle, videoAuthor])
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    const loadDownloadSettings = async () => {
+      const apiBase = getApiBase()
+      try {
+        const resp = await fetch(`${apiBase}/api/download/settings`)
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        const data = await resp.json()
+        if (!cancelled) setDownloadSettings(normalizeDownloadSettings(data))
+      } catch {
+        if (!cancelled) setDownloadSettings({ ...DOWNLOAD_SETTINGS_DEFAULTS })
+      } finally {
+        if (!cancelled) setDownloadSettingsLoaded(true)
+      }
+    }
+
+    loadDownloadSettings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!downloadSettingsLoaded || defaultsAppliedRef.current) return
+
+    setAudioContainer(downloadSettings.defaultAudioContainer)
+    setVideoContainer(downloadSettings.defaultVideoContainer)
+    setCoverEmbedEnabled(Boolean(downloadSettings.defaultEmbedCoverArt))
+
+    defaultsAppliedRef.current = true
+  }, [
+    downloadSettings,
+    downloadSettingsLoaded,
+  ])
 
   const applyBackendThumbnails = React.useCallback((thumbnails) => {
     const valid = (thumbnails || []).filter((item) => item.width && item.height && item.width > 0 && item.height > 0)

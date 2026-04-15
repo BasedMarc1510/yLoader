@@ -22,10 +22,15 @@ import GeneralSettingsSection from './settings-modal/GeneralSettingsSection'
 import AutoDownloadSettingsSection from './settings-modal/AutoDownloadSettingsSection'
 import YtDlpSettingsSection from './settings-modal/YtDlpSettingsSection'
 import FfmpegSettingsSection from './settings-modal/FfmpegSettingsSection'
+import DownloaderSettingsSection from './settings-modal/DownloaderSettingsSection'
 import {
   AUTO_DOWNLOAD_DEFAULTS,
   normalizeAutoDownloadSettings,
 } from './settings-modal/autoDownloadUtils'
+import {
+  DOWNLOAD_SETTINGS_DEFAULTS,
+  normalizeDownloadSettings,
+} from '../utils/downloadSettings'
 
 export default function SettingsModal({
   open,
@@ -77,6 +82,12 @@ export default function SettingsModal({
   const [autoDownloadLoading, setAutoDownloadLoading] = useState(false)
   const [autoDownloadSaving, setAutoDownloadSaving] = useState(false)
   const [autoDownloadError, setAutoDownloadError] = useState('')
+
+  const [downloadSettings, setDownloadSettings] = useState(() => ({ ...DOWNLOAD_SETTINGS_DEFAULTS }))
+  const [downloadSettingsLoading, setDownloadSettingsLoading] = useState(false)
+  const [downloadSettingsSaving, setDownloadSettingsSaving] = useState(false)
+  const [downloadSettingsError, setDownloadSettingsError] = useState('')
+
   const isAppUpdateDownloading = appUpdateState?.phase === 'downloading'
 
   const fetchStatus = React.useCallback(async ({ forceLatest = false } = {}) => {
@@ -240,6 +251,48 @@ export default function SettingsModal({
     saveAutoDownloadSettings(next)
   }
 
+  const fetchDownloadSettings = async () => {
+    setDownloadSettingsLoading(true)
+    setDownloadSettingsError('')
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/download/settings`)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      setDownloadSettings(normalizeDownloadSettings(data))
+    } catch (error) {
+      setDownloadSettingsError(t('settings.downloadSettingsLoadFailed', { message: error?.message || error }))
+    } finally {
+      setDownloadSettingsLoading(false)
+    }
+  }
+
+  const saveDownloadSettings = async (nextSettings) => {
+    setDownloadSettingsSaving(true)
+    setDownloadSettingsError('')
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/download/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextSettings),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      setDownloadSettings(normalizeDownloadSettings(data))
+    } catch (error) {
+      setDownloadSettingsError(t('settings.downloadSettingsSaveFailed', { message: error?.message || error }))
+    } finally {
+      setDownloadSettingsSaving(false)
+    }
+  }
+
+  const updateDownloadSettings = (changes) => {
+    const next = normalizeDownloadSettings({ ...downloadSettings, ...changes })
+    setDownloadSettings(next)
+    saveDownloadSettings(next)
+  }
+
   useEffect(() => {
     if (!open) return
     setSection(String(requestedSection || 'general'))
@@ -249,6 +302,7 @@ export default function SettingsModal({
     if (open && section === 'yt-dlp') fetchStatus()
     if (open && section === 'ffmpeg') fetchFfmpegStatus()
     if (open && section === 'auto-download') fetchAutoDownloadSettings()
+    if (open && section === 'downloader') fetchDownloadSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, section, fetchStatus])
 
@@ -292,18 +346,23 @@ export default function SettingsModal({
 
   const sections = useMemo(() => ([
     { key: 'general', label: t('settings.general') },
+    { key: 'downloader', label: t('settings.sectionDownloader') },
     { key: 'auto-download', label: t('settings.sectionAutoDownload') },
     { key: 'yt-dlp', label: t('settings.sectionYtDlp') },
     { key: 'ffmpeg', label: t('settings.sectionFfmpeg') },
   ]), [t])
 
   let sectionTitle = t('settings.general')
+  if (section === 'downloader') sectionTitle = t('settings.downloaderConfig')
   if (section === 'auto-download') sectionTitle = t('settings.autoDownloadConfig')
   if (section === 'yt-dlp') sectionTitle = t('settings.ytDlpConfig')
   if (section === 'ffmpeg') sectionTitle = t('settings.ffmpegConfig')
 
-  const canResetSection = section === 'general' || section === 'auto-download'
-  const resetDisabled = section === 'auto-download' ? (autoDownloadLoading || autoDownloadSaving) : false
+  const canResetSection = section === 'general' || section === 'downloader' || section === 'auto-download'
+  const resetDisabled =
+    section === 'downloader'
+      ? (downloadSettingsLoading || downloadSettingsSaving)
+      : (section === 'auto-download' ? (autoDownloadLoading || autoDownloadSaving) : false)
 
   const handleResetSection = React.useCallback(() => {
     if (section === 'general') {
@@ -312,12 +371,19 @@ export default function SettingsModal({
       return
     }
 
+    if (section === 'downloader') {
+      const defaults = { ...DOWNLOAD_SETTINGS_DEFAULTS }
+      setDownloadSettings(defaults)
+      saveDownloadSettings(defaults)
+      return
+    }
+
     if (section === 'auto-download') {
       const defaults = { ...AUTO_DOWNLOAD_DEFAULTS }
       setAutoDownloadSettings(defaults)
       saveAutoDownloadSettings(defaults)
     }
-  }, [section, saveAutoDownloadSettings, setLanguage, setPreference])
+  }, [section, saveAutoDownloadSettings, saveDownloadSettings, setLanguage, setPreference])
 
   const handleDialogClose = React.useCallback(() => {
     if (isAppUpdateDownloading) return
@@ -483,6 +549,18 @@ export default function SettingsModal({
                   autoDownloadSaving={autoDownloadSaving}
                   autoDownloadError={autoDownloadError}
                   updateAutoDownloadSettings={updateAutoDownloadSettings}
+                  selectSx={selectSx}
+                  t={t}
+                />
+              )}
+
+              {section === 'downloader' && (
+                <DownloaderSettingsSection
+                  downloadSettings={downloadSettings}
+                  downloadSettingsLoading={downloadSettingsLoading}
+                  downloadSettingsSaving={downloadSettingsSaving}
+                  downloadSettingsError={downloadSettingsError}
+                  updateDownloadSettings={updateDownloadSettings}
                   selectSx={selectSx}
                   t={t}
                 />
