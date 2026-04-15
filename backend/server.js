@@ -78,8 +78,14 @@ const YT_DLP_JS_RUNTIME_ARGS = ['--js-runtimes', YT_DLP_JS_RUNTIMES]
 const YT_DLP_COOKIES_FILE = String(process.env.YT_DLP_COOKIES_FILE || '').trim()
 const YT_DLP_COOKIES_FROM_BROWSER = String(process.env.YT_DLP_COOKIES_FROM_BROWSER || '').trim()
 const YT_DLP_EXTRACTOR_ARGS = String(process.env.YT_DLP_EXTRACTOR_ARGS || '').trim()
+const YT_DLP_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
 let FFMPEG_BIN = String(process.env.FFMPEG_PATH || '').trim()
 let FFPROBE_BIN = String(process.env.FFPROBE_PATH || '').trim()
+const ytDlpLatestVersionCache = {
+  version: '',
+  fetchedAt: 0,
+}
+let ytDlpLatestVersionFetchPromise = null
 
 const TOOL_ROOT_CANDIDATES = [
   path.resolve(process.cwd(), '..', 'tools'),
@@ -1110,6 +1116,81 @@ function normalizeVersion(v) {
   return (v || '').trim().split('.').map(x => parseInt(x, 10)).join('.')
 }
 
+function parseBooleanQueryFlag(value) {
+  const raw = String(value || '').trim().toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
+}
+
+function getYtDlpLatestCacheSnapshot() {
+  const hasVersion = Boolean(ytDlpLatestVersionCache.version)
+  return {
+    latestVersion: hasVersion ? ytDlpLatestVersionCache.version : '',
+    latestFromCache: hasVersion,
+    latestCheckedAt: hasVersion ? ytDlpLatestVersionCache.fetchedAt : 0,
+    latestSource: hasVersion ? 'cache' : 'none',
+  }
+}
+
+function isYtDlpLatestCacheFresh(now = Date.now()) {
+  if (!ytDlpLatestVersionCache.version || !ytDlpLatestVersionCache.fetchedAt) return false
+  return (now - ytDlpLatestVersionCache.fetchedAt) < YT_DLP_LATEST_CACHE_TTL_MS
+}
+
+async function fetchLatestYtDlpVersionFromPypi() {
+  const pypiRes = await fetch('https://pypi.org/pypi/yt-dlp/json')
+  if (!pypiRes.ok) {
+    throw new Error(`PyPI returned ${pypiRes.status}`)
+  }
+
+  const pypiData = await pypiRes.json()
+  const latestVersion = String(pypiData?.info?.version || '').trim()
+  if (!latestVersion) {
+    throw new Error('PyPI response did not include a yt-dlp version')
+  }
+
+  return latestVersion
+}
+
+async function getLatestYtDlpVersion({ forceRefresh = false } = {}) {
+  const now = Date.now()
+
+  if (!forceRefresh && isYtDlpLatestCacheFresh(now)) {
+    return {
+      latestVersion: ytDlpLatestVersionCache.version,
+      latestFromCache: true,
+      latestCheckedAt: ytDlpLatestVersionCache.fetchedAt,
+      latestSource: 'cache',
+    }
+  }
+
+  if (!forceRefresh && ytDlpLatestVersionFetchPromise) {
+    return ytDlpLatestVersionFetchPromise
+  }
+
+  const requestPromise = (async () => {
+    const latestVersion = await fetchLatestYtDlpVersionFromPypi()
+    ytDlpLatestVersionCache.version = latestVersion
+    ytDlpLatestVersionCache.fetchedAt = Date.now()
+
+    return {
+      latestVersion,
+      latestFromCache: false,
+      latestCheckedAt: ytDlpLatestVersionCache.fetchedAt,
+      latestSource: 'network',
+    }
+  })()
+
+  ytDlpLatestVersionFetchPromise = requestPromise
+
+  try {
+    return await requestPromise
+  } finally {
+    if (ytDlpLatestVersionFetchPromise === requestPromise) {
+      ytDlpLatestVersionFetchPromise = null
+    }
+  }
+}
+
 function extractVersionToken(rawValue) {
   const line = String(rawValue || '').trim()
   if (!line) return ''
@@ -1172,40 +1253,86 @@ async function readBinaryVersionLine(binaryPath) {
 }
 
 // GET /api/yt-dlp/status -> { currentVersion, latestVersion, outdated }
-app.get('/api/yt-dlp/status', async (_req, res) => {
+app.get('/api/yt-dlp/status', async (req, res) => {
   const ytDlpPath = YT_DLP
   const ytDlpFileSize = getFileSizeInfo(ytDlpPath)
+  const localOnly = parseBooleanQueryFlag(req?.query?.localOnly)
+  const forceLatest = parseBooleanQueryFlag(req?.query?.forceLatest)
 
   try {
     // Current version from configured yt-dlp binary path
     const currentRaw = await runCmd(YT_DLP, ['--version'])
     const firstLine = String(currentRaw || '').split(/\r?\n/).find(Boolean) || ''
     const currentVersion = extractVersionToken(firstLine)
+    const localVersion = currentVersion || ''
 
-    let latestVersion = currentVersion
+    if (localOnly) {
+      const cached = getYtDlpLatestCacheSnapshot()
+      const latestVersion = cached.latestVersion || localVersion
+      const outdated = cached.latestVersion
+        ? normalizeVersion(cached.latestVersion) !== normalizeVersion(localVersion)
+        : false
+
+      return res.json({
+        available: true,
+        currentVersion: localVersion,
+        latestVersion,
+        outdated,
+        latestFromCache: cached.latestFromCache,
+        latestCheckedAt: cached.latestCheckedAt,
+        latestSource: cached.latestSource,
+        latestError: '',
+        platform: os.platform(),
+        updateMethod: getEffectiveYtDlpUpdateMethod(),
+        updateSupported: !isYtDlpUpdateDisabled(),
+        binaryPath: ytDlpPath,
+        binarySizeBytes: ytDlpFileSize.bytes,
+        binarySizeHuman: ytDlpFileSize.human,
+        error: '',
+      })
+    }
+
+    let latestVersion = localVersion
     let outdated = false
+    let latestFromCache = false
+    let latestCheckedAt = 0
+    let latestSource = 'none'
+    let latestError = ''
 
     try {
-      // Fetch latest version directly from PyPI (faster & more reliable than pip list --outdated)
-      const pypiRes = await fetch('https://pypi.org/pypi/yt-dlp/json')
-      if (pypiRes.ok) {
-        const pypiData = await pypiRes.json()
-        if (pypiData?.info?.version) {
-          latestVersion = pypiData.info.version
-          outdated = normalizeVersion(latestVersion) !== normalizeVersion(currentVersion)
-        }
-      } else {
-        throw new Error(`PyPI returned ${pypiRes.status}`)
-      }
+      const latestInfo = await getLatestYtDlpVersion({ forceRefresh: forceLatest })
+      latestVersion = latestInfo.latestVersion || localVersion
+      latestFromCache = Boolean(latestInfo.latestFromCache)
+      latestCheckedAt = Number(latestInfo.latestCheckedAt || 0)
+      latestSource = String(latestInfo.latestSource || 'none')
+      outdated = normalizeVersion(latestVersion) !== normalizeVersion(localVersion)
     } catch (e) {
-      console.warn('Failed to fetch PyPI data, keeping current version as latest:', e.message)
+      latestError = String(e?.message || e)
+      const cached = getYtDlpLatestCacheSnapshot()
+      if (cached.latestVersion) {
+        latestVersion = cached.latestVersion
+        latestFromCache = true
+        latestCheckedAt = Number(cached.latestCheckedAt || 0)
+        latestSource = 'cache-fallback'
+        outdated = normalizeVersion(latestVersion) !== normalizeVersion(localVersion)
+      }
+
+      if (forceLatest) {
+        console.warn('Failed to force-refresh latest yt-dlp version from PyPI:', latestError)
+      } else {
+        console.warn('Failed to fetch latest yt-dlp version from PyPI:', latestError)
+      }
     }
 
     res.json({
       available: true,
-      currentVersion,
+      currentVersion: localVersion,
       latestVersion,
       outdated,
+      latestFromCache,
+      latestCheckedAt,
+      latestSource,
+      latestError,
       platform: os.platform(),
       updateMethod: getEffectiveYtDlpUpdateMethod(),
       updateSupported: !isYtDlpUpdateDisabled(),
@@ -1220,6 +1347,10 @@ app.get('/api/yt-dlp/status', async (_req, res) => {
       currentVersion: '',
       latestVersion: '',
       outdated: false,
+      latestFromCache: false,
+      latestCheckedAt: 0,
+      latestSource: 'none',
+      latestError: '',
       platform: os.platform(),
       updateMethod: getEffectiveYtDlpUpdateMethod(),
       updateSupported: !isYtDlpUpdateDisabled(),

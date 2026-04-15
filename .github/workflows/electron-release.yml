@@ -64,6 +64,7 @@ jobs:
         if: env.SHOULD_PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             ${{ matrix.artifactPattern }}
             release/latest*.yml

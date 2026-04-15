@@ -8,40 +8,49 @@ export default function YtDlpSettingsSection({
   updating,
   startUpdate,
   fetchStatus,
+  onCheckForUpdates,
   logRef,
   logLines,
   t,
 }) {
+  const localLoading = Boolean(ytInfo?.localLoading)
+  const latestLoading = Boolean(ytInfo?.latestLoading)
+  const latestSource = String(ytInfo?.latestSource || 'none').trim() || 'none'
+  const latestKnown = latestSource !== 'none'
+  const hasLocalCurrent = Boolean(String(ytInfo?.currentVersion || '').trim() && String(ytInfo?.currentVersion || '').trim() !== '-')
+  const hasLocalPath = Boolean(String(ytInfo?.binaryPath || '').trim() && String(ytInfo?.binaryPath || '').trim() !== '-')
+  const hasLocalSize = Boolean(String(ytInfo?.binarySize || '').trim() && String(ytInfo?.binarySize || '').trim() !== '-')
+
   return (
     <Box sx={{ px: 3, pt: 1, pb: 3 }}>
       <SettingRow label={t('settings.currentVersion')}>
         <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
-          {ytInfo.loading ? '…' : ytInfo.currentVersion}
+          {(localLoading && !hasLocalCurrent) ? '…' : ytInfo.currentVersion}
         </Typography>
       </SettingRow>
 
       <SettingRow label={t('settings.latestVersion')}>
         <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
-          {ytInfo.loading ? '…' : ytInfo.latestVersion}
+          {(latestLoading && !latestKnown) ? '…' : ytInfo.latestVersion}
         </Typography>
       </SettingRow>
 
       <SettingRow label={t('settings.ytDlpPath')}>
         <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', maxWidth: 380, textAlign: 'right', wordBreak: 'break-all' }}>
-          {ytInfo.loading ? '…' : ytInfo.binaryPath}
+          {(localLoading && !hasLocalPath) ? '…' : ytInfo.binaryPath}
         </Typography>
       </SettingRow>
 
       <SettingRow label={t('settings.ytDlpBinarySize')}>
         <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
-          {ytInfo.loading ? '…' : ytInfo.binarySize}
+          {(localLoading && !hasLocalSize) ? '…' : ytInfo.binarySize}
         </Typography>
       </SettingRow>
 
       <SettingRow label={t('settings.checkForUpdates')}>
         <Button
-          onClick={fetchStatus}
-          disabled={ytInfo.loading || updating}
+          onClick={onCheckForUpdates || (() => fetchStatus?.({ forceLatest: true }))}
+          disabled={localLoading || latestLoading || updating}
           variant="outlined"
           size="small"
           startIcon={<RefreshCw size={13} />}
@@ -55,7 +64,7 @@ export default function YtDlpSettingsSection({
             '&:hover': { borderColor: 'text.disabled', bgcolor: 'action.hover' },
           }}
         >
-          {ytInfo.loading ? t('settings.checking') : t('settings.checkForUpdates')}
+          {latestLoading ? t('settings.checking') : t('settings.checkForUpdates')}
         </Button>
       </SettingRow>
 
@@ -73,14 +82,16 @@ export default function YtDlpSettingsSection({
           <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>
             {!ytInfo.updateSupported
               ? t('settings.updateManagedExternally')
+              : (!latestKnown || latestLoading)
+                ? t('settings.checking')
               : ytInfo.outdated
-                ? t('settings.updateAvailable')
-                : t('settings.upToDate')}
+                  ? t('settings.updateAvailable')
+                  : t('settings.upToDate')}
           </Typography>
           <Button
             variant="contained"
             onClick={startUpdate}
-            disabled={ytInfo.loading || updating || !ytInfo.outdated || !ytInfo.updateSupported}
+            disabled={localLoading || latestLoading || updating || !latestKnown || !ytInfo.outdated || !ytInfo.updateSupported}
             disableElevation
             size="small"
             sx={{

@@ -51,6 +51,11 @@ export default function SettingsModal({
     outdated: false,
     updateSupported: true,
     loading: false,
+    localLoading: false,
+    latestLoading: false,
+    latestFromCache: false,
+    latestCheckedAt: 0,
+    latestSource: 'none',
     error: '',
   })
 
@@ -74,32 +79,97 @@ export default function SettingsModal({
   const [autoDownloadError, setAutoDownloadError] = useState('')
   const isAppUpdateDownloading = appUpdateState?.phase === 'downloading'
 
-  const fetchStatus = async () => {
-    setYtInfo((state) => ({ ...state, loading: true, error: '' }))
+  const fetchStatus = React.useCallback(async ({ forceLatest = false } = {}) => {
+    setYtInfo((state) => ({
+      ...state,
+      localLoading: true,
+      latestLoading: false,
+      loading: true,
+      error: '',
+    }))
 
     try {
-      const resp = await fetch(`${API_BASE}/api/yt-dlp/status`)
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      const data = await resp.json()
+      const localResp = await fetch(`${API_BASE}/api/yt-dlp/status?localOnly=1`)
+      if (!localResp.ok) throw new Error(`HTTP ${localResp.status}`)
+      const localData = await localResp.json()
 
-      setYtInfo({
-        currentVersion: data.currentVersion || '-',
-        latestVersion: data.latestVersion || data.currentVersion || '-',
-        binaryPath: data.binaryPath || '-',
-        binarySize: data.binarySizeHuman || '-',
-        outdated: !!data.outdated,
-        updateSupported: data.updateSupported !== false,
-        loading: false,
-        error: data.error || '',
+      setYtInfo((state) => {
+        const currentVersion = localData.currentVersion || '-'
+        const cachedLatestVersion = String(localData.latestVersion || '').trim()
+        const latestSourceRaw = String(localData.latestSource || '').trim()
+        const latestSource = latestSourceRaw || 'none'
+        const hasCachedLatest = Boolean(cachedLatestVersion && latestSource !== 'none')
+
+        return {
+          ...state,
+          currentVersion,
+          latestVersion: hasCachedLatest
+            ? cachedLatestVersion
+            : (state.latestVersion !== '-' ? state.latestVersion : currentVersion),
+          binaryPath: localData.binaryPath || '-',
+          binarySize: localData.binarySizeHuman || '-',
+          outdated: hasCachedLatest ? Boolean(localData.outdated) : state.outdated,
+          updateSupported: localData.updateSupported !== false,
+          localLoading: false,
+          latestFromCache: hasCachedLatest ? Boolean(localData.latestFromCache) : state.latestFromCache,
+          latestCheckedAt: hasCachedLatest ? Number(localData.latestCheckedAt || 0) : state.latestCheckedAt,
+          latestSource: hasCachedLatest ? latestSource : state.latestSource,
+          loading: false,
+          error: localData.error || '',
+        }
       })
     } catch (error) {
       setYtInfo((state) => ({
         ...state,
+        localLoading: false,
+        latestLoading: false,
         loading: false,
         error: t('settings.failedLoadStatus', { message: error?.message || error }),
       }))
+      return
     }
-  }
+
+    setYtInfo((state) => ({
+      ...state,
+      latestLoading: true,
+      loading: true,
+    }))
+
+    try {
+      const statusUrl = forceLatest
+        ? `${API_BASE}/api/yt-dlp/status?forceLatest=1`
+        : `${API_BASE}/api/yt-dlp/status`
+
+      const resp = await fetch(statusUrl)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+
+      setYtInfo((state) => ({
+        ...state,
+        currentVersion: data.currentVersion || state.currentVersion || '-',
+        latestVersion: data.latestVersion || state.currentVersion || '-',
+        binaryPath: data.binaryPath || state.binaryPath || '-',
+        binarySize: data.binarySizeHuman || state.binarySize || '-',
+        outdated: !!data.outdated,
+        updateSupported: data.updateSupported !== false,
+        latestFromCache: Boolean(data.latestFromCache),
+        latestCheckedAt: Number(data.latestCheckedAt || 0),
+        latestSource: String(data.latestSource || 'none'),
+        latestLoading: false,
+        loading: false,
+        error: data.error || (forceLatest ? (data.latestError || '') : state.error),
+      }))
+    } catch (error) {
+      setYtInfo((state) => ({
+        ...state,
+        latestLoading: false,
+        loading: false,
+        error: forceLatest
+          ? t('settings.failedLoadStatus', { message: error?.message || error })
+          : state.error,
+      }))
+    }
+  }, [API_BASE, t])
 
   const fetchFfmpegStatus = async () => {
     setFfmpegInfo((state) => ({ ...state, loading: true, error: '' }))
@@ -180,7 +250,7 @@ export default function SettingsModal({
     if (open && section === 'ffmpeg') fetchFfmpegStatus()
     if (open && section === 'auto-download') fetchAutoDownloadSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, section])
+  }, [open, section, fetchStatus])
 
   useEffect(() => {
     if (logRef.current) {
@@ -216,7 +286,7 @@ export default function SettingsModal({
       setLogLines((lines) => [...lines, ok ? t('settings.updateCompleted') : t('settings.updateFailed')])
       es.close()
       setUpdating(false)
-      fetchStatus()
+      fetchStatus({ forceLatest: true })
     })
   }
 
@@ -424,6 +494,7 @@ export default function SettingsModal({
                   updating={updating}
                   startUpdate={startUpdate}
                   fetchStatus={fetchStatus}
+                  onCheckForUpdates={() => fetchStatus({ forceLatest: true })}
                   logRef={logRef}
                   logLines={logLines}
                   t={t}
