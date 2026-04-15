@@ -20,6 +20,10 @@ export default function Header({
   onTabClose,
   onAddTab,
   onTabsReorder,
+  onCloneTab,
+  onCloseOtherTabs,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
 }) {
   const { t } = useI18n()
   const theme = useTheme()
@@ -65,6 +69,10 @@ export default function Header({
           onTabClose={onTabClose}
           onAddTab={onAddTab}
           onTabsReorder={onTabsReorder}
+          onCloneTab={onCloneTab}
+          onCloseOtherTabs={onCloseOtherTabs}
+          onCloseTabsToLeft={onCloseTabsToLeft}
+          onCloseTabsToRight={onCloseTabsToRight}
         />
       </Toolbar>
     </AppBar>

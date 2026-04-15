@@ -338,3 +338,60 @@
   background: color-mix(in srgb, var(--yl-destructive, #ef4444) 90%, #ffffff 10%);
   color: #ffffff;
 }
+
+/* ── Responsive tab size states (chrome-tabs inspired) ─────────────────────── */
+
+/* is-small: slightly narrow – reduce horizontal padding */
+.yl-tab.is-small .yl-tab-hit {
+  padding: 0 20px 0 10px !important;
+}
+
+/* is-smaller: hide title text, center the icon */
+.yl-tab.is-smaller .yl-tab-title {
+  display: none;
+}
+.yl-tab.is-smaller .yl-tab-content {
+  justify-content: center;
+}
+.yl-tab.is-smaller .yl-tab-hit {
+  padding: 0 24px 0 8px !important;
+}
+
+/* is-mini: icon only; hide close button for inactive tabs */
+.yl-tab.is-mini .yl-tab-title {
+  display: none;
+}
+.yl-tab.is-mini .yl-tab-content {
+  justify-content: center;
+}
+.yl-tab.is-mini .yl-tab-hit {
+  padding: 0 !important;
+  justify-content: center;
+}
+.yl-tab.is-mini .yl-tab-close {
+  display: none !important;
+}
+/* Active mini tab: show a small close button, centered */
+.yl-tab.is-mini.is-active .yl-tab-close {
+  display: grid !important;
+  position: static !important;
+  transform: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  right: auto;
+  top: auto;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+/* Fade override – mini close still hides on inactive hover */
+.yl-tab.is-mini:not(.is-active) .yl-tab-close {
+  display: none !important;
+}
+
+/* Ensure dividers are never shown on mini/smaller tabs (too cluttered) */
+.yl-tab.is-mini.show-divider::after,
+.yl-tab.is-smaller.show-divider::after {
+  display: none;
+}

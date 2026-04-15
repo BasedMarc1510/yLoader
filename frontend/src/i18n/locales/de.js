@@ -46,6 +46,13 @@ const de = {
     windowMaximizeAria: 'Fenster maximieren',
     windowRestoreAria: 'Fenster wiederherstellen',
     windowCloseAria: 'Fenster schließen',
+    contextMenu: {
+      cloneTab: 'Tab duplizieren',
+      closeTab: 'Tab schließen',
+      closeTabsToLeft: 'Tabs links schließen',
+      closeTabsToRight: 'Tabs rechts schließen',
+      closeOtherTabs: 'Andere Tabs schließen',
+    },
   },
   sidebar: {
     navigationAria: 'Navigationslinks',

@@ -13,6 +13,7 @@ import { useTabDrag } from './useTabDrag'
 import RouteIcon from './RouteIcon'
 import WindowControls from './WindowControls'
 import TabScrollControls from './TabScrollControls'
+import TabContextMenu from './TabContextMenu'
 import { clampProgress, getTabDomId, getPanelDomId } from './tabBarUtils'
 export default function HeaderTabBar({
   t,
@@ -26,7 +27,17 @@ export default function HeaderTabBar({
   onTabClose,
   onAddTab,
   onTabsReorder,
+  onCloneTab,
+  onCloseOtherTabs,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
 }) {
+  const TAB_MAX_WIDTH = 236
+  const TAB_MIN_WIDTH = 40
+  const TAB_SIZE_SMALL = 120
+  const TAB_SIZE_SMALLER = 80
+  const TAB_SIZE_MINI = 48
+
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const isElectron = Boolean(runtime?.isElectron && runtime?.windowControls)
   const isMacElectron = Boolean(runtime?.platform === 'darwin')
@@ -36,6 +47,7 @@ export default function HeaderTabBar({
   const [showScrollButtons, setShowScrollButtons] = React.useState(false)
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
+  const [tabWidth, setTabWidth] = React.useState(TAB_MAX_WIDTH)
   const [enteringTabIds, setEnteringTabIds] = React.useState(() => new Set())
   const previousTabIdsRef = React.useRef(tabs.map((tab) => tab.id))
   const enterAnimationTimersRef = React.useRef(new Map())
@@ -48,6 +60,23 @@ export default function HeaderTabBar({
     showCustomWindowControls ? 'has-electron-controls' : '',
   ].filter(Boolean).join(' ')
 
+  const computeTabWidth = React.useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return TAB_MAX_WIDTH
+    const count = tabs.length
+    if (count <= 0) return TAB_MAX_WIDTH
+    // Reserve space for the + button (~32px) + its margins (~7px) + strip padding (~16px) + buffer (~4px)
+    const FIXED_END_WIDTH = 59
+    const available = container.clientWidth - FIXED_END_WIDTH
+    if (available <= 0) return TAB_MIN_WIDTH
+    const raw = Math.floor(available / count)
+    return Math.max(TAB_MIN_WIDTH, Math.min(TAB_MAX_WIDTH, raw))
+  }, [TAB_MAX_WIDTH, TAB_MIN_WIDTH, tabs.length])
+
+  React.useLayoutEffect(() => {
+    setTabWidth(computeTabWidth())
+  }, [computeTabWidth])
+
   const {
     draggingId,
     offsets,
@@ -59,6 +88,30 @@ export default function HeaderTabBar({
   } = useTabDrag({ tabs, onTabsReorder, scrollContainerRef })
   const draggingOffset = draggingId ? (offsets[draggingId] ?? 0) : 0
   const showDragAddProxy = Boolean(draggingId && draggingOffset > 0)
+
+  // eslint-disable-next-line no-nested-ternary
+  const tabSizeClass = tabWidth < TAB_SIZE_MINI
+    ? 'is-mini'
+    : tabWidth < TAB_SIZE_SMALLER
+      ? 'is-smaller'
+      : tabWidth < TAB_SIZE_SMALL
+        ? 'is-small'
+        : ''
+
+  const handleTabstripDoubleClick = React.useCallback((event) => {
+    if (event.target === scrollContainerRef.current) onAddTab?.()
+  }, [onAddTab])
+
+  const [contextMenu, setContextMenu] = React.useState(null)
+
+  const handleTabContextMenu = React.useCallback((event, tabId) => {
+    event.preventDefault()
+    setContextMenu({ tabId, top: event.clientY, left: event.clientX })
+  }, [])
+
+  const handleContextMenuClose = React.useCallback(() => {
+    setContextMenu(null)
+  }, [])
 
   React.useEffect(() => {
     const handleBlur = () => cancelDrag()
@@ -109,10 +162,13 @@ export default function HeaderTabBar({
   React.useEffect(() => {
     const element = scrollContainerRef.current
     if (!element || typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver(() => checkScroll())
+    const observer = new ResizeObserver(() => {
+      checkScroll()
+      setTabWidth(computeTabWidth())
+    })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [checkScroll])
+  }, [checkScroll, computeTabWidth])
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -313,6 +369,7 @@ export default function HeaderTabBar({
             className="yl-tabstrip tabs-scrollbar-hidden"
             onScroll={checkScroll}
             onWheel={handleWheel}
+            onDoubleClick={handleTabstripDoubleClick}
             role="tablist"
             aria-label={t('tabs.listAria')}
             aria-orientation="horizontal"
@@ -349,13 +406,16 @@ export default function HeaderTabBar({
                   aria-selected={isActive}
                   aria-label={t('tabs.tabAria', { title: tabTitle })}
                   data-tab-id={tab.id}
-                  className={`yl-tab ${isActive ? 'is-active' : ''} ${showDivider ? 'show-divider' : ''} ${isDragging ? 'is-dragging' : ''} ${isClosing ? 'is-closing' : ''} ${isEntering ? 'is-entering' : ''}`}
-                  style={translateX !== 0 || isDragging ? {
-                    transform: `translateX(${translateX}px)`,
-                    transition: isDragging ? 'none' : 'transform 120ms ease',
-                    zIndex: isDragging ? 50 : undefined,
-                    willChange: 'transform',
-                  } : undefined}
+                  className={`yl-tab ${isActive ? 'is-active' : ''} ${tabSizeClass} ${showDivider ? 'show-divider' : ''} ${isDragging ? 'is-dragging' : ''} ${isClosing ? 'is-closing' : ''} ${isEntering ? 'is-entering' : ''}`}
+                  style={{
+                    '--yl-tab-width': `${tabWidth}px`,
+                    ...(translateX !== 0 || isDragging ? {
+                      transform: `translateX(${translateX}px)`,
+                      transition: isDragging ? 'none' : 'transform 120ms ease',
+                      zIndex: isDragging ? 50 : undefined,
+                      willChange: 'transform',
+                    } : {}),
+                  }}
                   onPointerDown={(event) => {
                     if (!isClosing) startDrag(event, tab.id)
                   }}
@@ -366,6 +426,9 @@ export default function HeaderTabBar({
                     if (event.button !== 1 || isClosing) return
                     event.preventDefault()
                     onTabClose?.(tab.id)
+                  }}
+                  onContextMenu={(event) => {
+                    if (!isClosing) handleTabContextMenu(event, tab.id)
                   }}
                   onKeyDown={(event) => {
                     if (!isClosing) handleTabKeyDown(event, tab.id)
@@ -457,6 +520,19 @@ export default function HeaderTabBar({
         onMinimize={handleWindowMinimize}
         onToggleMaximize={handleWindowToggleMaximize}
         onClose={handleWindowClose}
+        t={t}
+      />
+
+      <TabContextMenu
+        anchorPosition={contextMenu ? { top: contextMenu.top, left: contextMenu.left } : null}
+        tabId={contextMenu?.tabId ?? null}
+        tabs={tabs}
+        onClose={handleContextMenuClose}
+        onCloseTab={onTabClose ?? (() => {})}
+        onCloneTab={onCloneTab ?? (() => {})}
+        onCloseOtherTabs={onCloseOtherTabs ?? (() => {})}
+        onCloseTabsToLeft={onCloseTabsToLeft ?? (() => {})}
+        onCloseTabsToRight={onCloseTabsToRight ?? (() => {})}
         t={t}
       />
     </Box>

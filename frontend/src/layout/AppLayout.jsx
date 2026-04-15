@@ -23,6 +23,10 @@ export default function AppLayout({
   onAddTab,
   onTabsReorder,
   onNavigateActiveTab,
+  onCloneTab,
+  onCloseOtherTabs,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
 }) {
   const { showNotification } = useNotification()
   const { t } = useI18n()
@@ -89,6 +93,10 @@ export default function AppLayout({
         onTabClose={onTabClose}
         onAddTab={onAddTab}
         onTabsReorder={onTabsReorder}
+        onCloneTab={onCloneTab}
+        onCloseOtherTabs={onCloseOtherTabs}
+        onCloseTabsToLeft={onCloseTabsToLeft}
+        onCloseTabsToRight={onCloseTabsToRight}
       />
       <Sidebar
         mobileOpen={mobileOpen}

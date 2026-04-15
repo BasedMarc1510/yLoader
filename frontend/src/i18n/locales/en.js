@@ -46,6 +46,13 @@ const en = {
     windowMaximizeAria: 'Maximize window',
     windowRestoreAria: 'Restore window',
     windowCloseAria: 'Close window',
+    contextMenu: {
+      cloneTab: 'Duplicate tab',
+      closeTab: 'Close tab',
+      closeTabsToLeft: 'Close tabs to the left',
+      closeTabsToRight: 'Close tabs to the right',
+      closeOtherTabs: 'Close other tabs',
+    },
   },
   sidebar: {
     navigationAria: 'Navigation links',

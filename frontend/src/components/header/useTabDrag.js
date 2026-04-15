@@ -1,7 +1,7 @@
 import React from 'react'
 
 export function useTabDrag({ tabs, onTabsReorder, scrollContainerRef }) {
-  const DRAG_START_THRESHOLD_PX = 2
+  const DRAG_START_THRESHOLD_PX = 4
   const dragRef = React.useRef(null)
   const [draggingId, setDraggingId] = React.useState(null)
   const [offsets, setOffsets] = React.useState({})
@@ -22,6 +22,7 @@ export function useTabDrag({ tabs, onTabsReorder, scrollContainerRef }) {
   const startDrag = React.useCallback((event, tabId) => {
     if (event.button !== 0) return
     if (event.target.closest('.yl-tab-close')) return
+    if (tabs.length <= 1) return
     event.preventDefault()
 
     const container = scrollContainerRef.current

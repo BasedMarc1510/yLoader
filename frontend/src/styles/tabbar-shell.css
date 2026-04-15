@@ -147,8 +147,8 @@
   align-items: center;
   justify-content: flex-start;
   width: var(--yl-tab-width);
-  min-width: 0;
-  max-width: none;
+  min-width: 40px;
+  max-width: 236px;
   /* All tabs same height – active tab sits flush at bottom via align-self */
   height: 40px;
   align-self: flex-end;

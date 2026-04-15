@@ -46,6 +46,10 @@ export default function App() {
     handleRequestCloseTab,
     handleConfirmClose,
     handleAddTab,
+    handleCloneTab,
+    handleCloseOtherTabs,
+    handleCloseTabsToLeft,
+    handleCloseTabsToRight,
     handleTabsReorder,
     handleTabRuntimeChange,
   } = useTabsController({ t })
@@ -109,6 +113,10 @@ export default function App() {
         onAddTab={handleAddTab}
         onTabsReorder={handleTabsReorder}
         onNavigateActiveTab={navigateActiveTab}
+        onCloneTab={handleCloneTab}
+        onCloseOtherTabs={handleCloseOtherTabs}
+        onCloseTabsToLeft={handleCloseTabsToLeft}
+        onCloseTabsToRight={handleCloseTabsToRight}
       >
         <Box sx={{ position: 'relative', height: '100%' }}>
           {tabs.map((tab) => (

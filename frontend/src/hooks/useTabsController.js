@@ -407,6 +407,50 @@ export function useTabsController({ t }) {
     setActiveTabId(newTab.id)
   }, [])
 
+  const handleCloneTab = React.useCallback((tabId) => {
+    const sourceTab = tabs.find((t) => t.id === tabId)
+    if (!sourceTab) return
+
+    const newTab = createDefaultTab()
+    newTab.path = sourceTab.path
+    newTab.search = sourceTab.search
+
+    setTabs((prevTabs) => {
+      const index = prevTabs.findIndex((t) => t.id === tabId)
+      const next = [...prevTabs]
+      next.splice(index < 0 ? next.length : index + 1, 0, newTab)
+      return next
+    })
+    setActiveTabId(newTab.id)
+  }, [tabs])
+
+  const handleCloseOtherTabs = React.useCallback((tabId) => {
+    setTabs((prevTabs) => {
+      const target = prevTabs.find((t) => t.id === tabId)
+      if (!target || prevTabs.length <= 1) return prevTabs
+      return [target]
+    })
+    setActiveTabId(tabId)
+  }, [])
+
+  const handleCloseTabsToLeft = React.useCallback((tabId) => {
+    setTabs((prevTabs) => {
+      const index = prevTabs.findIndex((t) => t.id === tabId)
+      if (index <= 0) return prevTabs
+      return prevTabs.slice(index)
+    })
+    setActiveTabId(tabId)
+  }, [])
+
+  const handleCloseTabsToRight = React.useCallback((tabId) => {
+    setTabs((prevTabs) => {
+      const index = prevTabs.findIndex((t) => t.id === tabId)
+      if (index < 0 || index >= prevTabs.length - 1) return prevTabs
+      return prevTabs.slice(0, index + 1)
+    })
+    setActiveTabId(tabId)
+  }, [])
+
   const handleTabsReorder = React.useCallback((orderedIds = []) => {
     if (!Array.isArray(orderedIds) || !orderedIds.length) return
 
@@ -505,6 +549,10 @@ export function useTabsController({ t }) {
     handleRequestCloseTab,
     handleConfirmClose,
     handleAddTab,
+    handleCloneTab,
+    handleCloseOtherTabs,
+    handleCloseTabsToLeft,
+    handleCloseTabsToRight,
     handleTabsReorder,
     handleTabRuntimeChange,
   }
