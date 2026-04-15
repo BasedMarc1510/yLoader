@@ -67,7 +67,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             ${{ matrix.artifactPattern }}
-            release/latest*.yml
+            release/*.yml
             release/*.blockmap
           fail_on_unmatched_files: false
 
@@ -77,7 +77,7 @@ jobs:
           name: ${{ matrix.name }}
           path: |
             ${{ matrix.artifactPattern }}
-            release/latest*.yml
+            release/*.yml
             release/*.blockmap
           if-no-files-found: error
           retention-days: 14
