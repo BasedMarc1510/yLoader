@@ -13,9 +13,30 @@ import {
   hasUrlInSearch,
   normalizeClientTabState,
   normalizeDownloadState,
+  readCurrentTabLocation,
   readLocalTabState,
   serializeTabState,
 } from '../utils/tabState'
+
+function isFileProtocolRuntime() {
+  if (typeof window === 'undefined') return false
+  return String(window.location.protocol || '').toLowerCase() === 'file:'
+}
+
+function buildBrowserUrl(path, search) {
+  const normalizedPath = normalizeTabPath(path)
+  const normalizedSearch = normalizeTabSearch(search)
+
+  if (!isFileProtocolRuntime()) {
+    return `${normalizedPath}${normalizedSearch}`
+  }
+
+  if (normalizedPath === '/' && !normalizedSearch) {
+    return ''
+  }
+
+  return `#${normalizedPath}${normalizedSearch}`
+}
 
 export function useTabsController({ t }) {
   const [tabs, setTabs] = React.useState(() => [createTabFromCurrentLocation('tab-home')])
@@ -60,7 +81,8 @@ export function useTabsController({ t }) {
           normalized = normalizeClientTabState(payload)
         }
 
-        const currentPath = typeof window !== 'undefined' ? normalizeTabPath(window.location.pathname) : '/'
+        const currentLocation = readCurrentTabLocation()
+        const currentPath = currentLocation.path
         const shouldSeedFromUrl =
           normalized.tabs.length === 1
           && normalized.tabs[0].id === 'tab-home'
@@ -72,7 +94,7 @@ export function useTabsController({ t }) {
               tabs: [{
                 ...normalized.tabs[0],
                 path: currentPath,
-                search: normalizeTabSearch(window.location.search),
+                search: currentLocation.search,
               }],
               activeTabId: normalized.activeTabId,
             }
@@ -227,8 +249,9 @@ export function useTabsController({ t }) {
 
     const nextPath = normalizeTabPath(activeTab.path)
     const nextSearch = normalizeTabSearch(activeTab.search)
-    const currentUrl = `${window.location.pathname}${window.location.search}`
-    const nextUrl = `${nextPath}${nextSearch}`
+    const currentLocation = readCurrentTabLocation()
+    const currentUrl = buildBrowserUrl(currentLocation.path, currentLocation.search)
+    const nextUrl = buildBrowserUrl(nextPath, nextSearch)
 
     if (currentUrl !== nextUrl) {
       window.history.replaceState(null, '', nextUrl)

@@ -34,12 +34,49 @@ export function getPanelDomId(tabId) {
   return `yl-tabpanel-${tabId}`
 }
 
+export function readCurrentTabLocation() {
+  if (typeof window === 'undefined') {
+    return {
+      path: '/',
+      search: '',
+    }
+  }
+
+  const protocol = String(window.location.protocol || '').toLowerCase()
+
+  if (protocol === 'file:') {
+    const rawHash = String(window.location.hash || '').trim()
+    const hashValue = rawHash.startsWith('#') ? rawHash.slice(1) : rawHash
+
+    if (hashValue.startsWith('/')) {
+      const queryIndex = hashValue.indexOf('?')
+      const hashPath = queryIndex >= 0 ? hashValue.slice(0, queryIndex) : hashValue
+      const hashSearch = queryIndex >= 0 ? hashValue.slice(queryIndex) : ''
+      return {
+        path: normalizeTabPath(hashPath),
+        search: normalizeTabSearch(hashSearch),
+      }
+    }
+
+    return {
+      path: '/',
+      search: '',
+    }
+  }
+
+  return {
+    path: normalizeTabPath(window.location.pathname),
+    search: normalizeTabSearch(window.location.search),
+  }
+}
+
 export function createTabFromCurrentLocation(tabId = 'tab-home') {
   const base = createDefaultTab(tabId)
   if (typeof window === 'undefined') return base
 
-  base.path = normalizeTabPath(window.location.pathname)
-  base.search = normalizeTabSearch(window.location.search)
+  const current = readCurrentTabLocation()
+  base.path = current.path
+  base.search = current.search
   return base
 }
 
