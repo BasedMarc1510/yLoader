@@ -14,6 +14,8 @@ Run all commands from the repository root.
 npm run start
 ```
 
+Local starts read optional overrides from the repository root `.env` file, for example `YT_DLP_COOKIES_FROM_BROWSER=firefox`.
+
 ### Local (Electron)
 
 ```bash
