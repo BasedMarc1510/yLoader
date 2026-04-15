@@ -85,7 +85,9 @@
     },
     "nsis": {
       "shortcutName": "yLoader",
-      "uninstallDisplayName": "yLoader"
+      "uninstallDisplayName": "yLoader",
+      "installerIcon": "build/icons/installer-icon.ico",
+      "uninstallerIcon": "build/icons/installer-icon.ico"
     }
   }
 }

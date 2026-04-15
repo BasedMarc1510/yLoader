@@ -22,6 +22,7 @@ const REQUIRED_ICON_ASSETS = [
   path.join(ROOT_DIR, 'build', 'icons', 'icon.png'),
   path.join(ROOT_DIR, 'build', 'icons', 'icon.ico'),
   path.join(ROOT_DIR, 'build', 'icons', 'icon.icns'),
+  path.join(ROOT_DIR, 'build', 'icons', 'installer-icon.ico'),
   path.join(ROOT_DIR, 'frontend', 'public', 'favicon.ico'),
   path.join(ROOT_DIR, 'frontend', 'public', 'favicon-96x96.png'),
 ]

@@ -32,6 +32,7 @@ backend/downloads/
 !/build/icons/icon.ico
 !/build/icons/icon.icns
 !/build/icons/icon-512.png
+!/build/icons/installer-icon.ico
 /coverage/
 .vite/
 .cache/

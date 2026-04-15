@@ -46,7 +46,7 @@ export default function Sidebar({
   const isMacElectron = Boolean(runtime?.platform === 'darwin')
   const showMacInlineExpand = collapsed && isMacElectron
   const brandLeftPadding = logoLeftOffset + 8
-  const brandIconSrc = `${import.meta.env.BASE_URL}favicon.svg`
+  const brandIconSrc = `${import.meta.env.BASE_URL}${isElectron ? 'favicon-96x96.png' : 'yloader-icon.svg'}`
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return undefined
