@@ -66,14 +66,6 @@ export default function Header({
           onAddTab={onAddTab}
           onTabsReorder={onTabsReorder}
         />
-
-        <Box
-          sx={{
-            width: { xs: 8, sm: 12 },
-            flexShrink: 0,
-          }}
-          aria-hidden="true"
-        />
       </Toolbar>
     </AppBar>
   )

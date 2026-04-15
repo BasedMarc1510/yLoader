@@ -16,6 +16,7 @@ export function createDefaultTab(tabId = createTabId()) {
     search: '',
     navToken: 0,
     pageTitle: '',
+    loading: false,
     download: {
       active: false,
       progress: 0,
@@ -65,6 +66,7 @@ function normalizeClientTab(rawTab, index) {
     search: normalizeTabSearch(rawTab?.search),
     navToken: 0,
     pageTitle: String(rawTab?.pageTitle || '').trim().slice(0, 180),
+    loading: false,
     download: normalizeDownloadState(rawTab?.download),
   }
 }

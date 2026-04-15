@@ -224,8 +224,15 @@ export default function Downloader({
     })
   }, [meta?.title, onTabStateChange])
 
+  React.useEffect(() => {
+    onTabStateChange?.({
+      loading: Boolean(loading && !fetchError),
+    })
+  }, [loading, fetchError, onTabStateChange])
+
   React.useEffect(() => () => {
     onTabStateChange?.({
+      loading: false,
       download: {
         active: false,
         progress: 0,

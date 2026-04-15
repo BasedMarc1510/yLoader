@@ -57,6 +57,8 @@ export default function HeaderTabBar({
     endDrag,
     cancelDrag,
   } = useTabDrag({ tabs, onTabsReorder, scrollContainerRef })
+  const draggingOffset = draggingId ? (offsets[draggingId] ?? 0) : 0
+  const showDragAddProxy = Boolean(draggingId && draggingOffset > 0)
 
   React.useEffect(() => {
     const handleBlur = () => cancelDrag()
@@ -325,6 +327,7 @@ export default function HeaderTabBar({
               const closeTooltipLabel = t('tabs.closeTooltip')
               const progress = clampProgress(tab?.download?.progress)
               const isDownloading = Boolean(tab?.download?.active)
+              const isTabBusy = Boolean(tab?.loading || isDownloading)
               const progressPrefix = isDownloading ? `${progress}% - ` : ''
               const tabTitle = `${progressPrefix}${displayTitle}`
               const nextTab = tabs[index + 1] || null
@@ -382,7 +385,9 @@ export default function HeaderTabBar({
                     }}
                   >
                     <Box className="yl-tab-content">
-                      <RouteIcon iconKey={iconKey} />
+                      {isTabBusy
+                        ? <Box component="span" className="yl-tab-loading-spinner" aria-hidden="true" />
+                        : <RouteIcon iconKey={iconKey} />}
                       <Typography component="span" className="yl-tab-title">
                         {tabTitle}
                       </Typography>
@@ -403,10 +408,10 @@ export default function HeaderTabBar({
                       onTabClose?.(tab.id)
                     }}
                   >
-                    <X size={12} />
+                    <X size={11} />
                   </IconButton>
 
-                  {isDragging && (
+                  {isDragging && showDragAddProxy && (
                     <IconButton
                       size="small"
                       className="yl-add-btn yl-add-btn-drag-proxy"
@@ -426,7 +431,7 @@ export default function HeaderTabBar({
 
             <IconButton
               size="small"
-              className={`yl-add-btn ${draggingId ? 'is-hidden-while-drag' : ''}`}
+              className={`yl-add-btn ${showDragAddProxy ? 'is-hidden-while-drag' : ''}`}
               onClick={onAddTab}
               aria-label={t('tabs.newTabAria')}
             >

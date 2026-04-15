@@ -28,10 +28,18 @@ export function useTabsController({ t }) {
   const closeTimersRef = React.useRef(new Map())
   const lastSavedRef = React.useRef('')
   const lastLocalSerializedRef = React.useRef('')
+  const runtimeQueueRef = React.useRef(new Map())
+  const runtimeFlushTimerRef = React.useRef(null)
 
   React.useEffect(() => () => {
     closeTimersRef.current.forEach((timer) => clearTimeout(timer))
     closeTimersRef.current.clear()
+
+    if (runtimeFlushTimerRef.current) {
+      clearTimeout(runtimeFlushTimerRef.current)
+      runtimeFlushTimerRef.current = null
+    }
+    runtimeQueueRef.current.clear()
   }, [])
 
   React.useEffect(() => {
@@ -232,7 +240,17 @@ export function useTabsController({ t }) {
     if (normalizeTabPath(tab.path) !== '/' || !hasUrlInSearch(tab.search)) return routeTitle
 
     const candidate = tab.download?.title || tab.pageTitle
-    return candidate || routeTitle
+    if (!candidate) return routeTitle
+
+    const normalizedCandidate = String(candidate).trim()
+    const normalizedRouteTitle = String(routeTitle).trim()
+    if (!normalizedRouteTitle) return normalizedCandidate
+
+    const lowerCandidate = normalizedCandidate.toLowerCase()
+    const lowerRouteTitle = normalizedRouteTitle.toLowerCase()
+    if (lowerCandidate.endsWith(lowerRouteTitle)) return normalizedCandidate
+
+    return `${normalizedCandidate} - ${normalizedRouteTitle}`
   }, [t])
 
   const closeTabNow = React.useCallback((tabId) => {
@@ -389,34 +407,64 @@ export function useTabsController({ t }) {
     })
   }, [])
 
-  const handleTabRuntimeChange = React.useCallback((tabId, runtime) => {
-    setTabs((prevTabs) => prevTabs.map((tab) => {
-      if (tab.id !== tabId) return tab
+  const flushQueuedRuntimeUpdates = React.useCallback(() => {
+    runtimeFlushTimerRef.current = null
 
-      const nextPageTitle = typeof runtime?.pageTitle === 'string'
-        ? runtime.pageTitle.trim().slice(0, 180)
-        : tab.pageTitle
+    if (!runtimeQueueRef.current.size) return
+    const queued = new Map(runtimeQueueRef.current)
+    runtimeQueueRef.current.clear()
 
-      const nextDownload = runtime?.download
-        ? normalizeDownloadState(runtime.download)
-        : tab.download
+    setTabs((prevTabs) => {
+      let changed = false
 
-      const unchanged =
-        nextPageTitle === tab.pageTitle
-        && nextDownload.active === tab.download.active
-        && nextDownload.progress === tab.download.progress
-        && nextDownload.title === tab.download.title
-        && nextDownload.stage === tab.download.stage
+      const nextTabs = prevTabs.map((tab) => {
+        const runtime = queued.get(tab.id)
+        if (!runtime) return tab
 
-      if (unchanged) return tab
+        const nextPageTitle = typeof runtime?.pageTitle === 'string'
+          ? runtime.pageTitle.trim().slice(0, 180)
+          : tab.pageTitle
 
-      return {
-        ...tab,
-        pageTitle: nextPageTitle,
-        download: nextDownload,
-      }
-    }))
+        const nextLoading = runtime?.loading !== undefined
+          ? Boolean(runtime.loading)
+          : Boolean(tab.loading)
+
+        const nextDownload = runtime?.download
+          ? normalizeDownloadState(runtime.download)
+          : tab.download
+
+        const unchanged =
+          nextPageTitle === tab.pageTitle
+          && nextLoading === Boolean(tab.loading)
+          && nextDownload.active === tab.download.active
+          && nextDownload.progress === tab.download.progress
+          && nextDownload.title === tab.download.title
+          && nextDownload.stage === tab.download.stage
+
+        if (unchanged) return tab
+
+        changed = true
+        return {
+          ...tab,
+          pageTitle: nextPageTitle,
+          loading: nextLoading,
+          download: nextDownload,
+        }
+      })
+
+      return changed ? nextTabs : prevTabs
+    })
   }, [])
+
+  const handleTabRuntimeChange = React.useCallback((tabId, runtime) => {
+    const normalizedId = String(tabId || '').trim()
+    if (!normalizedId) return
+
+    runtimeQueueRef.current.set(normalizedId, runtime || {})
+
+    if (runtimeFlushTimerRef.current) return
+    runtimeFlushTimerRef.current = setTimeout(flushQueuedRuntimeUpdates, 90)
+  }, [flushQueuedRuntimeUpdates])
 
   return {
     tabs,

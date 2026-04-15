@@ -94,10 +94,10 @@
 .yl-scroll-fade {
   position: absolute;
   top: 0;
-  bottom: 0;
+  bottom: 1px;
   width: 44px;
   pointer-events: none;
-  z-index: 12;
+  z-index: 36;
 }
 
 .yl-scroll-fade.left {
@@ -107,6 +107,7 @@
 
 .yl-scroll-fade.right {
   right: 0;
+  bottom: 1px;
   background: linear-gradient(to left, var(--yl-surface, transparent), transparent);
 }
 
