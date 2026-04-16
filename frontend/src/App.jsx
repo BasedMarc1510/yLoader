@@ -81,7 +81,11 @@ export default function App() {
     }
 
     if (normalizedPath === '/search') {
-      return <SearchPage />
+      return (
+        <SearchPage
+          onOpenDownloader={(serviceKey, rawUrl) => openDownloaderInTab(tab.id, serviceKey, rawUrl)}
+        />
+      )
     }
 
     if (normalizedPath === '/' && hasUrlInSearch(normalizedSearch)) {

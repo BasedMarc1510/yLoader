@@ -24,6 +24,21 @@ function resolveSseErrorMessage(value) {
   }
 }
 
+function parseSseStructuredPayload(value) {
+  if (value == null) return null
+  if (typeof value === 'object') return value
+
+  const text = String(value || '').trim()
+  if (!text) return null
+
+  try {
+    const parsed = JSON.parse(text)
+    return (parsed && typeof parsed === 'object') ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 function extractPercent(input) {
   if (input == null) return null
 
@@ -124,7 +139,6 @@ function readSseBlocks(buffer, processEvent, force = false) {
 export function useAutoDownload({
   autoDownloadEnabled,
   autoDownloadFormat,
-  isResolving,
   multiModeEnabled,
   t,
   setIsResolving,
@@ -135,6 +149,7 @@ export function useAutoDownload({
   const [autoDownloadInFlight, setAutoDownloadInFlight] = React.useState(false)
   const [autoDownloadProgress, setAutoDownloadProgress] = React.useState(0)
   const [autoDownloadProgressKnown, setAutoDownloadProgressKnown] = React.useState(false)
+  const inFlightRef = React.useRef(false)
 
   const fetchAutoDownloadSettingsFromServer = React.useCallback(async () => {
     const API_BASE = getApiBase()
@@ -152,7 +167,9 @@ export function useAutoDownload({
   const startAutoDownload = React.useCallback(async (rawUrl) => {
     const target = String(rawUrl || '').trim()
     const serviceKey = detectService(target)
-    if (!autoDownloadEnabled || !serviceKey || !target || multiModeEnabled || isResolving) return
+    if (!autoDownloadEnabled || !serviceKey || !target || multiModeEnabled || inFlightRef.current) return
+
+    inFlightRef.current = true
 
     setFetchError(null)
     setIsResolving(true)
@@ -243,8 +260,23 @@ export function useAutoDownload({
 
       const processEvent = (eventName, rawData) => {
         const dataStr = String(rawData || '')
+        const structuredPayload = parseSseStructuredPayload(rawData)
 
-        if (eventName === 'progress' || eventName === 'info' || eventName === 'message') {
+        if (eventName === 'progress') {
+          const progressCandidate = Number(
+            structuredPayload?.downloadPercent
+              ?? structuredPayload?.percent
+              ?? structuredPayload?.progress
+              ?? structuredPayload?.percentage
+          )
+
+          if (!applyProgress(progressCandidate)) {
+            applyProgress(extractPercent(dataStr))
+          }
+          return
+        }
+
+        if (eventName === 'info' || eventName === 'message') {
           applyProgress(extractPercent(dataStr))
           return
         }
@@ -268,7 +300,7 @@ export function useAutoDownload({
           }
 
           try {
-            const data = JSON.parse(dataStr)
+            const data = structuredPayload || JSON.parse(dataStr)
             if (!data?.filename || !data?.url) return
 
             const a = document.createElement('a')
@@ -311,6 +343,7 @@ export function useAutoDownload({
       setFetchError({ url: target, message })
       showNotification(message, 'error')
     } finally {
+      inFlightRef.current = false
       if (!completed && !explicitErrorMessage && (failed || !ended)) {
         setFetchError({ url: target, message: t('downloader.errorDownloadFailed') })
       }
@@ -324,7 +357,6 @@ export function useAutoDownload({
     autoDownloadFormat,
     clearInput,
     fetchAutoDownloadSettingsFromServer,
-    isResolving,
     multiModeEnabled,
     setFetchError,
     setIsResolving,

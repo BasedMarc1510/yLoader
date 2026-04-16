@@ -68,6 +68,11 @@ const DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
 const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
 const META_FORMATS_CACHE_MAX_ENTRIES = 150
+const SEARCH_PROVIDER_OPTIONS = new Set(['youtube', 'youtubemusic', 'spotify', 'soundcloud'])
+const SEARCH_QUERY_MAX_LENGTH = 300
+const SEARCH_RESULT_COUNT_DEFAULT = 10
+const SEARCH_RESULT_COUNT_MIN = 1
+const SEARCH_RESULT_COUNT_MAX = 25
 const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
   useMetadata: true,
   embedCoverArt: true,
@@ -439,6 +444,81 @@ app.put('/api/download/settings', async (req, res) => {
     return res.json(normalized)
   } catch (err) {
     return res.status(500).json({ error: 'Failed to save download settings', details: String(err?.message || err) })
+  }
+})
+
+// GET /api/search?q=...&from=youtube|youtubemusic|spotify|soundcloud&count=10
+app.get('/api/search', async (req, res) => {
+  const query = String(req.query.q || req.query.query || '').trim()
+  const provider = normalizeSearchProvider(req.query.from || req.query.service)
+  const count = normalizeSearchResultCount(req.query.count)
+
+  if (!query) {
+    return res.status(400).json({ error: 'Missing query' })
+  }
+
+  if (query.length > SEARCH_QUERY_MAX_LENGTH) {
+    return res.status(400).json({ error: `Query must be ${SEARCH_QUERY_MAX_LENGTH} characters or fewer` })
+  }
+
+  const fallbackService = provider === 'youtubemusic' ? 'youtube' : provider
+  const searchTarget = buildYtDlpSearchTarget(provider, query, count)
+
+  try {
+    const args = buildYtDlpNetworkArgs([
+      '--dump-single-json',
+      '--no-warnings',
+      '--flat-playlist',
+      '--playlist-end',
+      String(count),
+      '--quiet',
+      searchTarget,
+    ])
+
+    const stdout = await runCmd(YT_DLP, args, {
+      timeout: 90 * 1000,
+      maxBuffer: 80 * 1024 * 1024,
+    })
+
+    const data = parseYtDlpJson(stdout)
+    const rawEntries = Array.isArray(data?.entries) ? data.entries : []
+    const entries = []
+
+    for (const rawEntry of rawEntries) {
+      if (!rawEntry || typeof rawEntry !== 'object') continue
+
+      const sourceUrl = resolveSearchEntryUrl(rawEntry, provider)
+      if (!isValidHttpUrl(sourceUrl)) continue
+
+      const resolvedService = resolveServiceKey(fallbackService, sourceUrl)
+      const durationRaw = Number(rawEntry?.duration)
+      const duration = Number.isFinite(durationRaw) && durationRaw >= 0 ? durationRaw : null
+      const title = String(rawEntry?.title || '').trim() || sourceUrl
+      const uploader = String(rawEntry?.uploader || rawEntry?.channel || rawEntry?.artist || '').trim()
+      const id = String(rawEntry?.id || sourceUrl).trim() || sourceUrl
+
+      entries.push({
+        id,
+        title,
+        uploader,
+        url: sourceUrl,
+        service: resolvedService,
+        thumbnail: pickSearchEntryThumbnail(rawEntry),
+        duration,
+        durationString: formatDurationLabel(duration),
+      })
+
+      if (entries.length >= count) break
+    }
+
+    return res.json({
+      query,
+      from: provider,
+      count,
+      entries,
+    })
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to run search', details: String(err?.message || err) })
   }
 })
 
@@ -967,6 +1047,78 @@ function parseYtDlpJson(raw) {
     }
     throw new Error('yt-dlp did not return valid JSON metadata')
   }
+}
+
+function normalizeSearchProvider(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (SEARCH_PROVIDER_OPTIONS.has(normalized)) return normalized
+  return 'youtube'
+}
+
+function normalizeSearchResultCount(value) {
+  const parsed = Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(parsed)) return SEARCH_RESULT_COUNT_DEFAULT
+  return Math.max(SEARCH_RESULT_COUNT_MIN, Math.min(SEARCH_RESULT_COUNT_MAX, parsed))
+}
+
+function buildYtDlpSearchTarget(provider, query, count) {
+  const safeQuery = String(query || '').trim()
+  const encoded = encodeURIComponent(safeQuery)
+
+  if (provider === 'soundcloud') {
+    return `scsearch${count}:${safeQuery}`
+  }
+
+  if (provider === 'spotify') {
+    return `spsearch${count}:${safeQuery}`
+  }
+
+  if (provider === 'youtubemusic') {
+    return `https://music.youtube.com/search?q=${encoded}&sp=EgIQAQ%253D%253D`
+  }
+
+  return `https://www.youtube.com/results?search_query=${encoded}&sp=EgIQAQ%253D%253D`
+}
+
+function pickSearchEntryThumbnail(entry) {
+  const directThumbnail = String(entry?.thumbnail || '').trim()
+  if (isValidHttpUrl(directThumbnail)) return directThumbnail
+
+  const thumbnails = Array.isArray(entry?.thumbnails) ? entry.thumbnails : []
+  for (const thumbnail of thumbnails) {
+    const targetUrl = String(thumbnail?.url || '').trim()
+    if (isValidHttpUrl(targetUrl)) return targetUrl
+  }
+
+  return ''
+}
+
+function resolveSearchEntryUrl(entry, provider) {
+  const webpageUrl = String(entry?.webpage_url || '').trim()
+  if (isValidHttpUrl(webpageUrl)) return webpageUrl
+
+  const rawUrl = String(entry?.url || '').trim()
+  if (isValidHttpUrl(rawUrl)) return rawUrl
+
+  if (provider === 'soundcloud' && rawUrl) {
+    const normalized = rawUrl.startsWith('/')
+      ? `https://soundcloud.com${rawUrl}`
+      : `https://soundcloud.com/${rawUrl.replace(/^\/+/, '')}`
+    if (isValidHttpUrl(normalized)) return normalized
+  }
+
+  const entryId = String(entry?.id || '').trim()
+  if (!entryId) return ''
+
+  if (provider === 'youtube' || provider === 'youtubemusic') {
+    return `https://www.youtube.com/watch?v=${encodeURIComponent(entryId)}`
+  }
+
+  if (provider === 'spotify') {
+    return `https://open.spotify.com/track/${encodeURIComponent(entryId)}`
+  }
+
+  return ''
 }
 
 function formatDurationLabel(durationSeconds) {
@@ -2376,6 +2528,7 @@ app.post('/api/download/stream', async (req, res) => {
       type,
     })
     notifyDownloadSlotsChanged()
+    send('started', { downloadHash })
 
     // Create a temporary directory for this download to avoid naming conflicts and quoting issues
     const tempDirName = `temp_${downloadHash}`
@@ -2493,7 +2646,9 @@ app.post('/api/download/stream', async (req, res) => {
 
       if (nextPercent != null) {
         maxDownloadPercent = Math.max(maxDownloadPercent, nextPercent)
-        emitProgress(mapDownloadPercentToOverall(maxDownloadPercent), 'downloading')
+        emitProgress(mapDownloadPercentToOverall(maxDownloadPercent), 'downloading', {
+          downloadPercent: Math.max(0, Math.min(100, maxDownloadPercent)),
+        })
       }
 
       // Also check for merge/post-processing

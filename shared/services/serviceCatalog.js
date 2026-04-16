@@ -17,6 +17,8 @@ const SERVICE_ALIASES = Object.freeze({
   twitter: 'x',
   'x-twitter': 'x',
   xtwitter: 'x',
+  hbomax: 'max',
+  'hbo-max': 'max',
 })
 
 const SERVICE_MATCHERS = new Map(
@@ -27,6 +29,18 @@ const SERVICE_MATCHERS = new Map(
       pathMatchers: service.pathRegexes.map((pattern) => new RegExp(pattern, 'i')),
     },
   ])
+)
+
+const PATH_SPECIFIC_SERVICE_KEYS = Object.freeze(
+  NON_GENERIC_SERVICE_DEFINITIONS
+    .filter((service) => Array.isArray(service.pathRegexes) && service.pathRegexes.length > 0)
+    .map((service) => service.key)
+)
+
+const HOST_ONLY_SERVICE_KEYS = Object.freeze(
+  NON_GENERIC_SERVICE_DEFINITIONS
+    .filter((service) => !Array.isArray(service.pathRegexes) || service.pathRegexes.length === 0)
+    .map((service) => service.key)
 )
 
 function toParsedHttpUrl(rawUrl) {
@@ -101,8 +115,12 @@ export function detectServiceByUrl(rawUrl) {
   const parsed = toParsedHttpUrl(rawUrl)
   if (!parsed) return null
 
-  for (const service of NON_GENERIC_SERVICE_DEFINITIONS) {
-    if (matchesServiceByParsedUrl(service.key, parsed)) return service.key
+  for (const serviceKey of PATH_SPECIFIC_SERVICE_KEYS) {
+    if (matchesServiceByParsedUrl(serviceKey, parsed)) return serviceKey
+  }
+
+  for (const serviceKey of HOST_ONLY_SERVICE_KEYS) {
+    if (matchesServiceByParsedUrl(serviceKey, parsed)) return serviceKey
   }
 
   return GENERIC_SERVICE_KEY

@@ -43,7 +43,6 @@ export default function HomePage({ onOpenDownloader }) {
   } = useAutoDownload({
     autoDownloadEnabled,
     autoDownloadFormat,
-    isResolving,
     multiModeEnabled,
     t,
     setIsResolving,
@@ -51,6 +50,8 @@ export default function HomePage({ onOpenDownloader }) {
     clearInput: () => setValue(''),
     showNotification,
   })
+
+  const interactionLocked = isResolving || autoDownloadInFlight
 
   const showAutoDownloadProgress = autoDownloadInFlight
   const normalizedAutoDownloadProgress = Math.max(0, Math.min(100, Math.round(autoDownloadProgress || 0)))
@@ -79,12 +80,12 @@ export default function HomePage({ onOpenDownloader }) {
   const resolveAndOpenDownloader = React.useCallback((rawUrl) => {
     const target = String(rawUrl || '').trim()
     const detectedService = detectService(target)
-    if (!detectedService || !target || isResolving) return
+    if (!detectedService || !target || interactionLocked) return
     if (!isLikelyValidUrlFor(detectedService, target)) return
 
     setFetchError(null)
     onOpenDownloader?.(detectedService, target)
-  }, [isResolving, onOpenDownloader])
+  }, [interactionLocked, onOpenDownloader])
 
   React.useEffect(() => {
     persistHomeAutoDownloadPrefs(autoDownloadEnabled, autoDownloadFormat)
@@ -126,7 +127,7 @@ export default function HomePage({ onOpenDownloader }) {
   }, [])
 
   const requestToggleMultiMode = React.useCallback((nextEnabled) => {
-    if (isResolving) return
+    if (interactionLocked) return
 
     if (!nextEnabled) {
       if (!multiModeEnabled) return
@@ -142,18 +143,18 @@ export default function HomePage({ onOpenDownloader }) {
     if (autoDownloadEnabled) setAutoDownloadEnabled(false)
     setMultiModeEnabled(true)
     setMenuAnchorEl(null)
-  }, [autoDownloadEnabled, disableMultiModeNow, hasMultiInput, isResolving, multiModeEnabled])
+  }, [autoDownloadEnabled, disableMultiModeNow, hasMultiInput, interactionLocked, multiModeEnabled])
 
   const handleToggleAutoDownload = React.useCallback((nextEnabled) => {
-    if (isResolving) return
+    if (interactionLocked) return
     if (nextEnabled && multiModeEnabled) {
       disableMultiModeNow()
     }
     setAutoDownloadEnabled(nextEnabled)
-  }, [disableMultiModeNow, isResolving, multiModeEnabled])
+  }, [disableMultiModeNow, interactionLocked, multiModeEnabled])
 
   const handleSubmit = React.useCallback(() => {
-    if (multiModeEnabled || isResolving) return
+    if (multiModeEnabled || interactionLocked) return
 
     if (autoDownloadEnabled) {
       startAutoDownload(value)
@@ -164,7 +165,7 @@ export default function HomePage({ onOpenDownloader }) {
     if (serviceKey) resolveAndOpenDownloader(value)
   }, [
     autoDownloadEnabled,
-    isResolving,
+    interactionLocked,
     multiModeEnabled,
     resolveAndOpenDownloader,
     startAutoDownload,
@@ -189,7 +190,7 @@ export default function HomePage({ onOpenDownloader }) {
 
   const retryFetchError = React.useCallback(() => {
     const url = String(fetchError?.url || '').trim()
-    if (!url || isResolving) return
+    if (!url || interactionLocked) return
 
     setFetchError(null)
 
@@ -199,14 +200,14 @@ export default function HomePage({ onOpenDownloader }) {
     }
 
     resolveAndOpenDownloader(url)
-  }, [autoDownloadEnabled, fetchError?.url, isResolving, resolveAndOpenDownloader, startAutoDownload])
+  }, [autoDownloadEnabled, fetchError?.url, interactionLocked, resolveAndOpenDownloader, startAutoDownload])
 
   const quickActionsTrigger = (
     <HomeQuickActions
       multiModeEnabled={multiModeEnabled}
       autoDownloadEnabled={autoDownloadEnabled}
       autoDownloadFormat={autoDownloadFormat}
-      isResolving={isResolving}
+      isResolving={interactionLocked}
       menuAnchorEl={menuAnchorEl}
       onOpenQuickActions={openQuickActions}
       onCloseQuickActions={closeQuickActions}
@@ -225,7 +226,7 @@ export default function HomePage({ onOpenDownloader }) {
             value={value}
             onChange={handleValueChange}
             onSubmit={handleSubmit}
-            isResolving={isResolving}
+            isResolving={interactionLocked}
             quickActionsTrigger={quickActionsTrigger}
             showAutoDownloadProgress={showAutoDownloadProgress}
             autoDownloadProgressKnown={autoDownloadProgressKnown}
@@ -240,7 +241,7 @@ export default function HomePage({ onOpenDownloader }) {
             onChange={handleValueChange}
             onSubmit={handleSubmit}
             onServiceDetected={handleSingleInputServiceDetected}
-            isResolving={isResolving}
+            isResolving={interactionLocked}
             quickActionsTrigger={quickActionsTrigger}
             showAutoDownloadProgress={showAutoDownloadProgress}
             autoDownloadProgressKnown={autoDownloadProgressKnown}
@@ -277,7 +278,7 @@ export default function HomePage({ onOpenDownloader }) {
 
       <HomeErrorOverlay
         fetchError={fetchError}
-        isResolving={isResolving}
+        isResolving={interactionLocked}
         onClose={closeFetchError}
         onRetry={retryFetchError}
         t={t}
