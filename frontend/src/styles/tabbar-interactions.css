@@ -161,11 +161,11 @@
   opacity: 0;
 }
 
-/* === Die Container-Boxen für die Kurven === */
+/* === Tab-Kurven: Kreis + box-shadow in der Lücke unter dem gekürzten ::before-Rahmen === */
 .yl-tab-curve-left,
 .yl-tab-curve-right {
   position: absolute;
-  bottom: 0px;
+  bottom: -1px;
   width: 10px;
   height: 10px;
   pointer-events: none;
@@ -181,48 +181,33 @@
 }
 
 .yl-tab-curve-left {
-  left: -9px;
+  left: -10px;
 }
 
 .yl-tab-curve-right {
-  right: -9px;
-}
-
-/* Invertierte Ecken: 9×9 mit Innenradius, Füllung und Linie per box-shadow */
-.yl-tab-curve-left::before,
-.yl-tab-curve-left::after,
-.yl-tab-curve-right::before,
-.yl-tab-curve-right::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  width: 9px;
-  height: 9px;
-  background: transparent;
-}
-
-.yl-tab-curve-left::before,
-.yl-tab-curve-left::after {
-  left: 0;
-  border-bottom-right-radius: 9px;
-}
-
-.yl-tab-curve-right::before,
-.yl-tab-curve-right::after {
-  right: 0;
-  border-bottom-left-radius: 9px;
-}
-
-.yl-tab-curve-left::after,
-.yl-tab-curve-right::after {
-  box-shadow: 0 0 0 10px var(--yl-card, transparent);
-  z-index: 1;
+  right: -10px;
 }
 
 .yl-tab-curve-left::before,
 .yl-tab-curve-right::before {
-  box-shadow: 0 0 0 1px var(--yl-border, transparent);
-  z-index: 2;
+  content: "";
+  position: absolute;
+  top: -10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--yl-border, transparent);
+  box-sizing: border-box;
+  box-shadow: 0 0 0 12px var(--yl-card, transparent);
+  display: block !important;
+}
+
+.yl-tab-curve-left::before {
+  left: -10px;
+}
+
+.yl-tab-curve-right::before {
+  right: -10px;
 }
 
 .yl-tab.show-divider::after,

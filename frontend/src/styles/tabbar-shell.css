@@ -160,9 +160,9 @@
   flex-shrink: 0;
   /* overflow:hidden clips everything; we handle curves via JS-rendered spans */
   overflow: hidden;
-  /* No visible border on inactive tabs */
+  /* No visible border on inactive tabs; unterer Rand bleibt transparent */
   border: 1px solid transparent;
-  border-bottom: 0;
+  border-bottom: 1px solid transparent;
   border-radius: 10px 10px 0 0;
   color: color-mix(in srgb, var(--yl-foreground, #111) 70%, transparent);
   margin: 0;
@@ -178,13 +178,14 @@
     border-color 0.15s ease;
 }
 
+/* Aktiver Tab: kein sichtbarer Rand am Element; Rahmen nur über ::before (endet 9px über dem Boden) */
 .yl-tab.is-active {
   --yl-tab-bg: var(--yl-card, transparent);
   background: var(--yl-card, transparent);
   color: var(--yl-foreground, inherit);
-  border-color: var(--yl-border, transparent);
+  border: 1px solid transparent;
+  border-bottom: 1px solid transparent;
   box-shadow: none;
-  border-bottom: 0;
   z-index: 30;
   overflow: visible;
 }
@@ -198,16 +199,27 @@
 }
 
 .yl-tab.is-active::before {
-  display: none;
+  display: block !important;
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  bottom: 9px;
+  border: 1px solid var(--yl-border, transparent);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  pointer-events: none;
+  z-index: 35;
 }
 
-/* Cover the bottom 1px of the tabbar bottom line */
+/* Deckt die Tabbar-Unterlinie unter Tab und Kurven */
 .yl-tab.is-active::after {
   content: "";
   position: absolute;
   bottom: -1px;
-  left: 0;
-  right: 0;
+  left: -10px;
+  right: -10px;
   height: 2px;
   background: var(--yl-card, transparent);
   z-index: 32;
