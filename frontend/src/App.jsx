@@ -13,6 +13,7 @@ import Downloader from './pages/Downloader'
 import SupportPage from './pages/Support'
 import DownloadsPage from './pages/Downloads'
 import HomePage from './pages/HomePage'
+import SearchPage from './pages/Search'
 import { useI18n } from './providers/I18nProvider'
 import {
   getServiceForPath,
@@ -77,6 +78,10 @@ export default function App() {
 
     if (normalizedPath === '/support') {
       return <SupportPage />
+    }
+
+    if (normalizedPath === '/search') {
+      return <SearchPage />
     }
 
     if (normalizedPath === '/' && hasUrlInSearch(normalizedSearch)) {

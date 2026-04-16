@@ -1,5 +1,5 @@
 import React from 'react'
-import { getApiBase, normalizeUrlForNoembed, detectService } from '../../../utils/metadata'
+import { getApiBase, normalizeUrlForNoembed, resolveServiceKey } from '../../../utils/metadata'
 
 export default function useStreamDownload({
   i18nT,
@@ -10,7 +10,8 @@ export default function useStreamDownload({
   durationSeconds,
   videoTitle,
   videoAuthor,
-  filenameValue,
+  audioFilenameValue,
+  videoFilenameValue,
   titleValue,
   artistValue,
   albumValue,
@@ -28,10 +29,14 @@ export default function useStreamDownload({
   const [downloadProgress, setDownloadProgress] = React.useState(0)
   const [downloadStage, setDownloadStage] = React.useState('')
   const [downloadError, setDownloadError] = React.useState(null)
+  const [activeDownloadType, setActiveDownloadType] = React.useState('')
 
   const resolvedDownloadTitle = React.useMemo(() => {
-    return String(filenameValue || titleValue || videoTitle || '').trim().slice(0, 180)
-  }, [filenameValue, titleValue, videoTitle])
+    const typeScopedFilename = activeDownloadType === 'video'
+      ? videoFilenameValue
+      : audioFilenameValue
+    return String(typeScopedFilename || titleValue || videoTitle || '').trim().slice(0, 180)
+  }, [activeDownloadType, audioFilenameValue, videoFilenameValue, titleValue, videoTitle])
 
   React.useEffect(() => {
     onDownloadStateChange?.({
@@ -61,6 +66,7 @@ export default function useStreamDownload({
       return
     }
 
+    setActiveDownloadType(type)
     setDownloading(true)
     setDownloadProgress(0)
     setDownloadStage('starting')
@@ -95,12 +101,14 @@ export default function useStreamDownload({
         }
         : undefined
 
+      const scopedFilename = type === 'video' ? videoFilenameValue : audioFilenameValue
+
       const payload = {
         url: normalized,
-        service: serviceKey || detectService(normalized) || 'other',
+        service: resolveServiceKey(serviceKey, normalized),
         type,
         duration: durationSeconds,
-        videoTitle: filenameValue || titleValue || videoTitle,
+        videoTitle: scopedFilename || titleValue || videoTitle,
         format: type === 'video' ? videoContainer : (type === 'audio' ? audioContainer : undefined),
         audioFormat: type === 'audio' ? selectedAudioFormat : undefined,
         videoFormat: type === 'video' ? selectedVideoFormat : undefined,
@@ -215,6 +223,7 @@ export default function useStreamDownload({
                 setDownloading(false)
                 setDownloadProgress(0)
                 setDownloadStage('')
+                setActiveDownloadType('')
               }, 1200)
             }
           } catch {
@@ -306,6 +315,7 @@ export default function useStreamDownload({
         setDownloading(false)
         setDownloadProgress(0)
         setDownloadStage('')
+        setActiveDownloadType('')
       }
     }
   }, [
@@ -319,7 +329,8 @@ export default function useStreamDownload({
     videoCutsData,
     durationSeconds,
     serviceKey,
-    filenameValue,
+    audioFilenameValue,
+    videoFilenameValue,
     titleValue,
     videoTitle,
     videoContainer,

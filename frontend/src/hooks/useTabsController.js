@@ -1,5 +1,5 @@
 import React from 'react'
-import { detectService, getApiBase } from '../utils/metadata'
+import { getApiBase, resolveServiceKey } from '../utils/metadata'
 import {
   getPathForService,
   getRouteTitle,
@@ -206,7 +206,7 @@ export function useTabsController({ t }) {
   const openDownloaderInTab = React.useCallback((tabId, serviceKey, rawUrl, options = {}) => {
     const path = getPathForService(serviceKey)
     const trimmedUrl = String(rawUrl || '').trim()
-    const detected = detectService(trimmedUrl) || serviceKey || 'generic'
+    const detected = resolveServiceKey(serviceKey, trimmedUrl)
 
     const params = new URLSearchParams()
     params.set('service', detected)

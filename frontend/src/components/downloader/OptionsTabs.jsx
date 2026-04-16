@@ -48,7 +48,8 @@ export default function OptionsTabs({
     durationSeconds,
     videoTitle,
     videoAuthor,
-    filenameValue: data.filenameValue,
+    audioFilenameValue: data.audioFilenameValue,
+    videoFilenameValue: data.videoFilenameValue,
     titleValue: data.titleValue,
     artistValue: data.artistValue,
     albumValue: data.albumValue,
@@ -229,9 +230,10 @@ export default function OptionsTabs({
             selectedAudioFormat={data.selectedAudioFormat}
             setSelectedAudioFormat={data.setSelectedAudioFormat}
             audioFormats={data.audioFormats}
+            maxAudioBitrateKbps={data.maxAudioBitrateKbps}
             loadingFormats={data.loadingFormats}
-            filenameValue={data.filenameValue}
-            setFilenameValue={data.setFilenameValue}
+            filenameValue={data.audioFilenameValue}
+            setFilenameValue={data.setAudioFilenameValue}
             audioContainer={data.audioContainer}
             setAudioContainer={data.setAudioContainer}
             handleDownload={download.handleDownload}
@@ -254,9 +256,10 @@ export default function OptionsTabs({
             selectedVideoFormat={data.selectedVideoFormat}
             setSelectedVideoFormat={data.setSelectedVideoFormat}
             videoFormats={data.videoFormats}
+            maxVideoHeight={data.maxVideoHeight}
             loadingFormats={data.loadingFormats}
-            filenameValue={data.filenameValue}
-            setFilenameValue={data.setFilenameValue}
+            filenameValue={data.videoFilenameValue}
+            setFilenameValue={data.setVideoFilenameValue}
             videoContainer={data.videoContainer}
             setVideoContainer={data.setVideoContainer}
             handleDownload={download.handleDownload}
@@ -277,8 +280,8 @@ export default function OptionsTabs({
             selectedThumbFormat={data.selectedThumbFormat}
             setSelectedThumbFormat={data.setSelectedThumbFormat}
             loadingThumbs={data.loadingThumbs}
-            filenameValue={data.filenameValue}
-            setFilenameValue={data.setFilenameValue}
+            filenameValue={data.thumbnailFilenameValue}
+            setFilenameValue={data.setThumbnailFilenameValue}
             videoTitle={videoTitle}
             downloading={interactionsDisabled}
           />

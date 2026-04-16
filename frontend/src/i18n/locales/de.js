@@ -19,6 +19,7 @@ const de = {
   },
   routes: {
     home: 'Startseite',
+    search: 'Suche',
     downloader: 'Downloader',
     downloads: 'Alle Downloads',
     support: 'Support',
@@ -26,6 +27,9 @@ const de = {
     redditDownloader: 'Reddit Downloader',
     xDownloader: 'X/Twitter Downloader',
     genericDownloader: 'Generischer Downloader',
+  },
+  services: {
+    generic: 'Generisch',
   },
   tabs: {
     listAria: 'Geöffnete Tabs',
@@ -145,6 +149,11 @@ const de = {
     downloaderDefaultAudioContainerDesc: 'Wählt diesen Audio-Container für neue Tabs vorab aus.',
     downloaderDefaultVideoContainer: 'Standard-Video-Container',
     downloaderDefaultVideoContainerDesc: 'Wählt diesen Video-Container für neue Tabs vorab aus.',
+    downloaderMaxAudioBitrate: 'Maximale Audio-Bitrate',
+    downloaderMaxAudioBitrateDesc: 'Begrenzt die gewählte/heruntergeladene Audioqualität auf diesen Bitrate-Schwellenwert.',
+    downloaderMaxVideoQuality: 'Maximale Videoqualität',
+    downloaderMaxVideoQualityDesc: 'Begrenzt die gewählte/heruntergeladene Videoqualität auf diesen Auflösungs-Schwellenwert.',
+    downloaderHighestQuality: 'Höchste verfügbare',
     downloaderDefaultEmbedCoverArt: 'Cover-Art standardmäßig einbetten',
     downloaderDefaultEmbedCoverArtDesc: 'Aktiviert das Einbetten des Covers für Audio-Downloads standardmäßig.',
     downloadSettingsLoadFailed: 'Downloader-Einstellungen konnten nicht geladen werden: {message}',
@@ -216,6 +225,7 @@ const de = {
     quality: 'Qualität',
     bestQuality: 'Beste Qualität',
     filename: 'Dateiname',
+    filenameAndFormat: 'Dateiname & Format',
     downloadAudio: 'Audio herunterladen',
     downloadVideo: 'Video herunterladen',
     downloadThumbnail: 'Thumbnail herunterladen',

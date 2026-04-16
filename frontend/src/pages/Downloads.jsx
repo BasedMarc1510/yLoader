@@ -18,16 +18,30 @@ import {
 } from '@mui/material'
 import { Search, Trash2, Download, RefreshCw, Music, Video, Image as ImageIcon, Filter } from 'lucide-react'
 import ServiceIcon from '../components/ServiceIcon'
-import { getApiBase, youtubeThumb } from '../utils/metadata'
+import {
+    GENERIC_SERVICE_KEY,
+    detectService,
+    getApiBase,
+    getServiceDisplayName,
+    normalizeServiceKey,
+    youtubeThumb,
+} from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 
 function getVideoSourceUrl(item) {
     const raw = typeof item.source_url === 'string' ? item.source_url.trim() : ''
     if (raw && /^https?:\/\//i.test(raw)) return raw
-    if (item.service === 'youtube' && item.video_id) {
+
+    const normalizedService = normalizeServiceKey(item.service)
+    if (normalizedService === 'youtube' && item.video_id) {
         return `https://www.youtube.com/watch?v=${item.video_id}`
     }
+
     return null
+}
+
+function toKnownServiceKey(rawService, fallbackUrl = '') {
+    return normalizeServiceKey(rawService) || detectService(fallbackUrl) || GENERIC_SERVICE_KEY
 }
 
 export default function DownloadsPage({ onOpenDownloader }) {
@@ -87,7 +101,7 @@ export default function DownloadsPage({ onOpenDownloader }) {
 
     const handleRedownload = (item) => {
         const url = getVideoSourceUrl(item)
-        const service = ['youtube', 'reddit', 'x', 'generic'].includes(item.service) ? item.service : 'generic'
+        const service = toKnownServiceKey(item.service, url)
         if (url) onOpenDownloader?.(service, url)
     }
 
@@ -100,13 +114,42 @@ export default function DownloadsPage({ onOpenDownloader }) {
         return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
     }
 
-    const services = [
-        { value: 'all', label: t('downloads.allServices'), icon: null },
-        { value: 'youtube', label: 'YouTube', icon: 'youtube' },
-        { value: 'reddit', label: 'Reddit', icon: 'reddit' },
-        { value: 'x', label: t('downloads.xService'), icon: 'x' },
-        { value: 'generic', label: t('downloads.genericService'), icon: 'generic' }
-    ]
+    const getServiceLabel = React.useCallback((serviceKey) => {
+        if (serviceKey === GENERIC_SERVICE_KEY) return t('services.generic')
+        return getServiceDisplayName(serviceKey)
+    }, [t])
+
+    const services = React.useMemo(() => {
+        const options = [{ value: 'all', label: t('downloads.allServices'), icon: null }]
+        const used = new Set()
+
+        for (const item of downloads) {
+            const sourceUrl = typeof item?.source_url === 'string' ? item.source_url : ''
+            const serviceKey = toKnownServiceKey(item?.service, sourceUrl)
+            used.add(serviceKey)
+        }
+
+        if (filterService !== 'all') {
+            const selectedService = normalizeServiceKey(filterService)
+            if (selectedService) used.add(selectedService)
+        }
+
+        const sorted = Array.from(used).sort((a, b) => {
+            if (a === GENERIC_SERVICE_KEY) return 1
+            if (b === GENERIC_SERVICE_KEY) return -1
+            return getServiceLabel(a).localeCompare(getServiceLabel(b), undefined, { sensitivity: 'base' })
+        })
+
+        for (const serviceKey of sorted) {
+            options.push({
+                value: serviceKey,
+                label: getServiceLabel(serviceKey),
+                icon: serviceKey,
+            })
+        }
+
+        return options
+    }, [downloads, filterService, getServiceLabel, t])
 
     const getTypeIcon = (type) => {
         if (type === 'audio') return <Music size={14} />
@@ -184,14 +227,20 @@ export default function DownloadsPage({ onOpenDownloader }) {
                         }}
                         renderValue={(selected) => {
                             const svc = services.find(s => s.value === selected)
+                            const fallbackKey = normalizeServiceKey(selected)
+                            const fallback = fallbackKey
+                                ? { value: fallbackKey, label: getServiceLabel(fallbackKey), icon: fallbackKey }
+                                : { value: 'all', label: t('downloads.allServices'), icon: null }
+                            const activeService = svc || fallback
+
                             return (
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                    {svc.icon ? (
-                                        <ServiceIcon serviceKey={svc.icon} size={18} title={t('sidebar.iconAlt', { name: svc.label })} />
+                                    {activeService.icon ? (
+                                        <ServiceIcon serviceKey={activeService.icon} size={18} title={t('sidebar.iconAlt', { name: activeService.label })} />
                                     ) : (
                                         <Filter size={18} />
                                     )}
-                                    <Typography variant="body2" fontWeight={600}>{svc.label}</Typography>
+                                    <Typography variant="body2" fontWeight={600}>{activeService.label}</Typography>
                                 </Box>
                             )
                         }}
@@ -214,6 +263,9 @@ export default function DownloadsPage({ onOpenDownloader }) {
                 <Grid container spacing={2.5}>
                     {downloads.map((item) => {
                         const videoPageUrl = getVideoSourceUrl(item)
+                        const serviceKey = toKnownServiceKey(item.service, videoPageUrl || item.source_url)
+                        const serviceLabel = getServiceLabel(serviceKey)
+
                         return (
                         <Grid item xs={12} sm={6} md={4} lg={3} xl={2.4} key={item.id}>
                             <Card
@@ -265,7 +317,7 @@ export default function DownloadsPage({ onOpenDownloader }) {
                                                 : {}),
                                         }}
                                     >
-                                        {item.service === 'youtube' && item.video_id ? (
+                                        {serviceKey === 'youtube' && item.video_id ? (
                                             <Box
                                                 component="img"
                                                 src={youtubeThumb(item.video_id, 'mqdefault')}
@@ -328,6 +380,22 @@ export default function DownloadsPage({ onOpenDownloader }) {
                                             {item.title}
                                         </Typography>
                                     </Tooltip>
+
+                                    <Box sx={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 0.75,
+                                        mt: 0.25,
+                                        px: 0.75,
+                                        py: 0.25,
+                                        borderRadius: 0.75,
+                                        bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                                    }}>
+                                        <ServiceIcon serviceKey={serviceKey} size={14} title={t('sidebar.iconAlt', { name: serviceLabel })} />
+                                        <Typography variant="caption" fontWeight={600} sx={{ lineHeight: 1.1 }}>
+                                            {serviceLabel}
+                                        </Typography>
+                                    </Box>
 
                                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
                                         <Tooltip

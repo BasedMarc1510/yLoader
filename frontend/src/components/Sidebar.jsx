@@ -9,7 +9,7 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material'
-import { Home, Download, Settings, Heart, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Home, Search, Download, Settings, Heart, ChevronLeft, ChevronRight } from 'lucide-react'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import { useTheme } from '@mui/material/styles'
@@ -95,6 +95,7 @@ export default function Sidebar({
 
   const items = React.useMemo(() => ([
     { label: i18nT('routes.home'), icon: <Home size={16} />, to: '/' },
+    { label: i18nT('routes.search'), icon: <Search size={16} />, to: '/search' },
     { label: i18nT('routes.downloads'), icon: <Download size={16} />, to: '/downloads' },
     { label: i18nT('routes.support'), icon: <Heart size={16} />, to: '/support' },
   ]), [i18nT])

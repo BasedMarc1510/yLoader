@@ -2,7 +2,7 @@ import React from 'react'
 import { Box } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import DownloaderShell from '../components/downloader/DownloaderShell'
-import { detectService, toMetaModel, isLikelyValidUrlFor, fetchFormats } from '../utils/metadata'
+import { detectService, toMetaModel, isLikelyValidUrlFor, fetchFormats, normalizeServiceKey } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import DownloaderLanding from './downloader/DownloaderLanding'
 import FetchErrorPanel from './downloader/FetchErrorPanel'
@@ -24,7 +24,7 @@ export default function Downloader({
   const services = React.useMemo(() => buildServices(i18nT, mode), [i18nT, mode])
 
   const params = React.useMemo(() => new URLSearchParams(routeSearch), [routeSearch])
-  const serviceParam = React.useMemo(() => String(params.get('service') || '').trim().toLowerCase(), [params])
+  const serviceParam = React.useMemo(() => normalizeServiceKey(params.get('service')), [params])
   const queryUrl = React.useMemo(() => String(params.get('url') || '').trim(), [params])
   const serviceFromQuery = services[serviceParam] ? serviceParam : null
   const resolvedServiceKey = serviceFromQuery || detectService(queryUrl) || serviceKey || 'generic'

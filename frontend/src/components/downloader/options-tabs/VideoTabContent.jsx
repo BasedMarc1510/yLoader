@@ -1,6 +1,6 @@
 import React from 'react'
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
-import { Download, Scissors, Video } from 'lucide-react'
+import { Download, Scissors, Tag, Video } from 'lucide-react'
 import AudioCutSection from '../AudioCutSection'
 import CombinedFilenameInput from '../CombinedFilenameInput'
 import CustomSelect from '../CustomSelect'
@@ -21,6 +21,7 @@ export default function VideoTabContent({
   selectedVideoFormat,
   setSelectedVideoFormat,
   videoFormats,
+  maxVideoHeight,
   loadingFormats,
   filenameValue,
   setFilenameValue,
@@ -52,7 +53,7 @@ export default function VideoTabContent({
           onChange={setSelectedVideoFormat}
           options={[
             { value: 'best', label: i18nT('downloader.bestQuality'), description: undefined },
-            ...buildVideoOptions(videoFormats),
+            ...buildVideoOptions(videoFormats, maxVideoHeight),
           ]}
           label={i18nT('downloader.quality')}
           isDark={isDark}
@@ -81,7 +82,17 @@ export default function VideoTabContent({
         />
       </CollapsibleSection>
 
-      <Box sx={{ mb: 2 }}>
+      <CollapsibleSection
+        id="filename"
+        activeSection={activeSection}
+        onToggle={toggleSection}
+        disabled={downloading}
+        isDark={isDark}
+        textColor={textColor}
+        icon={<Tag size={18} />}
+        label={i18nT('downloader.filenameAndFormat')}
+        theme={theme}
+      >
         <CombinedFilenameInput
           value={filenameValue}
           onChange={setFilenameValue}
@@ -96,7 +107,7 @@ export default function VideoTabContent({
           isDark={isDark}
           disabled={downloading}
         />
-      </Box>
+      </CollapsibleSection>
 
       <Box sx={{ position: 'relative', mt: 2 }}>
         <Button

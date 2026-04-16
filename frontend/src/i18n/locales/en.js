@@ -19,6 +19,7 @@ const en = {
   },
   routes: {
     home: 'Home',
+    search: 'Search',
     downloader: 'Downloader',
     downloads: 'All downloads',
     support: 'Support',
@@ -26,6 +27,9 @@ const en = {
     redditDownloader: 'Reddit Downloader',
     xDownloader: 'X/Twitter Downloader',
     genericDownloader: 'Generic Downloader',
+  },
+  services: {
+    generic: 'Generic',
   },
   tabs: {
     listAria: 'Open tabs',
@@ -145,6 +149,11 @@ const en = {
     downloaderDefaultAudioContainerDesc: 'Preselect this audio container for new tabs.',
     downloaderDefaultVideoContainer: 'Default video container',
     downloaderDefaultVideoContainerDesc: 'Preselect this video container for new tabs.',
+    downloaderMaxAudioBitrate: 'Maximum audio bitrate',
+    downloaderMaxAudioBitrateDesc: 'Limit selected/downloaded audio quality to this bitrate threshold.',
+    downloaderMaxVideoQuality: 'Maximum video quality',
+    downloaderMaxVideoQualityDesc: 'Limit selected/downloaded video quality to this resolution threshold.',
+    downloaderHighestQuality: 'Highest available',
     downloaderDefaultEmbedCoverArt: 'Embed cover art by default',
     downloaderDefaultEmbedCoverArtDesc: 'Enable cover embedding for audio downloads by default.',
     downloadSettingsLoadFailed: 'Failed to load downloader settings: {message}',
@@ -216,6 +225,7 @@ const en = {
     quality: 'Quality',
     bestQuality: 'Best quality',
     filename: 'Filename',
+    filenameAndFormat: 'Filename & format',
     downloadAudio: 'Download audio',
     downloadVideo: 'Download video',
     downloadThumbnail: 'Download thumbnail',

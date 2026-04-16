@@ -22,14 +22,20 @@ export default function useOptionsTabsData({
   onFetchError,
 }) {
   const [tab, setTab] = React.useState('audio')
-  const [activeSection, setActiveSection] = React.useState(null)
+  const [activeSections, setActiveSections] = React.useState(() => ({
+    audio: null,
+    video: null,
+    thumbnail: null,
+  }))
 
   const [titleValue, setTitleValue] = React.useState('')
   const [artistValue, setArtistValue] = React.useState('')
   const [albumValue, setAlbumValue] = React.useState('')
   const [videoContainer, setVideoContainer] = React.useState('mp4')
   const [audioContainer, setAudioContainer] = React.useState('mp3')
-  const [filenameValue, setFilenameValue] = React.useState('')
+  const [audioFilenameValue, setAudioFilenameValue] = React.useState('')
+  const [videoFilenameValue, setVideoFilenameValue] = React.useState('')
+  const [thumbnailFilenameValue, setThumbnailFilenameValue] = React.useState('')
 
   const [audioFormats, setAudioFormats] = React.useState([])
   const [videoFormats, setVideoFormats] = React.useState([])
@@ -52,14 +58,20 @@ export default function useOptionsTabsData({
   const [downloadSettings, setDownloadSettings] = React.useState(() => ({ ...DOWNLOAD_SETTINGS_DEFAULTS }))
   const [downloadSettingsLoaded, setDownloadSettingsLoaded] = React.useState(false)
   const defaultsAppliedRef = React.useRef(false)
+  const activeSection = activeSections[tab] || null
 
   const toggleSection = React.useCallback((section) => {
-    setActiveSection((prev) => (prev === section ? null : section))
-  }, [])
+    setActiveSections((prev) => {
+      const currentTabSection = prev[tab] || null
+      return {
+        ...prev,
+        [tab]: currentTabSection === section ? null : section,
+      }
+    })
+  }, [tab])
 
   const handleTabChange = React.useCallback((newTab) => {
     setTab(newTab)
-    setActiveSection(null)
   }, [])
 
   const handleCoverFileChange = React.useCallback((event) => {
@@ -104,7 +116,9 @@ export default function useOptionsTabsData({
     setTitleValue(parsed.title || videoTitle)
     setArtistValue(parsed.artist || videoAuthor || '')
     setAlbumValue(parsed.album || '')
-    setFilenameValue(videoTitle)
+    setAudioFilenameValue(videoTitle)
+    setVideoFilenameValue(videoTitle)
+    setThumbnailFilenameValue(videoTitle)
   }, [videoTitle, videoAuthor])
 
   React.useEffect(() => {
@@ -143,6 +157,38 @@ export default function useOptionsTabsData({
     downloadSettings,
     downloadSettingsLoaded,
   ])
+
+  React.useEffect(() => {
+    const maxAudioBitrate = Number(downloadSettings.maxAudioBitrateKbps)
+    if (!Number.isFinite(maxAudioBitrate) || maxAudioBitrate <= 0) return
+    if (!selectedAudioFormat || selectedAudioFormat === 'best') return
+
+    const selected = audioFormats.find((fmt) => fmt?.formatId === selectedAudioFormat)
+    const selectedAbr = Number(selected?.abr) || Number(selected?.tbr) || 0
+    if (selectedAbr > 0 && selectedAbr <= maxAudioBitrate) return
+
+    setSelectedAudioFormat('best')
+  }, [audioFormats, downloadSettings.maxAudioBitrateKbps, selectedAudioFormat])
+
+  React.useEffect(() => {
+    const maxVideoHeight = Number(downloadSettings.maxVideoHeight)
+    if (!Number.isFinite(maxVideoHeight) || maxVideoHeight <= 0) return
+    if (!selectedVideoFormat || selectedVideoFormat === 'best') return
+
+    const selected = videoFormats.find((fmt) => fmt?.formatId === selectedVideoFormat)
+    let selectedHeight = Number(selected?.height) || 0
+
+    if (!selectedHeight) {
+      const resolution = String(selected?.resolution || '').toLowerCase()
+      const pMatch = resolution.match(/(\d{3,4})p/)
+      const xMatch = resolution.match(/x(\d{3,4})$/)
+      selectedHeight = pMatch ? Number(pMatch[1]) : (xMatch ? Number(xMatch[1]) : 0)
+    }
+
+    if (selectedHeight > 0 && selectedHeight <= maxVideoHeight) return
+
+    setSelectedVideoFormat('best')
+  }, [videoFormats, downloadSettings.maxVideoHeight, selectedVideoFormat])
 
   const applyBackendThumbnails = React.useCallback((thumbnails) => {
     const valid = (thumbnails || []).filter((item) => item.width && item.height && item.width > 0 && item.height > 0)
@@ -391,7 +437,9 @@ export default function useOptionsTabsData({
     albumValue,
     videoContainer,
     audioContainer,
-    filenameValue,
+    audioFilenameValue,
+    videoFilenameValue,
+    thumbnailFilenameValue,
     audioFormats,
     videoFormats,
     selectedAudioFormat,
@@ -407,15 +455,19 @@ export default function useOptionsTabsData({
     coverSource,
     coverUpload,
     coverUploadError,
+    maxAudioBitrateKbps: downloadSettings.maxAudioBitrateKbps,
+    maxVideoHeight: downloadSettings.maxVideoHeight,
 
     setTab,
-    setActiveSection,
+    setActiveSections,
     setTitleValue,
     setArtistValue,
     setAlbumValue,
     setVideoContainer,
     setAudioContainer,
-    setFilenameValue,
+    setAudioFilenameValue,
+    setVideoFilenameValue,
+    setThumbnailFilenameValue,
     setSelectedAudioFormat,
     setSelectedVideoFormat,
     setSelectedThumbValue,

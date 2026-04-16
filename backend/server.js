@@ -6,6 +6,11 @@ import { URL as NodeURL } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
 import { EventEmitter } from 'events'
+import {
+  GENERIC_SERVICE_KEY,
+  normalizeServiceKey,
+  resolveServiceKey,
+} from '../shared/services/serviceCatalog.js'
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const sqlite3 = require("sqlite3").verbose();
@@ -59,6 +64,8 @@ const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
 const DOWNLOAD_CONCURRENT_OPTIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8])
 const DOWNLOAD_STAGGER_OPTIONS = new Set([0, 100, 150, 250, 500, 1000])
+const DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
+const DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
 const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
 const META_FORMATS_CACHE_MAX_ENTRIES = 150
 const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
@@ -73,10 +80,13 @@ const DEFAULT_DOWNLOAD_SETTINGS = Object.freeze({
   defaultAudioContainer: 'mp3',
   defaultVideoContainer: 'mp4',
   defaultEmbedCoverArt: true,
+  maxAudioBitrateKbps: 0,
+  maxVideoHeight: 0,
 })
 const metaFormatsCache = new Map()
 const ALLOWED_TAB_PATHS = new Set([
   '/',
+  '/search',
   '/downloads',
   '/support',
   '/youtube-downloader',
@@ -252,6 +262,8 @@ function normalizeDownloadSettingsPayload(value) {
   const staggerRaw = Number(input.staggerDownloadsMs)
   const audioContainerRaw = normalizeAudioContainer(input.defaultAudioContainer)
   const videoContainerRaw = normalizeVideoContainer(input.defaultVideoContainer)
+  const maxAudioBitrateRaw = Number(input.maxAudioBitrateKbps)
+  const maxVideoHeightRaw = Number(input.maxVideoHeight)
 
   return {
     maxConcurrentDownloads: DOWNLOAD_CONCURRENT_OPTIONS.has(maxConcurrentRaw)
@@ -265,6 +277,12 @@ function normalizeDownloadSettingsPayload(value) {
     defaultEmbedCoverArt: input.defaultEmbedCoverArt !== undefined
       ? Boolean(input.defaultEmbedCoverArt)
       : DEFAULT_DOWNLOAD_SETTINGS.defaultEmbedCoverArt,
+    maxAudioBitrateKbps: DOWNLOAD_BITRATE_OPTIONS.has(maxAudioBitrateRaw)
+      ? maxAudioBitrateRaw
+      : DEFAULT_DOWNLOAD_SETTINGS.maxAudioBitrateKbps,
+    maxVideoHeight: DOWNLOAD_VIDEO_HEIGHT_OPTIONS.has(maxVideoHeightRaw)
+      ? maxVideoHeightRaw
+      : DEFAULT_DOWNLOAD_SETTINGS.maxVideoHeight,
   }
 }
 
@@ -434,13 +452,18 @@ app.get('/api/downloads', (req, res) => {
     params.push(`%${q}%`, `%${q}%`);
   }
   if (service) {
-    if (service === 'generic') {
+    const normalizedService = normalizeServiceKey(service)
+    if (!normalizedService) {
+      return res.json([])
+    }
+
+    if (normalizedService === GENERIC_SERVICE_KEY) {
       // Keep legacy rows (stored as "other") visible in the Generic filter.
       sql += ` AND (service = ? OR service = ?)`;
-      params.push('generic', 'other');
+      params.push(GENERIC_SERVICE_KEY, 'other');
     } else {
       sql += ` AND service = ?`;
-      params.push(service);
+      params.push(normalizedService);
     }
   }
 
@@ -2036,11 +2059,7 @@ app.get('/api/proxy-image', async (req, res) => {
       const thumbIdMatch = rawUrl.match(/\/vi\/([^\/]+)\//)
       const videoId = thumbIdMatch ? thumbIdMatch[1] : null
 
-      // Attempt to infer service
-      let service = 'other'
-      if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be')) service = 'youtube'
-      else if (rawUrl.includes('reddit.com') || rawUrl.includes('redd.it')) service = 'reddit'
-      else if (rawUrl.includes('twitter.com') || rawUrl.includes('x.com')) service = 'x'
+      const service = resolveServiceKey(videoId ? 'youtube' : null, rawUrl)
 
       const pageUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : null
       const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -2076,6 +2095,14 @@ app.post('/api/download/stream', async (req, res) => {
   const audioFormat = String(rawAudioFormat || '').trim()
   const videoFormat = String(rawVideoFormat || '').trim()
   const effectiveDownloadSettings = await readDownloadSettings().catch(() => ({ ...DEFAULT_DOWNLOAD_SETTINGS }))
+  const maxAudioBitrateRaw = Number(effectiveDownloadSettings.maxAudioBitrateKbps)
+  const maxVideoHeightRaw = Number(effectiveDownloadSettings.maxVideoHeight)
+  const maxAudioBitrateKbps = DOWNLOAD_BITRATE_OPTIONS.has(maxAudioBitrateRaw)
+    ? maxAudioBitrateRaw
+    : DEFAULT_DOWNLOAD_SETTINGS.maxAudioBitrateKbps
+  const maxVideoHeight = DOWNLOAD_VIDEO_HEIGHT_OPTIONS.has(maxVideoHeightRaw)
+    ? maxVideoHeightRaw
+    : DEFAULT_DOWNLOAD_SETTINGS.maxVideoHeight
 
   if (!url || !type) {
     return res.status(400).json({ error: 'Missing required fields: url, type' })
@@ -2213,6 +2240,8 @@ app.post('/api/download/stream', async (req, res) => {
         format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
         audioFormat: normalizedAudioFormatId || '',
         videoFormat: normalizedVideoFormatId || '',
+        maxAudioBitrateKbps,
+        maxVideoHeight,
         videoTitle: req.body.videoTitle || null,
         metadata: metadata || null,
         cover: {
@@ -2238,9 +2267,19 @@ app.post('/api/download/stream', async (req, res) => {
       if (requestedExt === 'ogg') audioFormatArg = 'vorbis'
 
       if (normalizedAudioFormatId && normalizedAudioFormatId !== 'best') {
-        formatArgs = ['-f', normalizedAudioFormatId]
+        if (maxAudioBitrateKbps > 0) {
+          const capSelector = `[abr<=${maxAudioBitrateKbps}]`
+          formatArgs = ['-f', `${normalizedAudioFormatId}${capSelector}/bestaudio${capSelector}/${normalizedAudioFormatId}/bestaudio`]
+        } else {
+          formatArgs = ['-f', normalizedAudioFormatId]
+        }
       } else {
-        formatArgs = ['-f', 'bestaudio']
+        if (maxAudioBitrateKbps > 0) {
+          const capSelector = `[abr<=${maxAudioBitrateKbps}]`
+          formatArgs = ['-f', `bestaudio${capSelector}/bestaudio`]
+        } else {
+          formatArgs = ['-f', 'bestaudio']
+        }
       }
       formatArgs.push('-x', '--audio-format', audioFormatArg)
       if (coverEnabled && coverSource === 'video') {
@@ -2251,13 +2290,28 @@ app.post('/api/download/stream', async (req, res) => {
 
       if (!HAS_FFMPEG) {
         send('message', '⚠️ ffmpeg not detected. Falling back to "best" (single file).')
-        formatArgs = ['-f', 'best']
+        if (maxVideoHeight > 0) {
+          const capSelector = `[height<=${maxVideoHeight}]`
+          formatArgs = ['-f', `best${capSelector}/best`]
+        } else {
+          formatArgs = ['-f', 'best']
+        }
       } else {
         if (normalizedVideoFormatId && normalizedVideoFormatId !== 'best') {
-          // Use specific video format + best audio, merge if needed
-          formatArgs = ['-f', `${normalizedVideoFormatId}+bestaudio/best`]
+          if (maxVideoHeight > 0) {
+            const capSelector = `[height<=${maxVideoHeight}]`
+            formatArgs = ['-f', `${normalizedVideoFormatId}${capSelector}+bestaudio/bestvideo${capSelector}+bestaudio/best${capSelector}/${normalizedVideoFormatId}+bestaudio/best`]
+          } else {
+            // Use specific video format + best audio, merge if needed
+            formatArgs = ['-f', `${normalizedVideoFormatId}+bestaudio/best`]
+          }
         } else {
-          formatArgs = ['-f', 'bestvideo+bestaudio/best']
+          if (maxVideoHeight > 0) {
+            const capSelector = `[height<=${maxVideoHeight}]`
+            formatArgs = ['-f', `bestvideo${capSelector}+bestaudio/best${capSelector}/bestvideo+bestaudio/best`]
+          } else {
+            formatArgs = ['-f', 'bestvideo+bestaudio/best']
+          }
         }
         formatArgs.push('--merge-output-format', ext)
       }
@@ -2640,6 +2694,8 @@ app.post('/api/download/stream', async (req, res) => {
                 format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
                 audioFormat: normalizedAudioFormatId || '',
                 videoFormat: normalizedVideoFormatId || '',
+                maxAudioBitrateKbps,
+                maxVideoHeight,
                 videoTitle: req.body.videoTitle || null,
                 metadata: metadata || null,
                 cover: {
@@ -2665,14 +2721,7 @@ app.post('/api/download/stream', async (req, res) => {
                 ? (normalizedAudioFormatId || requestedAudioContainer || 'bestaudio')
                 : (normalizedVideoFormatId || requestedVideoContainer || 'best')
 
-              // Default to youtube if not provided, for robustness
-              let svc = service;
-              if (!svc) {
-                if (url.includes('youtube') || url.includes('youtu.be')) svc = 'youtube';
-                else if (url.includes('reddit')) svc = 'reddit';
-                else if (url.includes('twitter') || url.includes('x.com')) svc = 'x';
-                else svc = 'other';
-              }
+              const svc = resolveServiceKey(service, url)
 
               const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
               stmt.run(videoId, targetTitle, duration || 0, timestamp, type, formatId, finalFile, svc, url)

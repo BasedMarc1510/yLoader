@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+  GENERIC_SERVICE_KEY,
   detectService,
   fetchDuration,
   fetchFormats,
@@ -193,7 +194,7 @@ export function useAutoDownload({
       const isAudio = autoDownloadFormat === 'mp3'
       const payload = {
         url: normalized,
-        service: serviceKey || 'other',
+        service: serviceKey || GENERIC_SERVICE_KEY,
         type: isAudio ? 'audio' : 'video',
         duration: durationData?.duration ?? null,
         videoTitle: String(noembedData?.title || '').trim() || target,

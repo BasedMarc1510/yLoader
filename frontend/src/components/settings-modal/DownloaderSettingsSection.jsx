@@ -2,8 +2,10 @@ import React from 'react'
 import { Box, Typography, Switch, Select, MenuItem } from '@mui/material'
 import SettingRow from './SettingRow'
 import {
+  DOWNLOAD_AUDIO_BITRATE_OPTIONS,
   DOWNLOAD_CONCURRENCY_OPTIONS,
   DOWNLOAD_STAGGER_OPTIONS,
+  DOWNLOAD_VIDEO_QUALITY_OPTIONS,
 } from '../../utils/downloadSettings'
 
 export default function DownloaderSettingsSection({
@@ -95,6 +97,44 @@ export default function DownloaderSettingsSection({
           <MenuItem value="mp4" sx={{ fontSize: 13 }}>mp4</MenuItem>
           <MenuItem value="webm" sx={{ fontSize: 13 }}>webm</MenuItem>
           <MenuItem value="mkv" sx={{ fontSize: 13 }}>mkv</MenuItem>
+        </Select>
+      </SettingRow>
+
+      <SettingRow
+        label={t('settings.downloaderMaxAudioBitrate')}
+        description={t('settings.downloaderMaxAudioBitrateDesc')}
+      >
+        <Select
+          size="small"
+          value={Number(downloadSettings.maxAudioBitrateKbps) || 0}
+          disabled={disabled}
+          onChange={(event) => updateDownloadSettings({ maxAudioBitrateKbps: Number(event.target.value) || 0 })}
+          sx={selectSx}
+        >
+          {DOWNLOAD_AUDIO_BITRATE_OPTIONS.map((value) => (
+            <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
+              {value === 0 ? t('settings.downloaderHighestQuality') : `${value} kbps`}
+            </MenuItem>
+          ))}
+        </Select>
+      </SettingRow>
+
+      <SettingRow
+        label={t('settings.downloaderMaxVideoQuality')}
+        description={t('settings.downloaderMaxVideoQualityDesc')}
+      >
+        <Select
+          size="small"
+          value={Number(downloadSettings.maxVideoHeight) || 0}
+          disabled={disabled}
+          onChange={(event) => updateDownloadSettings({ maxVideoHeight: Number(event.target.value) || 0 })}
+          sx={selectSx}
+        >
+          {DOWNLOAD_VIDEO_QUALITY_OPTIONS.map((value) => (
+            <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
+              {value === 0 ? t('settings.downloaderHighestQuality') : `${value}p`}
+            </MenuItem>
+          ))}
         </Select>
       </SettingRow>
 

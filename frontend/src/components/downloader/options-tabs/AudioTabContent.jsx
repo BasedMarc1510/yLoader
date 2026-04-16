@@ -45,6 +45,7 @@ export default function AudioTabContent({
   selectedAudioFormat,
   setSelectedAudioFormat,
   audioFormats,
+  maxAudioBitrateKbps,
   loadingFormats,
   filenameValue,
   setFilenameValue,
@@ -167,7 +168,7 @@ export default function AudioTabContent({
           onChange={setSelectedAudioFormat}
           options={[
             { value: 'best', label: i18nT('downloader.bestQuality'), description: undefined },
-            ...buildAudioOptions(audioFormats),
+            ...buildAudioOptions(audioFormats, maxAudioBitrateKbps),
           ]}
           label={i18nT('downloader.quality')}
           isDark={isDark}
@@ -183,7 +184,7 @@ export default function AudioTabContent({
         isDark={isDark}
         textColor={textColor}
         icon={<Tag size={18} />}
-        label={i18nT('downloader.filename')}
+        label={i18nT('downloader.filenameAndFormat')}
         theme={theme}
       >
         <CombinedFilenameInput

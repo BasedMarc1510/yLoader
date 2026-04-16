@@ -19,7 +19,7 @@ export default function CollapsibleSection({
   const collapseBg = isDark ? '#272727' : '#f9f9f9'
 
   return (
-    <>
+    <Box sx={{ mb: 0.75 }}>
       <Button
         fullWidth
         disabled={disabled}
@@ -33,7 +33,6 @@ export default function CollapsibleSection({
           textTransform: 'none',
           justifyContent: 'space-between',
           minHeight: 'auto',
-          mb: isOpen ? 0 : 0.75,
           opacity: disabled ? 0.6 : 1,
           '&:hover': {
             bgcolor: getSectionButtonHover(isDark),
@@ -49,7 +48,6 @@ export default function CollapsibleSection({
         <Box
           sx={{
             padding: 1.5,
-            mb: 1.25,
             bgcolor: collapseBg,
             borderRadius: '0 0 12px 12px',
           }}
@@ -57,6 +55,6 @@ export default function CollapsibleSection({
           {children}
         </Box>
       </Collapse>
-    </>
+    </Box>
   )
 }

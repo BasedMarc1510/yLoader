@@ -1,21 +1,36 @@
 // Utilities for URL detection, normalization and metadata fetching via noembed
 
+import {
+  GENERIC_SERVICE_KEY,
+  NON_GENERIC_SERVICE_DEFINITIONS,
+  SERVICE_DEFINITIONS,
+  SERVICE_KEYS,
+  detectServiceByUrl,
+  getServiceAccentColor,
+  getServiceByKey,
+  getServiceDisplayName,
+  getServiceIconExportName,
+  getServiceThemeColor,
+  isKnownServiceKey,
+  isLikelyValidUrlForService,
+  normalizeServiceKey,
+  resolveServiceKey,
+} from '../../../shared/services/serviceCatalog.js'
+
 const NOEMBED_ENDPOINT = 'https://noembed.com/embed?url='
 
 export function detectService(url) {
-  if (!url) return null
-  const lower = String(url).trim().toLowerCase()
-  if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(lower)) return 'youtube'
-  if (/^(https?:\/\/)?(www\.)?(reddit\.com|redd\.it)\//.test(lower)) return 'reddit'
-  if (/^(https?:\/\/)?(www\.)?(x\.com|twitter\.com)\//.test(lower)) return 'x'
-  // Generic: any http(s) URL that doesn't match the above
-  if (/^https?:\/\//i.test(lower)) return 'generic'
-  return null
+  return detectServiceByUrl(url)
 }
 
 export function normalizeUrlForNoembed(url) {
   if (!url) return url
   let u = String(url).trim()
+
+  if (!/^[a-z][a-z\d+.-]*:\/\//i.test(u)) {
+    u = `https://${u}`
+  }
+
   // X uses x.com now; noembed generally handles twitter.com better
   if (/https?:\/\/x\.com\//i.test(u)) {
     u = u.replace(/https?:\/\/x\.com\//i, 'https://twitter.com/')
@@ -117,19 +132,20 @@ export function toMetaModel(service, rawUrl, noembed) {
 }
 
 export function isLikelyValidUrlFor(service, url) {
-  if (!service) return false
-  const u = String(url || '').trim()
-  if (!u) return false
-  switch (service) {
-    case 'youtube':
-      return /(youtube\.com|youtu\.be)/i.test(u)
-    case 'reddit':
-      return /(reddit\.com|redd\.it)/i.test(u)
-    case 'x':
-      return /(x\.com|twitter\.com)/i.test(u)
-    case 'generic':
-      return /^https?:\/\//i.test(u)
-    default:
-      return false
-  }
+  return isLikelyValidUrlForService(service, url)
+}
+
+export {
+  GENERIC_SERVICE_KEY,
+  NON_GENERIC_SERVICE_DEFINITIONS,
+  SERVICE_DEFINITIONS,
+  SERVICE_KEYS,
+  getServiceAccentColor,
+  getServiceByKey,
+  getServiceDisplayName,
+  getServiceIconExportName,
+  getServiceThemeColor,
+  isKnownServiceKey,
+  normalizeServiceKey,
+  resolveServiceKey,
 }
