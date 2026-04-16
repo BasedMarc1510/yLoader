@@ -70,9 +70,8 @@ const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
 const META_FORMATS_CACHE_MAX_ENTRIES = 150
 const SEARCH_PROVIDER_OPTIONS = new Set(['youtube', 'youtubemusic', 'spotify', 'soundcloud'])
 const SEARCH_QUERY_MAX_LENGTH = 300
-const SEARCH_RESULT_COUNT_DEFAULT = 10
-const SEARCH_RESULT_COUNT_MIN = 1
-const SEARCH_RESULT_COUNT_MAX = 25
+const SEARCH_PAGE_SIZE = 10
+const SEARCH_OFFSET_MAX = 500
 const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
   useMetadata: true,
   embedCoverArt: true,
@@ -447,11 +446,12 @@ app.put('/api/download/settings', async (req, res) => {
   }
 })
 
-// GET /api/search?q=...&from=youtube|youtubemusic|spotify|soundcloud&count=10
+// GET /api/search?q=...&from=youtube|youtubemusic|spotify|soundcloud&offset=0
 app.get('/api/search', async (req, res) => {
   const query = String(req.query.q || req.query.query || '').trim()
   const provider = normalizeSearchProvider(req.query.from || req.query.service)
-  const count = normalizeSearchResultCount(req.query.count)
+  const offset = normalizeSearchOffset(req.query.offset)
+  const limit = SEARCH_PAGE_SIZE
 
   if (!query) {
     return res.status(400).json({ error: 'Missing query' })
@@ -462,15 +462,17 @@ app.get('/api/search', async (req, res) => {
   }
 
   const fallbackService = provider === 'youtubemusic' ? 'youtube' : provider
-  const searchTarget = buildYtDlpSearchTarget(provider, query, count)
+  const searchTarget = buildYtDlpSearchTarget(provider, query, offset + limit)
 
   try {
     const args = buildYtDlpNetworkArgs([
       '--dump-single-json',
       '--no-warnings',
       '--flat-playlist',
+      '--playlist-start',
+      String(offset + 1),
       '--playlist-end',
-      String(count),
+      String(offset + limit),
       '--quiet',
       searchTarget,
     ])
@@ -508,13 +510,15 @@ app.get('/api/search', async (req, res) => {
         durationString: formatDurationLabel(duration),
       })
 
-      if (entries.length >= count) break
+      if (entries.length >= limit) break
     }
 
     return res.json({
       query,
       from: provider,
-      count,
+      offset,
+      limit,
+      hasMore: entries.length >= limit,
       entries,
     })
   } catch (err) {
@@ -1055,22 +1059,26 @@ function normalizeSearchProvider(value) {
   return 'youtube'
 }
 
-function normalizeSearchResultCount(value) {
+function normalizeSearchOffset(value) {
   const parsed = Number.parseInt(String(value ?? ''), 10)
-  if (!Number.isFinite(parsed)) return SEARCH_RESULT_COUNT_DEFAULT
-  return Math.max(SEARCH_RESULT_COUNT_MIN, Math.min(SEARCH_RESULT_COUNT_MAX, parsed))
+  if (!Number.isFinite(parsed)) return 0
+  return Math.max(0, Math.min(SEARCH_OFFSET_MAX, parsed))
 }
 
-function buildYtDlpSearchTarget(provider, query, count) {
+function buildYtDlpSearchTarget(provider, query, desiredWindowEnd) {
   const safeQuery = String(query || '').trim()
+  const parsedWindowEnd = Number.parseInt(String(desiredWindowEnd ?? ''), 10)
+  const boundedWindowEnd = Number.isFinite(parsedWindowEnd)
+    ? Math.max(SEARCH_PAGE_SIZE, Math.min(SEARCH_OFFSET_MAX + SEARCH_PAGE_SIZE, parsedWindowEnd))
+    : SEARCH_PAGE_SIZE
   const encoded = encodeURIComponent(safeQuery)
 
   if (provider === 'soundcloud') {
-    return `scsearch${count}:${safeQuery}`
+    return `scsearch${boundedWindowEnd}:${safeQuery}`
   }
 
   if (provider === 'spotify') {
-    return `spsearch${count}:${safeQuery}`
+    return `spsearch${boundedWindowEnd}:${safeQuery}`
   }
 
   if (provider === 'youtubemusic') {

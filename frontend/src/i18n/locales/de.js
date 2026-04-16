@@ -30,7 +30,7 @@ const de = {
   },
   search: {
     title: 'Suche',
-    subtitle: 'Wähle einen Dienst, suche Inhalte und öffne ein Ergebnis direkt im Downloader.',
+    subtitle: 'Wähle einen Dienst, suche Inhalte und öffne ein ausgewähltes Ergebnis im Downloader.',
     queryPlaceholder: 'Videos, Tracks suchen oder direkte URL einfügen...',
     queryAria: 'Suchbegriff oder direkte URL',
     serviceAria: 'Suchdienst',
@@ -38,7 +38,8 @@ const de = {
     resultCountAria: 'Anzahl der Ergebnisse',
     searchButton: 'Suchen',
     searching: 'Suche läuft...',
-    hintDirectUrl: 'Tipp: Füge eine vollständige URL ein, um die Suche zu überspringen und den Downloader direkt zu öffnen.',
+    loadingMore: 'Weitere Ergebnisse werden geladen...',
+    hintDirectUrl: 'Direkte Links werden auf dieser Seite als Suchanfragen behandelt.',
     resultsFor: 'Ergebnisse für "{query}"',
     openResult: 'Im Downloader öffnen',
     noResultsTitle: 'Keine Ergebnisse gefunden',

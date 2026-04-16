@@ -30,7 +30,7 @@ const en = {
   },
   search: {
     title: 'Search',
-    subtitle: 'Choose a service, search, and open a result directly in the downloader.',
+    subtitle: 'Choose a service, search content, and open a selected result in the downloader.',
     queryPlaceholder: 'Search videos, tracks, or paste a direct URL...',
     queryAria: 'Search query or direct URL',
     serviceAria: 'Search service',
@@ -38,7 +38,8 @@ const en = {
     resultCountAria: 'Result count',
     searchButton: 'Search',
     searching: 'Searching...',
-    hintDirectUrl: 'Tip: Paste a full URL to skip search and open the downloader directly.',
+    loadingMore: 'Loading more results...',
+    hintDirectUrl: 'Direct links are treated as search queries on this page.',
     resultsFor: 'Results for "{query}"',
     openResult: 'Open in downloader',
     noResultsTitle: 'No results found',

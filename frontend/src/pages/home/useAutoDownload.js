@@ -174,8 +174,8 @@ export function useAutoDownload({
     setFetchError(null)
     setIsResolving(true)
     setAutoDownloadInFlight(true)
-    setAutoDownloadProgress(0)
-    setAutoDownloadProgressKnown(false)
+    setAutoDownloadProgress(5)
+    setAutoDownloadProgressKnown(true)
 
     const API_BASE = getApiBase()
     let inputCleared = false

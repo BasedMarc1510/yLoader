@@ -32,24 +32,34 @@ const SEARCH_SERVICE_OPTIONS = [
   { value: 'spotify', labelKey: 'search.services.spotify', iconKey: 'spotify' },
   { value: 'soundcloud', labelKey: 'search.services.soundcloud', iconKey: 'soundcloud' },
 ]
+const SEARCH_PAGE_SIZE = 10
 
-function clampResultCount(value) {
-  const numeric = Number.parseInt(String(value ?? ''), 10)
-  if (!Number.isFinite(numeric)) return 10
-  return Math.max(1, Math.min(25, numeric))
+function toHttpUrl(rawValue) {
+  const value = String(rawValue || '').trim()
+  if (!value) return null
+
+  const candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`
+  try {
+    const parsed = new URL(candidate)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    return parsed.href
+  } catch {
+    return null
+  }
 }
 
-function isLikelyHttpUrl(value) {
-  const text = String(value || '').trim()
-  if (!text) return false
+function mergeUniqueEntries(existingEntries, incomingEntries) {
+  const merged = [...existingEntries]
+  const seen = new Set(existingEntries.map((entry) => `${String(entry?.id || '')}::${String(entry?.url || '')}`))
 
-  const prefixed = /^[a-z][a-z\d+.-]*:\/\//i.test(text) ? text : `https://${text}`
-  try {
-    const parsed = new URL(prefixed)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  } catch {
-    return false
+  for (const entry of incomingEntries) {
+    const key = `${String(entry?.id || '')}::${String(entry?.url || '')}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(entry)
   }
+
+  return merged
 }
 
 function formatDuration(durationSeconds) {
@@ -68,14 +78,20 @@ function formatDuration(durationSeconds) {
 
 export default function SearchPage({ onOpenDownloader }) {
   const { t } = useI18n()
+  const scrollRootRef = React.useRef(null)
+  const loadMoreSentinelRef = React.useRef(null)
+  const requestTokenRef = React.useRef(0)
 
   const [query, setQuery] = React.useState('')
   const [selectedService, setSelectedService] = React.useState('youtube')
-  const [resultCount, setResultCount] = React.useState(10)
   const [results, setResults] = React.useState([])
-  const [loading, setLoading] = React.useState(false)
+  const [loadingInitial, setLoadingInitial] = React.useState(false)
+  const [loadingMore, setLoadingMore] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState('')
   const [lastQuery, setLastQuery] = React.useState('')
+  const [lastService, setLastService] = React.useState('youtube')
+  const [nextOffset, setNextOffset] = React.useState(0)
+  const [hasMore, setHasMore] = React.useState(false)
 
   const getServiceLabel = React.useCallback((rawService) => {
     const normalized = normalizeServiceKey(rawService)
@@ -86,8 +102,8 @@ export default function SearchPage({ onOpenDownloader }) {
   }, [t])
 
   const openDownloaderForUrl = React.useCallback((rawUrl, preferredService) => {
-    const targetUrl = String(rawUrl || '').trim()
-    if (!isLikelyHttpUrl(targetUrl)) return false
+    const targetUrl = toHttpUrl(rawUrl)
+    if (!targetUrl) return false
 
     const preferred = String(preferredService || '').trim().toLowerCase() === 'youtubemusic'
       ? 'youtube'
@@ -101,26 +117,23 @@ export default function SearchPage({ onOpenDownloader }) {
     return true
   }, [onOpenDownloader])
 
-  const handleSubmit = React.useCallback(async () => {
-    const trimmedQuery = String(query || '').trim()
-    if (!trimmedQuery || loading) return
+  const fetchSearchPage = React.useCallback(async ({ queryText, serviceKey, offset, append }) => {
+    const token = requestTokenRef.current + 1
+    requestTokenRef.current = token
 
-    setErrorMessage('')
-    setLastQuery(trimmedQuery)
-
-    if (isLikelyHttpUrl(trimmedQuery) && openDownloaderForUrl(trimmedQuery, selectedService)) {
-      setResults([])
-      return
+    if (append) {
+      setLoadingMore(true)
+    } else {
+      setLoadingInitial(true)
+      setLoadingMore(false)
     }
-
-    setLoading(true)
 
     try {
       const apiBase = getApiBase()
       const params = new URLSearchParams({
-        q: trimmedQuery,
-        from: selectedService,
-        count: String(resultCount),
+        q: String(queryText || '').trim(),
+        from: String(serviceKey || 'youtube'),
+        offset: String(Math.max(0, Number(offset) || 0)),
       })
 
       const response = await fetch(`${apiBase}/api/search?${params.toString()}`)
@@ -131,25 +144,100 @@ export default function SearchPage({ onOpenDownloader }) {
         throw new Error(String(detail))
       }
 
+      if (token !== requestTokenRef.current) return
+
       const entries = Array.isArray(payload?.entries) ? payload.entries : []
-      setResults(entries)
+      const resolvedLimit = Number(payload?.limit)
+      const limit = Number.isFinite(resolvedLimit) && resolvedLimit > 0
+        ? Math.round(resolvedLimit)
+        : SEARCH_PAGE_SIZE
+      const resolvedHasMore = typeof payload?.hasMore === 'boolean'
+        ? payload.hasMore
+        : entries.length >= limit
+
+      setResults((prev) => (append ? mergeUniqueEntries(prev, entries) : entries))
+      setNextOffset(Math.max(0, Number(offset) || 0) + entries.length)
+      setHasMore(resolvedHasMore)
+      setErrorMessage('')
     } catch (err) {
+      if (token !== requestTokenRef.current) return
+
       const message = String(err?.message || err || t('search.errorGeneric')).trim() || t('search.errorGeneric')
-      setResults([])
+      if (!append) {
+        setResults([])
+      }
+      setHasMore(false)
       setErrorMessage(t('search.errorWithMessage', { message }))
     } finally {
-      setLoading(false)
+      if (token === requestTokenRef.current) {
+        setLoadingInitial(false)
+        setLoadingMore(false)
+      }
     }
-  }, [loading, onOpenDownloader, openDownloaderForUrl, query, resultCount, selectedService, t])
+  }, [t])
+
+  const handleSubmit = React.useCallback(async () => {
+    const trimmedQuery = String(query || '').trim()
+    if (!trimmedQuery || loadingInitial) return
+
+    setErrorMessage('')
+    setResults([])
+    setHasMore(false)
+    setNextOffset(0)
+    setLastQuery(trimmedQuery)
+    setLastService(selectedService)
+
+    await fetchSearchPage({
+      queryText: trimmedQuery,
+      serviceKey: selectedService,
+      offset: 0,
+      append: false,
+    })
+  }, [fetchSearchPage, loadingInitial, query, selectedService])
+
+  const loadMore = React.useCallback(() => {
+    if (!lastQuery || !hasMore || loadingInitial || loadingMore) return
+
+    fetchSearchPage({
+      queryText: lastQuery,
+      serviceKey: lastService,
+      offset: nextOffset,
+      append: true,
+    })
+  }, [fetchSearchPage, hasMore, lastQuery, lastService, loadingInitial, loadingMore, nextOffset])
+
+  React.useEffect(() => {
+    if (!hasMore || loadingInitial || loadingMore || !lastQuery) return undefined
+
+    const root = scrollRootRef.current
+    const target = loadMoreSentinelRef.current
+    if (!root || !target) return undefined
+
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        loadMore()
+        break
+      }
+    }, {
+      root,
+      rootMargin: '280px 0px',
+      threshold: 0.01,
+    })
+
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [hasMore, lastQuery, loadMore, loadingInitial, loadingMore])
 
   const handleOpenResult = React.useCallback((entry) => {
-    openDownloaderForUrl(entry?.url, entry?.service || selectedService)
-  }, [openDownloaderForUrl, selectedService])
+    openDownloaderForUrl(entry?.url, entry?.service || lastService)
+  }, [lastService, openDownloaderForUrl])
 
-  const showEmptyState = !loading && !errorMessage && Boolean(lastQuery) && results.length === 0
+  const showInitialLoading = loadingInitial && results.length === 0
+  const showEmptyState = !showInitialLoading && !errorMessage && Boolean(lastQuery) && results.length === 0
 
   return (
-    <Box sx={{ height: '100%', overflowY: 'auto' }}>
+    <Box ref={scrollRootRef} sx={{ height: '100%', overflowY: 'auto' }}>
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" component="h1" fontWeight={800} gutterBottom>
@@ -211,23 +299,13 @@ export default function SearchPage({ onOpenDownloader }) {
               ))}
             </Select>
 
-            <TextField
-              size="small"
-              type="number"
-              value={resultCount}
-              onChange={(event) => setResultCount(clampResultCount(event.target.value))}
-              inputProps={{ min: 1, max: 25, 'aria-label': t('search.resultCountAria') }}
-              sx={{ width: { xs: '100%', lg: 110 } }}
-              label={t('search.resultCountLabel')}
-            />
-
             <Button
               variant="contained"
               onClick={handleSubmit}
-              disabled={loading || !String(query || '').trim()}
+              disabled={loadingInitial || !String(query || '').trim()}
               sx={{ minWidth: { xs: '100%', lg: 132 }, fontWeight: 700 }}
             >
-              {loading ? (
+              {loadingInitial ? (
                 <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
                   <CircularProgress size={16} color="inherit" />
                   <span>{t('search.searching')}</span>
@@ -241,7 +319,7 @@ export default function SearchPage({ onOpenDownloader }) {
           </Typography>
         </Stack>
 
-        {Boolean(lastQuery) && !loading && !errorMessage && results.length > 0 && (
+        {Boolean(lastQuery) && !loadingInitial && !errorMessage && results.length > 0 && (
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
             {t('search.resultsFor', { query: lastQuery })}
           </Typography>
@@ -253,7 +331,7 @@ export default function SearchPage({ onOpenDownloader }) {
           </Typography>
         )}
 
-        {loading && (
+        {showInitialLoading && (
           <Stack spacing={1} alignItems="center" justifyContent="center" sx={{ py: 8 }}>
             <CircularProgress size={28} />
             <Typography variant="body2" color="text.secondary">{t('search.searching')}</Typography>
@@ -267,7 +345,7 @@ export default function SearchPage({ onOpenDownloader }) {
           </Stack>
         )}
 
-        {results.length > 0 && !loading && (
+        {results.length > 0 && !loadingInitial && (
           <Grid container spacing={2}>
             {results.map((entry) => {
               const rawService = normalizeServiceKey(entry?.service)
@@ -348,6 +426,17 @@ export default function SearchPage({ onOpenDownloader }) {
               )
             })}
           </Grid>
+        )}
+
+        {results.length > 0 && (
+          <Box ref={loadMoreSentinelRef} sx={{ width: '100%', height: 1 }} />
+        )}
+
+        {loadingMore && results.length > 0 && (
+          <Stack spacing={1} alignItems="center" justifyContent="center" sx={{ py: 3 }}>
+            <CircularProgress size={22} />
+            <Typography variant="body2" color="text.secondary">{t('search.loadingMore')}</Typography>
+          </Stack>
         )}
       </Container>
     </Box>
