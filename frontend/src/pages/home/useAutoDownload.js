@@ -14,15 +14,7 @@ import {
   pickAudioFormatByMaxBitrate,
   pickVideoFormatByMaxHeight,
 } from './formatUtils'
-
-function resolveSseErrorMessage(value) {
-  try {
-    const parsed = JSON.parse(value)
-    return parsed?.error || parsed?.message || String(value || '')
-  } catch {
-    return String(value || '')
-  }
-}
+import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
 
 function parseSseStructuredPayload(value) {
   if (value == null) return null
@@ -244,13 +236,16 @@ export function useAutoDownload({
       })
 
       if (!response.ok) {
-        let message = `HTTP ${response.status}`
+        let payload = null
         try {
-          const body = await response.json()
-          message = body?.error || body?.details || message
+          payload = await response.json()
         } catch {
-          // keep fallback message
+          payload = `HTTP ${response.status}`
         }
+        const message = formatYtDlpErrorMessage(t, payload, {
+          fallbackKey: 'downloader.errorDownloadFailed',
+          includeRawForUnknown: true,
+        })
         throw new Error(message)
       }
 
@@ -282,7 +277,10 @@ export function useAutoDownload({
         }
 
         if (eventName === 'error') {
-          const msg = resolveSseErrorMessage(dataStr) || t('downloader.errorDownloadFailed')
+          const msg = formatYtDlpErrorMessage(t, rawData, {
+            fallbackKey: 'downloader.errorDownloadFailed',
+            includeRawForUnknown: true,
+          })
           failed = true
           explicitErrorMessage = msg
           setFetchError({ url: target, message: msg })
@@ -338,7 +336,11 @@ export function useAutoDownload({
         buffer = readSseBlocks(buffer, processEvent, false)
       }
     } catch (error) {
-      const message = error?.message || String(error || '')
+      const directMessage = String(error?.message || '').trim()
+      const message = directMessage || formatYtDlpErrorMessage(t, error, {
+        fallbackKey: 'downloader.errorDownloadFailed',
+        includeRawForUnknown: true,
+      })
       explicitErrorMessage = message
       setFetchError({ url: target, message })
       showNotification(message, 'error')

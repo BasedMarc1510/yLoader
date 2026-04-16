@@ -119,6 +119,7 @@ export default function FfmpegSettingsSection({
             height: 32,
             borderColor: 'divider',
             color: 'text.primary',
+            transition: 'none',
             '&:hover': { borderColor: 'text.disabled', bgcolor: 'action.hover' },
           }}
         >

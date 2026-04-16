@@ -1,5 +1,6 @@
 import React from 'react'
 import { getApiBase, normalizeUrlForNoembed, resolveServiceKey } from '../../../utils/metadata'
+import { formatYtDlpErrorMessage } from '../../../utils/ytDlpErrorPresentation'
 
 export default function useStreamDownload({
   i18nT,
@@ -158,13 +159,16 @@ export default function useStreamDownload({
       })
 
       if (!response.ok) {
-        let message = `HTTP ${response.status}`
+        let errorPayload = null
         try {
-          const errBody = await response.json()
-          message = errBody?.error || errBody?.message || message
+          errorPayload = await response.json()
         } catch {
-          // keep fallback status
+          errorPayload = `HTTP ${response.status}`
         }
+        const message = formatYtDlpErrorMessage(i18nT, errorPayload, {
+          fallbackKey: 'downloader.errorDownloadFailed',
+          includeRawForUnknown: true,
+        })
         throw new Error(message)
       }
 
@@ -172,20 +176,14 @@ export default function useStreamDownload({
         throw new Error(i18nT('downloader.errorDownloadFailed'))
       }
 
-      const resolveErrorMessage = (value) => {
-        try {
-          const parsed = JSON.parse(value)
-          return parsed?.error || parsed?.message || value
-        } catch {
-          return value
-        }
-      }
-
       const processEvent = (eventName, rawData) => {
         const dataStr = String(rawData || '')
 
         if (eventName === 'error') {
-          const msg = resolveErrorMessage(dataStr) || i18nT('downloader.errorDownloadFailed')
+          const msg = formatYtDlpErrorMessage(i18nT, rawData, {
+            fallbackKey: 'downloader.errorDownloadFailed',
+            includeRawForUnknown: true,
+          })
           setDownloadError(msg)
           showNotification(msg, 'error')
           return
@@ -308,8 +306,13 @@ export default function useStreamDownload({
         throw new Error(i18nT('downloader.errorDownloadFailed'))
       }
     } catch (err) {
-      setDownloadError(err.message || i18nT('downloader.errorDownloadFailed'))
-      showNotification(err.message || i18nT('downloader.errorDownloadFailed'), 'error')
+      const directMessage = String(err?.message || '').trim()
+      const msg = directMessage || formatYtDlpErrorMessage(i18nT, err, {
+        fallbackKey: 'downloader.errorDownloadFailed',
+        includeRawForUnknown: true,
+      })
+      setDownloadError(msg)
+      showNotification(msg, 'error')
     } finally {
       if (!completed) {
         setDownloading(false)

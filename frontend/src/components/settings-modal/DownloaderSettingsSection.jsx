@@ -218,6 +218,7 @@ export default function DownloaderSettingsSection({
               minWidth: 96,
               fontWeight: 600,
               borderRadius: '4px',
+              transition: 'none',
             }}
           >
             {isPickingCurrentPath ? t('settings.checking') : t('settings.downloaderBrowsePath')}

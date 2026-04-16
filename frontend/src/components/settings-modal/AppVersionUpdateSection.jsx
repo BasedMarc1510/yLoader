@@ -203,7 +203,7 @@ export default function AppVersionUpdateSection({
               size="small"
               disabled={isActionRunning}
               onClick={() => runAction('check', checkForAppUpdates)}
-              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '4px' }}
+              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '4px', transition: 'none' }}
             >
               {t('settings.appUpdateCheckButton')}
             </Button>
@@ -215,7 +215,7 @@ export default function AppVersionUpdateSection({
               size="small"
               disabled={isActionRunning}
               onClick={() => runAction('download', downloadAppUpdate)}
-              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '4px' }}
+              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '4px', transition: 'none' }}
             >
               {manualDownloadOnly ? t('settings.appUpdateOpenReleaseButton') : t('settings.appUpdateDownloadButton')}
             </Button>
@@ -227,7 +227,7 @@ export default function AppVersionUpdateSection({
               size="small"
               disabled={isActionRunning}
               onClick={() => runAction('install', installAppUpdate)}
-              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: '4px' }}
+              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: '4px', transition: 'none' }}
             >
               {t('settings.appUpdateInstallButton')}
             </Button>

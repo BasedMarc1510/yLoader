@@ -34,6 +34,15 @@ export default function Sidebar({
   const { t: i18nT } = useI18n()
   const t = useTheme()
   const sidebarBg = t.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
+  const isDarkMode = t.palette.mode === 'dark'
+  /** Inaktive Einträge etwas gedämpft, aktiv voller Kontrast (an klassischer MUI-Sidebar-Navi orientiert). */
+  const sidebarNav = {
+    fgActive: isDarkMode ? '#ffffff' : '#0f0f0f',
+    fgInactive: isDarkMode ? 'rgba(255, 255, 255, 0.52)' : 'rgba(0, 0, 0, 0.52)',
+    iconInactive: isDarkMode ? 'rgba(255, 255, 255, 0.48)' : 'rgba(0, 0, 0, 0.48)',
+  }
+  const sidebarNavTextWeight = 700
+  const sidebarIconStroke = 2.5
   const ICON_SIZE = 20
   const logoLeftOffset = Math.max(0, (collapsedWidth - ICON_SIZE) / 2)
   const expandedLeftInset = 1
@@ -146,11 +155,11 @@ export default function Sidebar({
   }, [handleNavClick, onNavigate])
 
   const items = React.useMemo(() => ([
-    { label: i18nT('routes.home'), icon: <Home size={16} />, to: '/' },
-    { label: i18nT('routes.search'), icon: <Search size={16} />, to: '/search' },
-    { label: i18nT('routes.downloads'), icon: <Download size={16} />, to: '/downloads' },
-    { label: i18nT('routes.support'), icon: <Heart size={16} />, to: '/support' },
-  ]), [i18nT])
+    { label: i18nT('routes.home'), icon: <Home size={16} strokeWidth={sidebarIconStroke} />, to: '/' },
+    { label: i18nT('routes.search'), icon: <Search size={16} strokeWidth={sidebarIconStroke} />, to: '/search' },
+    { label: i18nT('routes.downloads'), icon: <Download size={16} strokeWidth={sidebarIconStroke} />, to: '/downloads' },
+    { label: i18nT('routes.support'), icon: <Heart size={16} strokeWidth={sidebarIconStroke} />, to: '/support' },
+  ]), [i18nT, sidebarIconStroke])
 
   const SidebarTopBar = ({ bg }) => {
     if (collapsed) {
@@ -190,7 +199,7 @@ export default function Sidebar({
               aria-label={i18nT('sidebar.expand')}
               sx={{ p: 0.5 }}
             >
-              <ChevronRight size={18} />
+              <ChevronRight size={18} strokeWidth={sidebarIconStroke} />
             </IconButton>
           </Tooltip>
         </Box>
@@ -253,7 +262,7 @@ export default function Sidebar({
           <Typography
             variant="h6"
             className="youtube-title"
-            sx={{ fontWeight: 600 }}
+            sx={{ fontWeight: 700 }}
           >
             yLoader
           </Typography>
@@ -269,7 +278,7 @@ export default function Sidebar({
             aria-label={i18nT('sidebar.collapse')}
             sx={{ mr: 1, cursor: 'pointer', position: 'relative', zIndex: 3 }}
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={18} strokeWidth={sidebarIconStroke} />
           </IconButton>
         </Tooltip>
       </Box>
@@ -292,10 +301,12 @@ export default function Sidebar({
                   minHeight: 28,
                   px: 1,
                   justifyContent: 'center',
-                  color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                  color: sidebarNav.fgInactive,
+                  transition: 'none',
                   '@media (hover: hover) and (pointer: fine)': {
                     '&:hover': {
-                      bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
+                      bgcolor: isDarkMode ? '#303030' : '#f0f0f0',
+                      color: sidebarNav.fgActive,
                     },
                   },
                 }}
@@ -304,13 +315,14 @@ export default function Sidebar({
                   sx={{
                     minWidth: 'auto',
                     justifyContent: 'center',
-                    color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    color: 'inherit',
                     display: 'flex',
                     alignItems: 'center',
                     height: '100%',
+                    transition: 'none',
                   }}
                 >
-                  <ChevronRight size={16} />
+                  <ChevronRight size={16} strokeWidth={sidebarIconStroke} />
                 </ListItemIcon>
               </ListItemButton>,
               i18nT('sidebar.expand'),
@@ -320,6 +332,7 @@ export default function Sidebar({
 
         {items.map((item) => {
           const isActive = activePath === item.to
+          const rowColor = isActive ? sidebarNav.fgActive : sidebarNav.fgInactive
           return (
             <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
               {withCollapsedTooltip(
@@ -332,19 +345,27 @@ export default function Sidebar({
                     px: collapsed ? 1 : expandedLeftInset,
                     py: collapsed ? undefined : 0.75,
                     justifyContent: collapsed ? 'center' : 'flex-start',
-                    color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    color: rowColor,
                     transition: 'none',
                     '@media (hover: hover) and (pointer: fine)': {
                       '&:hover': {
-                        bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
+                        bgcolor: isDarkMode ? '#303030' : '#f0f0f0',
+                        color: sidebarNav.fgActive,
+                        '& .MuiListItemIcon-root': {
+                          color: sidebarNav.fgActive,
+                        },
                       },
                     },
                     '&.Mui-selected': {
-                      bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
+                      color: sidebarNav.fgActive,
+                      bgcolor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
                       '@media (hover: hover) and (pointer: fine)': {
                         '&:hover': {
-                          bgcolor: t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)',
+                          bgcolor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)',
                         },
+                      },
+                      '& .MuiListItemIcon-root': {
+                        color: sidebarNav.fgActive,
                       },
                     },
                   }}
@@ -353,7 +374,7 @@ export default function Sidebar({
                     sx={{
                       minWidth: collapsed ? 'auto' : 36,
                       justifyContent: 'center',
-                      color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                      color: isActive ? sidebarNav.fgActive : sidebarNav.iconInactive,
                       display: 'flex',
                       alignItems: 'center',
                       height: '100%',
@@ -367,9 +388,9 @@ export default function Sidebar({
                       sx={{
                         '& .MuiListItemText-primary': {
                           fontSize: '0.875rem',
-                          fontWeight: 400,
+                          fontWeight: sidebarNavTextWeight,
                           lineHeight: 1.2,
-                          color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                          color: 'inherit',
                         },
                       }}
                     />
@@ -398,10 +419,15 @@ export default function Sidebar({
                   px: collapsed ? 1 : expandedLeftInset,
                   py: collapsed ? undefined : 0.75,
                   justifyContent: collapsed ? 'center' : 'flex-start',
-                  color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                  color: sidebarNav.fgInactive,
+                  transition: 'none',
                   '@media (hover: hover) and (pointer: fine)': {
                     '&:hover': {
-                      bgcolor: t.palette.mode === 'dark' ? '#303030' : '#f0f0f0',
+                      bgcolor: isDarkMode ? '#303030' : '#f0f0f0',
+                      color: sidebarNav.fgActive,
+                      '& .MuiListItemIcon-root': {
+                        color: sidebarNav.fgActive,
+                      },
                     },
                   },
                 }}
@@ -410,10 +436,11 @@ export default function Sidebar({
                   sx={{
                     minWidth: collapsed ? 'auto' : 36,
                     justifyContent: 'center',
-                    color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                    color: sidebarNav.iconInactive,
                     display: 'flex',
                     alignItems: 'center',
                     height: '100%',
+                    transition: 'none',
                   }}
                 >
                   <Badge
@@ -423,7 +450,7 @@ export default function Sidebar({
                     invisible={!showSettingsUpdateBadge}
                     anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
                   >
-                    <Settings size={16} />
+                    <Settings size={16} strokeWidth={sidebarIconStroke} />
                   </Badge>
                 </ListItemIcon>
                 {!collapsed && (
@@ -432,9 +459,10 @@ export default function Sidebar({
                     sx={{
                       '& .MuiListItemText-primary': {
                         fontSize: '0.875rem',
-                        fontWeight: 400,
+                        fontWeight: sidebarNavTextWeight,
                         lineHeight: 1.2,
-                        color: t.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                        color: 'inherit',
+                        transition: 'none',
                       },
                     }}
                   />

@@ -25,6 +25,7 @@ import {
   getServiceDisplayName,
   normalizeServiceKey,
 } from '../utils/metadata'
+import { formatYtDlpErrorMessage } from '../utils/ytDlpErrorPresentation'
 
 const SEARCH_SERVICE_OPTIONS = [
   { value: 'youtube', labelKey: 'search.services.youtube', iconKey: 'youtube' },
@@ -140,8 +141,11 @@ export default function SearchPage({ onOpenDownloader }) {
       const payload = await response.json().catch(() => null)
 
       if (!response.ok) {
-        const detail = payload?.details || payload?.error || t('search.errorGeneric')
-        throw new Error(String(detail))
+        const mappedMessage = formatYtDlpErrorMessage(t, payload || `HTTP ${response.status}`, {
+          fallbackKey: 'search.errorGeneric',
+          includeRawForUnknown: false,
+        })
+        throw new Error(String(mappedMessage))
       }
 
       if (token !== requestTokenRef.current) return

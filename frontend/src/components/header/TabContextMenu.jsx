@@ -51,7 +51,11 @@ export default function TabContextMenu({
       slotProps={{
         paper: {
           elevation: 4,
-          sx: { minWidth: 210 },
+          sx: {
+            minWidth: 210,
+            '& .MuiMenuItem-root': { transition: 'none' },
+            '& .MuiListItemIcon-root': { transition: 'none' },
+          },
         },
       }}
       disableAutoFocusItem

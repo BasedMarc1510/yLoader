@@ -1,9 +1,14 @@
 import React from 'react'
 import { Box, Typography, IconButton, Paper, Button } from '@mui/material'
 import { AlertTriangle, X } from 'lucide-react'
-import extractYtDlpError from './extractYtDlpError'
+import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
 
 export default function FetchErrorPanel({ fetchError, closeError, retryError, i18nT }) {
+  const message = formatYtDlpErrorMessage(i18nT, fetchError?.message, {
+    fallbackKey: 'downloader.errorDownloadFailed',
+    includeRawForUnknown: true,
+  })
+
   return (
     <Box
       sx={{
@@ -70,16 +75,15 @@ export default function FetchErrorPanel({ fetchError, closeError, retryError, i1
                 py: 1.5,
                 color: t.palette.text.secondary,
                 wordBreak: 'break-word',
-                fontFamily: 'monospace',
-                fontSize: '0.78rem',
-                lineHeight: 1.6,
+                fontSize: '0.9rem',
+                lineHeight: 1.55,
               })}
             >
-              {extractYtDlpError(fetchError.message)}
+              {message}
             </Typography>
           </Box>
 
-          <Box sx={{ px: 2, pb: 2 }}>
+          <Box sx={{ px: 2, py: 2 }}>
             <Button
               fullWidth
               variant="contained"

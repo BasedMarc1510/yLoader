@@ -7,7 +7,7 @@ import {
   Button,
 } from '@mui/material'
 import { AlertTriangle, X } from 'lucide-react'
-import { extractYtDlpError } from './errorUtils'
+import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
 
 export default function HomeErrorOverlay({
   fetchError,
@@ -17,6 +17,11 @@ export default function HomeErrorOverlay({
   t,
 }) {
   if (!fetchError) return null
+
+  const message = formatYtDlpErrorMessage(t, fetchError?.message, {
+    fallbackKey: 'downloader.errorDownloadFailed',
+    includeRawForUnknown: true,
+  })
 
   return (
     <Box
@@ -77,15 +82,14 @@ export default function HomeErrorOverlay({
               py: 1.5,
               color: muiTheme.palette.text.secondary,
               wordBreak: 'break-word',
-              fontFamily: 'monospace',
-              fontSize: '0.78rem',
-              lineHeight: 1.6,
+              fontSize: '0.9rem',
+              lineHeight: 1.55,
             })}>
-              {extractYtDlpError(fetchError.message)}
+              {message}
             </Typography>
           </Box>
 
-          <Box sx={{ px: 2, pb: 2 }}>
+          <Box sx={{ px: 2, py: 2 }}>
             <Button
               fullWidth
               variant="contained"

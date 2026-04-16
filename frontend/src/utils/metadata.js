@@ -87,7 +87,17 @@ export async function fetchDuration(rawUrl) {
   const API_BASE = getApiBase()
   const url = normalizeUrlForNoembed(rawUrl)
   const res = await fetch(`${API_BASE}/api/meta/duration?url=${encodeURIComponent(url)}`)
-  if (!res.ok) throw new Error(`duration HTTP ${res.status}`)
+  if (!res.ok) {
+    let payload = null
+    try {
+      payload = await res.json()
+    } catch {
+      payload = null
+    }
+    const error = new Error(payload?.details || payload?.error || `duration HTTP ${res.status}`)
+    error.payload = payload
+    throw error
+  }
   const data = await res.json()
   return data // { duration, durationString }
 }
@@ -98,11 +108,14 @@ export async function fetchFormats(rawUrl) {
   const res = await fetch(`${API_BASE}/api/meta/formats?url=${encodeURIComponent(url)}`)
   if (!res.ok) {
     let errMsg = `HTTP ${res.status}`
+    let payload = null
     try {
-      const body = await res.json()
-      errMsg = body?.details || body?.error || errMsg
+      payload = await res.json()
+      errMsg = payload?.details || payload?.error || errMsg
     } catch { }
-    throw new Error(errMsg)
+    const error = new Error(errMsg)
+    error.payload = payload
+    throw error
   }
   return res.json()
 }

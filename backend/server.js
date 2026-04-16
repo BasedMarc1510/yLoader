@@ -11,6 +11,10 @@ import {
   normalizeServiceKey,
   resolveServiceKey,
 } from '../shared/services/serviceCatalog.js'
+import {
+  classifyYtDlpError,
+  YT_DLP_ERROR_CODES,
+} from '../shared/errors/ytDlpErrorCatalog.js'
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const sqlite3 = require("sqlite3").verbose();
@@ -641,7 +645,13 @@ app.get('/api/search', async (req, res) => {
       entries,
     })
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to run search', details: String(err?.message || err) })
+    const details = extractCommandErrorDetails(err)
+    const ytDlpError = buildYtDlpErrorPayload(details)
+    return res.status(500).json({
+      error: 'Failed to run search',
+      details: ytDlpError.rawMessage || details,
+      ytDlpError,
+    })
   }
 })
 
@@ -728,6 +738,22 @@ function runCmd(cmd, args = [], opts = {}) {
       resolve(stdout?.toString?.() || '')
     })
   })
+}
+
+function extractCommandErrorDetails(err) {
+  const stderr = String(err?.stderr || '').trim()
+  if (stderr) return stderr
+  return String(err?.message || err || '').trim()
+}
+
+function buildYtDlpErrorPayload(rawError, fallbackCode = YT_DLP_ERROR_CODES.UNKNOWN) {
+  const classified = classifyYtDlpError(rawError, fallbackCode)
+  return {
+    source: 'yt-dlp',
+    code: classified.code || fallbackCode,
+    rawMessage: classified.rawMessage || '',
+    normalizedMessage: classified.normalizedMessage || '',
+  }
 }
 
 function parseClockToSeconds(value) {
@@ -3025,7 +3051,13 @@ app.get('/api/meta/duration', async (req, res) => {
 
     res.json({ duration: Number.isFinite(duration) ? duration : null, durationString })
   } catch (err) {
-    res.status(500).json({ error: 'Failed to query duration', details: String(err?.message || err) })
+    const details = extractCommandErrorDetails(err)
+    const ytDlpError = buildYtDlpErrorPayload(details)
+    res.status(500).json({
+      error: 'Failed to query duration',
+      details: ytDlpError.rawMessage || details,
+      ytDlpError,
+    })
   }
 })
 
@@ -3144,7 +3176,13 @@ app.get('/api/meta/formats', async (req, res) => {
     res.json(payload)
   } catch (err) {
     console.error('Error fetching formats:', err)
-    res.status(500).json({ error: 'Failed to query formats', details: String(err?.message || err) })
+    const details = extractCommandErrorDetails(err)
+    const ytDlpError = buildYtDlpErrorPayload(details)
+    res.status(500).json({
+      error: 'Failed to query formats',
+      details: ytDlpError.rawMessage || details,
+      ytDlpError,
+    })
   }
 })
 
@@ -3867,7 +3905,11 @@ app.post('/api/download/stream', async (req, res) => {
       console.error('yt-dlp spawn error:', e)
       // Attempt cleanup
       try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
-      send('error', `Failed to start yt-dlp: ${e.message}`)
+      const ytDlpError = buildYtDlpErrorPayload(`Failed to start yt-dlp: ${e?.message || e}`)
+      send('error', {
+        ...ytDlpError,
+        message: ytDlpError.rawMessage || 'Failed to start yt-dlp',
+      })
       send('end', 'failed')
       safeEnd()
     })
@@ -4075,10 +4117,16 @@ app.post('/api/download/stream', async (req, res) => {
           send('error', 'Download reported success but file not found')
           send('end', 'failed')
         } else {
-          const errorMsg = errorOutput.length > 0
-            ? errorOutput.slice(-3).join(' ').substring(0, 200)
-            : 'Unknown error'
-          send('error', `yt-dlp exited with code ${code}. ${errorMsg}`)
+          const rawErrorText = errorOutput.length > 0
+            ? errorOutput.slice(-8).join('\n')
+            : `yt-dlp exited with code ${code}${signal ? ` (signal ${signal})` : ''}`
+          const ytDlpError = buildYtDlpErrorPayload(rawErrorText)
+          send('error', {
+            ...ytDlpError,
+            message: ytDlpError.rawMessage || `yt-dlp exited with code ${code}`,
+            exitCode: code,
+            signal: signal || '',
+          })
           send('end', 'failed')
         }
       }

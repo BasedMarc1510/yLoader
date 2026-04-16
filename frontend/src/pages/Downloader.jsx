@@ -8,6 +8,7 @@ import DownloaderLanding from './downloader/DownloaderLanding'
 import FetchErrorPanel from './downloader/FetchErrorPanel'
 import buildServices from './downloader/buildServices'
 import { FADE_MS, HOLD_MS } from './downloader/constants'
+import { formatYtDlpErrorMessage } from '../utils/ytDlpErrorPresentation'
 
 export default function Downloader({
   serviceKey = 'generic',
@@ -169,7 +170,11 @@ export default function Downloader({
       model.preloadedFormats = formats
       setMeta(model)
     } catch (e) {
-      setFetchError({ url: target, message: e.message || String(e) })
+      const message = formatYtDlpErrorMessage(i18nT, e?.payload || e?.message || e, {
+        fallbackKey: 'downloader.errorDownloadFailed',
+        includeRawForUnknown: true,
+      })
+      setFetchError({ url: target, message })
     } finally {
       setLoading(false)
     }

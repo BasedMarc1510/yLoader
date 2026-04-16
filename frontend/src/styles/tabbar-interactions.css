@@ -14,7 +14,7 @@
   min-width: 0;
   height: 100%;
   border-radius: inherit;
-  padding: 0 24px 0 14px !important;
+  padding: 0 24px 0 12px !important;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -37,7 +37,7 @@
   background: transparent;
   pointer-events: none;
   z-index: 1;
-  transition: background 0.12s ease;
+  transition: none;
 }
 
 .yl-tab:not(.is-active) .yl-tab-fade {
@@ -59,7 +59,6 @@
 .yl-tab:not(.is-active):hover {
   --yl-tab-bg: color-mix(in srgb, var(--yl-foreground, #fff) 10%, var(--yl-surface, #181818));
   color: var(--yl-foreground, inherit);
-  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .yl-tab:not(.is-active):hover .yl-tab-hit::after {
@@ -91,11 +90,12 @@
   opacity: 0;
 }
 
-.yl-tab-title {
+/* Höhere Spezifität, damit MUI Typography (body1) Schriftgewicht/-größe nicht überschreibt */
+.yl-tab .yl-tab-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1;
 }
@@ -112,7 +112,7 @@
   border-radius: 999px !important;
   color: var(--yl-muted-foreground, inherit);
   opacity: 0;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: none !important;
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -154,7 +154,7 @@
   pointer-events: none;
   z-index: 15;
   border-radius: 0 10px 0 0;
-  transition: background 0.12s ease;
+  transition: none;
 }
 
 .yl-tab.is-closing .yl-tab-fade {
@@ -242,6 +242,7 @@
   flex-shrink: 0;
   padding: 0 !important;
   align-self: center;
+  transition: none !important;
 }
 
 .yl-add-btn.is-hidden-while-drag {
@@ -291,6 +292,7 @@
   place-items: center;
   cursor: pointer !important;
   padding: 0 !important;
+  transition: none !important;
 }
 
 .yl-scroll-btn:hover {
@@ -322,6 +324,7 @@
   border-radius: 0 !important;
   color: var(--yl-muted-foreground, inherit);
   cursor: default !important;
+  transition: none !important;
 }
 
 .yl-window-btn:hover {
@@ -338,7 +341,7 @@
 
 /* is-small: slightly narrow – reduce horizontal padding */
 .yl-tab.is-small .yl-tab-hit {
-  padding: 0 20px 0 10px !important;
+  padding: 0 20px 0 9px !important;
 }
 
 /* is-smaller: hide title text, center the icon */
@@ -349,7 +352,7 @@
   justify-content: center;
 }
 .yl-tab.is-smaller .yl-tab-hit {
-  padding: 0 24px 0 8px !important;
+  padding: 0 24px 0 7px !important;
 }
 
 /* is-mini: icon only; hide close button for inactive tabs */

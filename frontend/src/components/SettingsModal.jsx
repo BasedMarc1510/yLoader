@@ -576,7 +576,9 @@ export default function SettingsModal({
     height: 32,
     minWidth: 140,
     borderRadius: '4px',
-    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+    transition: 'none',
+    '& .MuiOutlinedInput-root': { transition: 'none' },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider', transition: 'none' },
     '& .MuiSelect-select': { py: '6px', px: 1.5 },
     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'text.disabled' },
     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: 1 },
@@ -595,6 +597,12 @@ export default function SettingsModal({
           overflow: 'hidden',
           bgcolor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#f5f5f5',
           backgroundImage: 'none',
+          '& .MuiButton-root': { transition: 'none' },
+          '& .MuiIconButton-root': { transition: 'none' },
+          '& .MuiListItemButton-root': { transition: 'none' },
+          '& .MuiMenuItem-root': { transition: 'none' },
+          '& .MuiOutlinedInput-root': { transition: 'none' },
+          '& .MuiOutlinedInput-notchedOutline': { transition: 'none' },
         }),
       }}
     >
@@ -629,6 +637,7 @@ export default function SettingsModal({
                     borderRadius: '4px',
                     p: '4px',
                     color: 'text.secondary',
+                    transition: 'none',
                     '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
                   }}
                 >
@@ -649,6 +658,7 @@ export default function SettingsModal({
                       borderRadius: '4px',
                       py: '7px',
                       px: 1.5,
+                      transition: 'none',
                       '&.Mui-selected': {
                         bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
                         '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)' },
@@ -713,6 +723,7 @@ export default function SettingsModal({
                     textTransform: 'none',
                     fontWeight: 600,
                     borderRadius: '4px',
+                    transition: 'none',
                   }}
                 >
                   {t('settings.resetToDefaults')}

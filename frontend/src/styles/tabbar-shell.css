@@ -172,10 +172,7 @@
     width 230ms cubic-bezier(0.22, 1, 0.36, 1),
     margin 230ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 180ms ease,
-    transform 180ms ease,
-    color 0.15s ease,
-    background 0.15s ease,
-    border-color 0.15s ease;
+    transform 180ms ease;
 }
 
 /* Aktiver Tab: kein sichtbarer Rand am Element; Rahmen nur über ::before (endet 9px über dem Boden) */

@@ -12,6 +12,7 @@ import {
   DOWNLOAD_SETTINGS_DEFAULTS,
   normalizeDownloadSettings,
 } from '../../../utils/downloadSettings'
+import { formatYtDlpErrorMessage } from '../../../utils/ytDlpErrorPresentation'
 
 export default function useOptionsTabsData({
   i18nT,
@@ -266,14 +267,16 @@ export default function useOptionsTabsData({
 
         const res = await fetch(`${apiBase}/api/meta/formats?url=${encodeURIComponent(normalized)}`)
         if (!res.ok) {
-          let errMsg = `HTTP ${res.status}`
+          let errorPayload = null
           try {
-            const body = await res.json()
-            errMsg = body?.details || body?.error || errMsg
+            errorPayload = await res.json()
           } catch {
-            // keep fallback HTTP status
+            errorPayload = `HTTP ${res.status}`
           }
-          throw new Error(errMsg)
+          throw new Error(formatYtDlpErrorMessage(i18nT, errorPayload, {
+            fallbackKey: 'downloader.errorDownloadFailed',
+            includeRawForUnknown: true,
+          }))
         }
 
         const data = await res.json()
@@ -292,7 +295,12 @@ export default function useOptionsTabsData({
         setVideoFormats([])
         setThumbOptions([])
         setSelectedThumbValue('')
-        onFetchError?.(videoUrl, err.message || String(err))
+        const directMessage = String(err?.message || '').trim()
+        const message = directMessage || formatYtDlpErrorMessage(i18nT, err, {
+          fallbackKey: 'downloader.errorDownloadFailed',
+          includeRawForUnknown: true,
+        })
+        onFetchError?.(videoUrl, message)
       } finally {
         setLoadingFormats(false)
       }
