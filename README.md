@@ -32,7 +32,7 @@ Local start is fully self-contained: `yLoader` uses project-local binaries from 
 docker compose up -d --build --remove-orphans
 ```
 
-The backend Docker image installs `ffmpeg` during build, so no host-level ffmpeg setup is required.
+The backend Docker image downloads `ffmpeg`/`ffprobe` and `yt-dlp` directly from GitHub Releases during build, so no host-level tool setup is required.
 
 ### Default URLs
 
@@ -84,9 +84,13 @@ Use `.env.example` as a reference.
 | `DOWNLOAD_DIR` | Download output directory | `downloads/` |
 | `YT_DLP_PATH` | Explicit `yt-dlp` binary path | auto-detected |
 | `FFMPEG_PATH` | Explicit `ffmpeg` binary path | project-managed `.tools/ffmpeg-bin/.../bin/ffmpeg` |
+| `FFPROBE_PATH` | Explicit `ffprobe` binary path | sibling of configured `FFMPEG_PATH` when available |
 | `YT_DLP_JS_RUNTIMES` | JS runtimes for extractors | `node` |
 | `YT_DLP_UPDATE_METHOD` | `yt-dlp` update strategy | auto-managed |
 | `YT_PIP_PATH` | `pip` path for optional updates | unset |
+| `YT_DLP_MANAGED_BY_YLOADER` | Force yLoader-managed yt-dlp update handling | auto (`.tools` path detection) |
+| `FFMPEG_MANAGED_BY_YLOADER` | Force yLoader-managed ffmpeg update handling | auto (`.tools` path detection) |
+| `GITHUB_API_TOKEN` | Optional token to increase GitHub API release-rate limits | unset |
 
 ### Optional Auth / Extractor Variables
 
@@ -97,6 +101,14 @@ Use `.env.example` as a reference.
 | `YT_DLP_EXTRACTOR_ARGS` | Advanced `yt-dlp` extractor tuning |
 
 If you hit bot-check/login restrictions, configure one of the cookie options.
+
+## Tool Updates (yt-dlp + ffmpeg)
+
+- Both tools support manual checks and updates in **Settings**.
+- Automatic updates are enabled by default for both tools.
+- Periodic background checks continue even if automatic install is disabled.
+- If auto-install is disabled, update availability is shown via indicators in Settings and the sidebar.
+- Update notifications are shown for found/started installs and completed installs.
 
 ## Data and Persistence
 

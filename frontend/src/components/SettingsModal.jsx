@@ -36,6 +36,7 @@ export default function SettingsModal({
   open,
   onClose,
   requestedSection = 'general',
+  onToolUpdateSummaryChange,
   appUpdateState,
   isElectronUpdaterAvailable = false,
   checkForAppUpdates,
@@ -51,10 +52,17 @@ export default function SettingsModal({
   const [ytInfo, setYtInfo] = useState({
     currentVersion: '-',
     latestVersion: '-',
+    latestReleaseTag: '',
+    latestReleaseName: '',
+    latestHtmlUrl: '',
     binaryPath: '-',
     binarySize: '-',
     outdated: false,
     updateSupported: true,
+    updateInProgress: false,
+    autoUpdateEnabled: true,
+    lastUpdatedAt: 0,
+    lastError: '',
     loading: false,
     localLoading: false,
     latestLoading: false,
@@ -67,16 +75,42 @@ export default function SettingsModal({
   const [ffmpegInfo, setFfmpegInfo] = useState({
     available: false,
     version: '-',
+    latestVersion: '-',
+    latestReleaseTag: '',
+    latestReleaseName: '',
+    latestHtmlUrl: '',
+    outdated: false,
     path: '-',
     fileSize: '-',
     projectManaged: true,
+    updateSupported: false,
+    updateInProgress: false,
+    autoUpdateEnabled: true,
+    lastUpdatedAt: 0,
+    lastError: '',
     loading: false,
+    latestLoading: false,
+    latestFromCache: false,
+    latestCheckedAt: 0,
+    latestSource: 'none',
+    latestError: '',
     error: '',
   })
 
   const [updating, setUpdating] = useState(false)
   const [logLines, setLogLines] = useState([])
   const logRef = useRef(null)
+  const [ffmpegUpdating, setFfmpegUpdating] = useState(false)
+  const [ffmpegLogLines, setFfmpegLogLines] = useState([])
+  const ffmpegLogRef = useRef(null)
+
+  const [toolUpdateSettings, setToolUpdateSettings] = useState({
+    ytDlpAutoUpdate: true,
+    ffmpegAutoUpdate: true,
+  })
+  const [toolUpdateSettingsLoading, setToolUpdateSettingsLoading] = useState(false)
+  const [toolUpdateSettingsSaving, setToolUpdateSettingsSaving] = useState(false)
+  const [toolUpdateSettingsError, setToolUpdateSettingsError] = useState('')
 
   const [autoDownloadSettings, setAutoDownloadSettings] = useState(() => ({ ...AUTO_DOWNLOAD_DEFAULTS }))
   const [autoDownloadLoading, setAutoDownloadLoading] = useState(false)
@@ -90,60 +124,69 @@ export default function SettingsModal({
 
   const isAppUpdateDownloading = appUpdateState?.phase === 'downloading'
 
+  const fetchToolUpdateSettings = React.useCallback(async () => {
+    setToolUpdateSettingsLoading(true)
+    setToolUpdateSettingsError('')
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/tool-updates/settings`)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      setToolUpdateSettings({
+        ytDlpAutoUpdate: data?.ytDlpAutoUpdate !== false,
+        ffmpegAutoUpdate: data?.ffmpegAutoUpdate !== false,
+      })
+    } catch (error) {
+      setToolUpdateSettingsError(t('settings.failedLoadStatus', { message: error?.message || error }))
+    } finally {
+      setToolUpdateSettingsLoading(false)
+    }
+  }, [API_BASE, t])
+
+  const saveToolUpdateSettings = React.useCallback(async (nextSettings) => {
+    setToolUpdateSettingsSaving(true)
+    setToolUpdateSettingsError('')
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/tool-updates/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextSettings),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      setToolUpdateSettings({
+        ytDlpAutoUpdate: data?.ytDlpAutoUpdate !== false,
+        ffmpegAutoUpdate: data?.ffmpegAutoUpdate !== false,
+      })
+    } catch (error) {
+      setToolUpdateSettingsError(t('settings.failedLoadStatus', { message: error?.message || error }))
+      throw error
+    } finally {
+      setToolUpdateSettingsSaving(false)
+    }
+  }, [API_BASE, t])
+
+  const setToolAutoUpdateEnabled = React.useCallback((tool, enabled) => {
+    const next = {
+      ...toolUpdateSettings,
+      ...(tool === 'ytDlp'
+        ? { ytDlpAutoUpdate: Boolean(enabled) }
+        : { ffmpegAutoUpdate: Boolean(enabled) }),
+    }
+    setToolUpdateSettings(next)
+    saveToolUpdateSettings(next).catch(() => {
+      // error state is handled in saveToolUpdateSettings
+    })
+  }, [saveToolUpdateSettings, toolUpdateSettings])
+
   const fetchStatus = React.useCallback(async ({ forceLatest = false } = {}) => {
     setYtInfo((state) => ({
       ...state,
+      loading: true,
       localLoading: true,
-      latestLoading: false,
-      loading: true,
-      error: '',
-    }))
-
-    try {
-      const localResp = await fetch(`${API_BASE}/api/yt-dlp/status?localOnly=1`)
-      if (!localResp.ok) throw new Error(`HTTP ${localResp.status}`)
-      const localData = await localResp.json()
-
-      setYtInfo((state) => {
-        const currentVersion = localData.currentVersion || '-'
-        const cachedLatestVersion = String(localData.latestVersion || '').trim()
-        const latestSourceRaw = String(localData.latestSource || '').trim()
-        const latestSource = latestSourceRaw || 'none'
-        const hasCachedLatest = Boolean(cachedLatestVersion && latestSource !== 'none')
-
-        return {
-          ...state,
-          currentVersion,
-          latestVersion: hasCachedLatest
-            ? cachedLatestVersion
-            : (state.latestVersion !== '-' ? state.latestVersion : currentVersion),
-          binaryPath: localData.binaryPath || '-',
-          binarySize: localData.binarySizeHuman || '-',
-          outdated: hasCachedLatest ? Boolean(localData.outdated) : state.outdated,
-          updateSupported: localData.updateSupported !== false,
-          localLoading: false,
-          latestFromCache: hasCachedLatest ? Boolean(localData.latestFromCache) : state.latestFromCache,
-          latestCheckedAt: hasCachedLatest ? Number(localData.latestCheckedAt || 0) : state.latestCheckedAt,
-          latestSource: hasCachedLatest ? latestSource : state.latestSource,
-          loading: false,
-          error: localData.error || '',
-        }
-      })
-    } catch (error) {
-      setYtInfo((state) => ({
-        ...state,
-        localLoading: false,
-        latestLoading: false,
-        loading: false,
-        error: t('settings.failedLoadStatus', { message: error?.message || error }),
-      }))
-      return
-    }
-
-    setYtInfo((state) => ({
-      ...state,
       latestLoading: true,
-      loading: true,
+      error: '',
     }))
 
     try {
@@ -157,57 +200,97 @@ export default function SettingsModal({
 
       setYtInfo((state) => ({
         ...state,
-        currentVersion: data.currentVersion || state.currentVersion || '-',
-        latestVersion: data.latestVersion || state.currentVersion || '-',
-        binaryPath: data.binaryPath || state.binaryPath || '-',
-        binarySize: data.binarySizeHuman || state.binarySize || '-',
-        outdated: !!data.outdated,
+        currentVersion: data.currentVersion || '-',
+        latestVersion: data.latestVersion || data.currentVersion || '-',
+        latestReleaseTag: data.latestReleaseTag || '',
+        latestReleaseName: data.latestReleaseName || '',
+        latestHtmlUrl: data.latestHtmlUrl || '',
+        binaryPath: data.binaryPath || '-',
+        binarySize: data.binarySizeHuman || '-',
+        outdated: Boolean(data.outdated),
         updateSupported: data.updateSupported !== false,
+        updateInProgress: Boolean(data.updateInProgress),
+        autoUpdateEnabled: data.autoUpdateEnabled !== false,
+        lastUpdatedAt: Number(data.lastUpdatedAt || 0),
+        lastError: String(data.lastError || ''),
         latestFromCache: Boolean(data.latestFromCache),
         latestCheckedAt: Number(data.latestCheckedAt || 0),
         latestSource: String(data.latestSource || 'none'),
+        localLoading: false,
         latestLoading: false,
         loading: false,
-        error: data.error || (forceLatest ? (data.latestError || '') : state.error),
+        error: data.error || data.latestError || '',
       }))
+
+      if (typeof data?.autoUpdateEnabled === 'boolean') {
+        setToolUpdateSettings((state) => ({ ...state, ytDlpAutoUpdate: data.autoUpdateEnabled }))
+      }
     } catch (error) {
       setYtInfo((state) => ({
         ...state,
+        localLoading: false,
         latestLoading: false,
         loading: false,
-        error: forceLatest
-          ? t('settings.failedLoadStatus', { message: error?.message || error })
-          : state.error,
+        error: t('settings.failedLoadStatus', { message: error?.message || error }),
       }))
     }
   }, [API_BASE, t])
 
-  const fetchFfmpegStatus = async () => {
-    setFfmpegInfo((state) => ({ ...state, loading: true, error: '' }))
+  const fetchFfmpegStatus = React.useCallback(async ({ forceLatest = false } = {}) => {
+    setFfmpegInfo((state) => ({
+      ...state,
+      loading: true,
+      latestLoading: true,
+      error: '',
+    }))
 
     try {
-      const resp = await fetch(`${API_BASE}/api/ffmpeg/status`)
+      const statusUrl = forceLatest
+        ? `${API_BASE}/api/ffmpeg/status?forceLatest=1`
+        : `${API_BASE}/api/ffmpeg/status`
+      const resp = await fetch(statusUrl)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data = await resp.json()
       const projectManaged = data.projectManaged !== false
 
-      setFfmpegInfo({
-        available: !!data.available,
+      setFfmpegInfo((state) => ({
+        ...state,
+        available: Boolean(data.available),
         version: data.version || '-',
+        latestVersion: data.latestVersion || data.version || '-',
+        latestReleaseTag: data.latestReleaseTag || '',
+        latestReleaseName: data.latestReleaseName || '',
+        latestHtmlUrl: data.latestHtmlUrl || '',
+        outdated: Boolean(data.outdated),
         path: data.path || '-',
         fileSize: projectManaged ? (data.fileSizeHuman || '-') : t('settings.systemManagedFfmpegSize'),
         projectManaged,
+        updateSupported: Boolean(data.updateSupported),
+        updateInProgress: Boolean(data.updateInProgress),
+        autoUpdateEnabled: data.autoUpdateEnabled !== false,
+        lastUpdatedAt: Number(data.lastUpdatedAt || 0),
+        lastError: String(data.lastError || ''),
+        latestFromCache: Boolean(data.latestFromCache),
+        latestCheckedAt: Number(data.latestCheckedAt || 0),
+        latestSource: String(data.latestSource || 'none'),
+        latestError: String(data.latestError || ''),
         loading: false,
+        latestLoading: false,
         error: data.error || '',
-      })
+      }))
+
+      if (typeof data?.autoUpdateEnabled === 'boolean') {
+        setToolUpdateSettings((state) => ({ ...state, ffmpegAutoUpdate: data.autoUpdateEnabled }))
+      }
     } catch (error) {
       setFfmpegInfo((state) => ({
         ...state,
         loading: false,
+        latestLoading: false,
         error: t('settings.failedLoadFfmpegStatus', { message: error?.message || error }),
       }))
     }
-  }
+  }, [API_BASE, t])
 
   const fetchAutoDownloadSettings = async () => {
     setAutoDownloadLoading(true)
@@ -308,12 +391,26 @@ export default function SettingsModal({
   }, [open, requestedSection])
 
   useEffect(() => {
-    if (open && section === 'yt-dlp') fetchStatus()
-    if (open && section === 'ffmpeg') fetchFfmpegStatus()
+    if (!open) return undefined
+
+    fetchToolUpdateSettings()
+    fetchStatus()
+    fetchFfmpegStatus()
+
+    const interval = window.setInterval(() => {
+      fetchStatus()
+      fetchFfmpegStatus()
+    }, 90_000)
+
+    return () => window.clearInterval(interval)
+  }, [open, fetchFfmpegStatus, fetchStatus, fetchToolUpdateSettings])
+
+  useEffect(() => {
+    if (!open) return
     if (open && section === 'auto-download') fetchAutoDownloadSettings()
     if (open && section === 'downloader') fetchDownloadSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, section, fetchStatus])
+  }, [open, section])
 
   useEffect(() => {
     if (logRef.current) {
@@ -321,9 +418,48 @@ export default function SettingsModal({
     }
   }, [logLines])
 
+  useEffect(() => {
+    if (ffmpegLogRef.current) {
+      ffmpegLogRef.current.scrollTop = ffmpegLogRef.current.scrollHeight
+    }
+  }, [ffmpegLogLines])
+
+  useEffect(() => {
+    if (typeof onToolUpdateSummaryChange !== 'function') return
+
+    onToolUpdateSummaryChange({
+      anyUpdateAvailable: Boolean(ytInfo.outdated || ffmpegInfo.outdated),
+      anyUpdateInProgress: Boolean(ytInfo.updateInProgress || ffmpegInfo.updateInProgress || updating || ffmpegUpdating),
+      ytDlp: {
+        updateAvailable: Boolean(ytInfo.outdated),
+        updateInProgress: Boolean(ytInfo.updateInProgress || updating),
+        updateSupported: Boolean(ytInfo.updateSupported),
+      },
+      ffmpeg: {
+        updateAvailable: Boolean(ffmpegInfo.outdated),
+        updateInProgress: Boolean(ffmpegInfo.updateInProgress || ffmpegUpdating),
+        updateSupported: Boolean(ffmpegInfo.updateSupported),
+      },
+    })
+  }, [
+    ffmpegInfo.outdated,
+    ffmpegInfo.updateInProgress,
+    ffmpegInfo.updateSupported,
+    ffmpegUpdating,
+    onToolUpdateSummaryChange,
+    updating,
+    ytInfo.outdated,
+    ytInfo.updateInProgress,
+    ytInfo.updateSupported,
+  ])
+
   const startUpdate = () => {
     if (!ytInfo.updateSupported) {
       setLogLines((lines) => [...lines, t('settings.updateManagedExternally')])
+      return
+    }
+
+    if (updating || ytInfo.updateInProgress) {
       return
     }
 
@@ -353,13 +489,49 @@ export default function SettingsModal({
     })
   }
 
+  const startFfmpegUpdate = () => {
+    if (!ffmpegInfo.updateSupported) {
+      setFfmpegLogLines((lines) => [...lines, t('settings.updateManagedExternally')])
+      return
+    }
+
+    if (ffmpegUpdating || ffmpegInfo.updateInProgress) {
+      return
+    }
+
+    setFfmpegUpdating(true)
+    setFfmpegLogLines((lines) => [...lines, t('settings.startUpdate')])
+
+    const es = new EventSource(`${API_BASE}/api/ffmpeg/update/stream`)
+    es.onmessage = (event) => {
+      if (event.data) setFfmpegLogLines((lines) => [...lines, event.data])
+    }
+
+    es.addEventListener('info', (event) => {
+      if (event.data) setFfmpegLogLines((lines) => [...lines, event.data])
+    })
+
+    es.addEventListener('error', (event) => {
+      const message = typeof event?.data === 'string' && event.data ? event.data : t('settings.updateErrorOccurred')
+      setFfmpegLogLines((lines) => [...lines, `ERROR: ${message}`])
+    })
+
+    es.addEventListener('end', (event) => {
+      const ok = event?.data === 'done'
+      setFfmpegLogLines((lines) => [...lines, ok ? t('settings.updateCompleted') : t('settings.updateFailed')])
+      es.close()
+      setFfmpegUpdating(false)
+      fetchFfmpegStatus({ forceLatest: true })
+    })
+  }
+
   const sections = useMemo(() => ([
-    { key: 'general', label: t('settings.general') },
-    { key: 'downloader', label: t('settings.sectionDownloader') },
-    { key: 'auto-download', label: t('settings.sectionAutoDownload') },
-    { key: 'yt-dlp', label: t('settings.sectionYtDlp') },
-    { key: 'ffmpeg', label: t('settings.sectionFfmpeg') },
-  ]), [t])
+    { key: 'general', label: t('settings.general'), hasUpdate: false },
+    { key: 'downloader', label: t('settings.sectionDownloader'), hasUpdate: false },
+    { key: 'auto-download', label: t('settings.sectionAutoDownload'), hasUpdate: false },
+    { key: 'yt-dlp', label: t('settings.sectionYtDlp'), hasUpdate: Boolean(ytInfo.outdated) },
+    { key: 'ffmpeg', label: t('settings.sectionFfmpeg'), hasUpdate: Boolean(ffmpegInfo.outdated) },
+  ]), [ffmpegInfo.outdated, t, ytInfo.outdated])
 
   let sectionTitle = t('settings.general')
   if (section === 'downloader') sectionTitle = t('settings.downloaderConfig')
@@ -485,8 +657,24 @@ export default function SettingsModal({
                     })}
                   >
                     <ListItemText
-                      primary={entry.label}
-                      primaryTypographyProps={{ fontSize: 13.5, fontWeight: section === entry.key ? 600 : 400 }}
+                      primary={(
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                          <Typography sx={{ fontSize: 13.5, fontWeight: section === entry.key ? 600 : 400 }}>
+                            {entry.label}
+                          </Typography>
+                          {entry.hasUpdate ? (
+                            <Box
+                              sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                bgcolor: '#f59e0b',
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : null}
+                        </Box>
+                      )}
                     />
                   </ListItemButton>
                 </ListItem>
@@ -580,6 +768,10 @@ export default function SettingsModal({
                   ytInfo={ytInfo}
                   updating={updating}
                   startUpdate={startUpdate}
+                  onToggleAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ytDlp', enabled)}
+                  toolUpdateSettingsLoading={toolUpdateSettingsLoading}
+                  toolUpdateSettingsSaving={toolUpdateSettingsSaving}
+                  toolUpdateSettingsError={toolUpdateSettingsError}
                   fetchStatus={fetchStatus}
                   onCheckForUpdates={() => fetchStatus({ forceLatest: true })}
                   logRef={logRef}
@@ -591,7 +783,16 @@ export default function SettingsModal({
               {section === 'ffmpeg' && (
                 <FfmpegSettingsSection
                   ffmpegInfo={ffmpegInfo}
+                  updating={ffmpegUpdating}
+                  startUpdate={startFfmpegUpdate}
+                  onToggleAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ffmpeg', enabled)}
+                  toolUpdateSettingsLoading={toolUpdateSettingsLoading}
+                  toolUpdateSettingsSaving={toolUpdateSettingsSaving}
+                  toolUpdateSettingsError={toolUpdateSettingsError}
                   fetchFfmpegStatus={fetchFfmpegStatus}
+                  onCheckForUpdates={() => fetchFfmpegStatus({ forceLatest: true })}
+                  logRef={ffmpegLogRef}
+                  logLines={ffmpegLogLines}
                   t={t}
                 />
               )}

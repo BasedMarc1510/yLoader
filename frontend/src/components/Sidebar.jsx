@@ -17,6 +17,7 @@ import Typography from '@mui/material/Typography'
 import SettingsModal from './SettingsModal'
 import { useI18n } from '../providers/I18nProvider'
 import useElectronAppUpdater from '../hooks/useElectronAppUpdater'
+import { getApiBase } from '../utils/metadata'
 
 const drawerWidth = 240
 
@@ -56,10 +57,21 @@ export default function Sidebar({
   const showMacInlineExpand = collapsed && isMacElectron
   const brandLeftPadding = logoLeftOffset + 8
   const brandIconSrc = `${import.meta.env.BASE_URL}yloader-icon.svg`
+  const API_BASE = getApiBase()
+  const [toolUpdateSummary, setToolUpdateSummary] = React.useState({
+    anyUpdateAvailable: false,
+    anyUpdateInProgress: false,
+    ytDlp: { updateAvailable: false, updateInProgress: false, updateSupported: true },
+    ffmpeg: { updateAvailable: false, updateInProgress: false, updateSupported: true },
+  })
   const updatePhase = String(appUpdateState?.phase || 'idle').trim()
-  const showSettingsUpdateBadge = isElectronUpdaterAvailable
+  const hasAppUpdateBadge = isElectronUpdaterAvailable
     && (updatePhase === 'update-available' || updatePhase === 'downloading' || updatePhase === 'downloaded')
-  const settingsBadgeColor = updatePhase === 'downloaded' ? 'error' : 'info'
+  const hasToolUpdateBadge = Boolean(toolUpdateSummary.anyUpdateAvailable)
+  const showSettingsUpdateBadge = hasAppUpdateBadge || hasToolUpdateBadge
+  const settingsBadgeColor = updatePhase === 'downloaded'
+    ? 'error'
+    : (hasToolUpdateBadge ? 'warning' : 'info')
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -73,6 +85,46 @@ export default function Sidebar({
     window.addEventListener('yloader:open-settings', onOpenSettings)
     return () => window.removeEventListener('yloader:open-settings', onOpenSettings)
   }, [])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    let cancelled = false
+
+    const fetchSummary = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/tool-updates/summary`)
+        if (!response.ok) return
+        const data = await response.json()
+        if (cancelled) return
+
+        setToolUpdateSummary({
+          anyUpdateAvailable: Boolean(data?.anyUpdateAvailable),
+          anyUpdateInProgress: Boolean(data?.anyUpdateInProgress),
+          ytDlp: {
+            updateAvailable: Boolean(data?.ytDlp?.updateAvailable),
+            updateInProgress: Boolean(data?.ytDlp?.updateInProgress),
+            updateSupported: data?.ytDlp?.updateSupported !== false,
+          },
+          ffmpeg: {
+            updateAvailable: Boolean(data?.ffmpeg?.updateAvailable),
+            updateInProgress: Boolean(data?.ffmpeg?.updateInProgress),
+            updateSupported: data?.ffmpeg?.updateSupported !== false,
+          },
+        })
+      } catch {
+        // ignore polling errors
+      }
+    }
+
+    fetchSummary()
+    const interval = window.setInterval(fetchSummary, 90_000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [API_BASE])
 
   const withCollapsedTooltip = (node, title) => (
     collapsed
@@ -442,6 +494,7 @@ export default function Sidebar({
         open={openSettings}
         onClose={() => setOpenSettings(false)}
         requestedSection={settingsSection}
+        onToolUpdateSummaryChange={setToolUpdateSummary}
         appUpdateState={appUpdateState}
         isElectronUpdaterAvailable={isElectronUpdaterAvailable}
         checkForAppUpdates={checkForAppUpdates}

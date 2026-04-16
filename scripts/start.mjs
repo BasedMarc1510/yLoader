@@ -30,17 +30,12 @@ const YTDLP_URLS = {
   linuxArm64: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64',
   darwin: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos',
 }
-const FFMPEG_URLS = {
-  win64Essentials: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
-  win64Git: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-master-latest-win64-gpl.zip',
-  linuxX64: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz',
-  linuxArm64: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz',
-  linuxArm64Fallback: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-lgpl.tar.xz',
-  macIntelBinary: 'https://evermeet.cx/ffmpeg/get',
-  macIntelZip: 'https://evermeet.cx/ffmpeg/get/zip',
-  macArm64Snapshot: 'https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/snapshot/ffmpeg.zip',
-  macArm64Release: 'https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip',
-}
+const FFMPEG_RELEASE_SOURCE = Object.freeze({ owner: 'eugeneware', repo: 'ffmpeg-static' })
+const FFMPEG_RELEASE_ASSET_MAP = Object.freeze({
+  win32: Object.freeze({ x64: 'win32-x64' }),
+  linux: Object.freeze({ x64: 'linux-x64', arm64: 'linux-arm64' }),
+  darwin: Object.freeze({ x64: 'darwin-x64', arm64: 'darwin-arm64' }),
+})
 const DEFAULT_YTDLP_CANDIDATES = IS_WINDOWS
   ? ['yt-dlp.exe', 'yt-dlp']
   : ['yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp']
@@ -360,44 +355,82 @@ function getLocalFfmpegPaths() {
   }
 }
 
-function getFfmpegAssets() {
-  if (process.platform === 'win32') {
-    return [
-      { url: FFMPEG_URLS.win64Essentials, type: 'zip' },
-      { url: FFMPEG_URLS.win64Git, type: 'zip' },
-    ]
+function getGitHubHeaders() {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'yLoader-bootstrap',
   }
 
-  if (process.platform === 'linux') {
-    if (process.arch === 'x64') {
-      return [{ url: FFMPEG_URLS.linuxX64, type: 'tar.xz' }]
-    }
-    if (process.arch === 'arm64') {
-      return [
-        { url: FFMPEG_URLS.linuxArm64, type: 'tar.xz' },
-        { url: FFMPEG_URLS.linuxArm64Fallback, type: 'tar.xz' },
-      ]
-    }
-    throw new Error(`Unsupported Linux architecture for automatic ffmpeg download: ${process.arch}`)
+  const token = String(process.env.GITHUB_API_TOKEN || '').trim()
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
 
-  if (process.platform === 'darwin') {
-    if (process.arch === 'arm64') {
-      return [
-        { url: FFMPEG_URLS.macArm64Snapshot, type: 'zip' },
-        { url: FFMPEG_URLS.macArm64Release, type: 'zip' },
-      ]
-    }
-    if (process.arch === 'x64') {
-      return [
-        { url: FFMPEG_URLS.macIntelBinary, type: 'binary' },
-        { url: FFMPEG_URLS.macIntelZip, type: 'zip' },
-      ]
-    }
-    throw new Error(`Unsupported macOS architecture for automatic ffmpeg download: ${process.arch}`)
+  return headers
+}
+
+async function fetchLatestGitHubRelease(owner, repo) {
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`, {
+    headers: getGitHubHeaders(),
+  })
+  if (!response.ok) {
+    throw new Error(`GitHub releases API returned ${response.status} for ${owner}/${repo}`)
+  }
+  const payload = await response.json()
+  if (!payload || typeof payload !== 'object') {
+    throw new Error(`GitHub releases API returned an invalid payload for ${owner}/${repo}`)
+  }
+  return payload
+}
+
+function getFfmpegAssetKey(platform = process.platform, arch = process.arch) {
+  const byPlatform = FFMPEG_RELEASE_ASSET_MAP[platform]
+  if (!byPlatform) return ''
+  return byPlatform[arch] || ''
+}
+
+async function getFfmpegAssetsFromLatestRelease() {
+  const assetKey = getFfmpegAssetKey(process.platform, process.arch)
+  if (!assetKey) {
+    throw new Error(`Unsupported platform/architecture for ffmpeg bootstrap: ${process.platform}/${process.arch}`)
   }
 
-  throw new Error(`Unsupported platform for automatic ffmpeg download: ${process.platform}`)
+  const release = await fetchLatestGitHubRelease(FFMPEG_RELEASE_SOURCE.owner, FFMPEG_RELEASE_SOURCE.repo)
+  const assets = Array.isArray(release?.assets) ? release.assets : []
+  const ffmpegAssetName = `ffmpeg-${assetKey}`
+  const ffprobeAssetName = `ffprobe-${assetKey}`
+  const ffmpegAsset = assets.find((entry) => String(entry?.name || '').trim() === ffmpegAssetName)
+  const ffprobeAsset = assets.find((entry) => String(entry?.name || '').trim() === ffprobeAssetName)
+
+  if (!ffmpegAsset || !ffprobeAsset) {
+    throw new Error(`Release ${release?.tag_name || 'latest'} is missing ${ffmpegAssetName} or ${ffprobeAssetName}`)
+  }
+
+  return {
+    releaseTag: String(release?.tag_name || '').trim(),
+    releaseName: String(release?.name || '').trim(),
+    ffmpegAssetName,
+    ffprobeAssetName,
+    ffmpegUrl: String(ffmpegAsset?.browser_download_url || '').trim(),
+    ffprobeUrl: String(ffprobeAsset?.browser_download_url || '').trim(),
+  }
+}
+
+function getFfmpegReleaseMetadataPath(localPaths) {
+  return path.join(localPaths.binDir, '.yloader-ffmpeg-release.json')
+}
+
+function writeFfmpegReleaseMetadata(localPaths, metadata) {
+  const metadataPath = getFfmpegReleaseMetadataPath(localPaths)
+  const payload = {
+    releaseTag: String(metadata?.releaseTag || '').trim(),
+    releaseName: String(metadata?.releaseName || '').trim(),
+    ffmpegAssetName: String(metadata?.ffmpegAssetName || '').trim(),
+    ffprobeAssetName: String(metadata?.ffprobeAssetName || '').trim(),
+    installedAt: Date.now(),
+  }
+
+  fs.writeFileSync(metadataPath, JSON.stringify(payload, null, 2))
 }
 
 async function ensureLocalFfmpeg() {
@@ -406,85 +439,76 @@ async function ensureLocalFfmpeg() {
   const localPaths = getLocalFfmpegPaths()
   fs.mkdirSync(localPaths.binDir, { recursive: true })
 
-  if (fs.existsSync(localPaths.ffmpegPath)) {
+  const hasCachedFfmpeg = fs.existsSync(localPaths.ffmpegPath)
+  const hasCachedFfprobe = fs.existsSync(localPaths.ffprobePath)
+
+  if (hasCachedFfmpeg && hasCachedFfprobe) {
     try {
       const { stdout } = await runCommand(localPaths.ffmpegPath, ['-version'], { captureOutput: true })
       const firstLine = String(stdout || '').split(/\r?\n/).find(Boolean) || 'ffmpeg'
-      info(`ffmpeg: using local cached binary (${firstLine}).`)
+      info(`ffmpeg: using local cached binaries (${firstLine}).`)
       return {
         ffmpegPath: localPaths.ffmpegPath,
-        ffprobePath: fs.existsSync(localPaths.ffprobePath) ? localPaths.ffprobePath : '',
+        ffprobePath: localPaths.ffprobePath,
         pathEntry: localPaths.binDir,
       }
     } catch {
-      warn('ffmpeg: local cached binary is invalid, re-downloading...')
+      warn('ffmpeg: local cached binaries are invalid, re-downloading...')
     }
   }
 
-  const assets = getFfmpegAssets()
-  let lastError = null
+  const releaseAssets = await getFfmpegAssetsFromLatestRelease()
+  const ffmpegTmpPath = `${localPaths.ffmpegPath}.tmp`
+  const ffprobeTmpPath = `${localPaths.ffprobePath}.tmp`
 
-  for (let i = 0; i < assets.length; i += 1) {
-    const asset = assets[i]
-    if (!asset) continue
+  try {
+    info(`ffmpeg: downloading ${releaseAssets.ffmpegAssetName} from GitHub releases...`)
+    await downloadFile(releaseAssets.ffmpegUrl, ffmpegTmpPath)
 
-    const suffix = asset.type === 'binary'
-      ? '.bin'
-      : asset.type === 'zip'
-        ? '.zip'
-        : '.tar.xz'
+    info(`ffmpeg: downloading ${releaseAssets.ffprobeAssetName} from GitHub releases...`)
+    await downloadFile(releaseAssets.ffprobeUrl, ffprobeTmpPath)
 
-    const downloadPath = path.join(localPaths.platformDir, `ffmpeg-asset-${i}${suffix}`)
-    const extractDir = path.join(localPaths.platformDir, `extract-${i}`)
+    if (!IS_WINDOWS) {
+      fs.chmodSync(ffmpegTmpPath, 0o755)
+      fs.chmodSync(ffprobeTmpPath, 0o755)
+    }
+
+    if (fs.existsSync(localPaths.ffmpegPath)) {
+      fs.unlinkSync(localPaths.ffmpegPath)
+    }
+    if (fs.existsSync(localPaths.ffprobePath)) {
+      fs.unlinkSync(localPaths.ffprobePath)
+    }
+
+    fs.renameSync(ffmpegTmpPath, localPaths.ffmpegPath)
+    fs.renameSync(ffprobeTmpPath, localPaths.ffprobePath)
+
+    writeFfmpegReleaseMetadata(localPaths, releaseAssets)
+
+    const { stdout } = await runCommand(localPaths.ffmpegPath, ['-version'], { captureOutput: true })
+    const firstLine = String(stdout || '').split(/\r?\n/).find(Boolean) || 'ffmpeg'
+    info(`ffmpeg: ready (${firstLine}).`)
+
+    return {
+      ffmpegPath: localPaths.ffmpegPath,
+      ffprobePath: localPaths.ffprobePath,
+      pathEntry: localPaths.binDir,
+    }
+  } catch (err) {
+    try {
+      if (fs.existsSync(ffmpegTmpPath)) fs.unlinkSync(ffmpegTmpPath)
+    } catch {
+      // ignore cleanup errors
+    }
 
     try {
-      fs.mkdirSync(localPaths.platformDir, { recursive: true })
-      info(`ffmpeg: downloading bundle from ${asset.url}`)
-      await downloadFile(asset.url, downloadPath)
-
-      if (asset.type === 'binary') {
-        fs.copyFileSync(downloadPath, localPaths.ffmpegPath)
-      } else {
-        fs.rmSync(extractDir, { recursive: true, force: true })
-        await extractArchive(downloadPath, extractDir, asset.type)
-
-        const discoveredFfmpeg = findFileByBasename(extractDir, [FFMPEG_BINARY_NAME, 'ffmpeg', 'ffmpeg.exe'])
-        if (!discoveredFfmpeg) {
-          throw new Error('ffmpeg executable not found in downloaded bundle')
-        }
-
-        fs.copyFileSync(discoveredFfmpeg, localPaths.ffmpegPath)
-
-        const discoveredFfprobe = findFileByBasename(extractDir, [FFPROBE_BINARY_NAME, 'ffprobe', 'ffprobe.exe'])
-        if (discoveredFfprobe) {
-          fs.copyFileSync(discoveredFfprobe, localPaths.ffprobePath)
-        }
-      }
-
-      if (!IS_WINDOWS) {
-        fs.chmodSync(localPaths.ffmpegPath, 0o755)
-        if (fs.existsSync(localPaths.ffprobePath)) {
-          fs.chmodSync(localPaths.ffprobePath, 0o755)
-        }
-      }
-
-      const { stdout } = await runCommand(localPaths.ffmpegPath, ['-version'], { captureOutput: true })
-      const firstLine = String(stdout || '').split(/\r?\n/).find(Boolean) || 'ffmpeg'
-      info(`ffmpeg: ready (${firstLine}).`)
-
-      return {
-        ffmpegPath: localPaths.ffmpegPath,
-        ffprobePath: fs.existsSync(localPaths.ffprobePath) ? localPaths.ffprobePath : '',
-        pathEntry: localPaths.binDir,
-      }
-    } catch (err) {
-      lastError = err
-      warn(`ffmpeg: failed using ${asset.url} (${err.message || err}).`)
+      if (fs.existsSync(ffprobeTmpPath)) fs.unlinkSync(ffprobeTmpPath)
+    } catch {
+      // ignore cleanup errors
     }
-  }
 
-  const details = lastError?.message ? ` Last error: ${lastError.message}` : ''
-  throw new Error(`ffmpeg bootstrap failed on ${process.platform}/${process.arch}.${details}`)
+    throw new Error(`ffmpeg bootstrap failed on ${process.platform}/${process.arch}. ${err?.message || err}`)
+  }
 }
 
 async function waitForHttp(url, timeoutMs) {
@@ -551,7 +575,9 @@ async function main() {
 
   sharedEnv.YT_DLP_PATH = ytDlpPath
   sharedEnv.YT_DLP_UPDATE_METHOD = suggestedUpdateMethod || 'self'
+  sharedEnv.YT_DLP_MANAGED_BY_YLOADER = '1'
   sharedEnv.FFMPEG_PATH = ffmpegSetup.ffmpegPath
+  sharedEnv.FFMPEG_MANAGED_BY_YLOADER = '1'
   if (ffmpegSetup.ffprobePath) {
     sharedEnv.FFPROBE_PATH = ffmpegSetup.ffprobePath
   }

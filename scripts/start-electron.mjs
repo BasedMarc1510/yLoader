@@ -76,8 +76,11 @@ function buildSharedServiceEnv() {
   const ffprobePath = path.join(ffmpegBinDir, FFPROBE_BINARY_NAME)
 
   env.YT_DLP_PATH = ytdlpPath
+  env.YT_DLP_UPDATE_METHOD = 'self'
+  env.YT_DLP_MANAGED_BY_YLOADER = '1'
   env.FFMPEG_PATH = ffmpegPath
   env.FFPROBE_PATH = ffprobePath
+  env.FFMPEG_MANAGED_BY_YLOADER = '1'
   prependToPath(env, ffmpegBinDir)
 
   return env

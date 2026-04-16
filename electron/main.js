@@ -1211,14 +1211,17 @@ function buildBackendEnv() {
   // Prevent stale externally configured tool paths from overriding bundled binaries.
   delete env.YT_DLP_PATH
   delete env.YT_DLP_UPDATE_METHOD
+  delete env.YT_DLP_MANAGED_BY_YLOADER
   delete env.FFMPEG_PATH
   delete env.FFPROBE_PATH
+  delete env.FFMPEG_MANAGED_BY_YLOADER
 
   const toolsRoot = resolveToolsRootPath()
   const ytdlpPath = resolveBundledYtDlpPath(toolsRoot)
   if (isRegularFile(ytdlpPath)) {
     env.YT_DLP_PATH = ytdlpPath
     env.YT_DLP_UPDATE_METHOD = 'self'
+    env.YT_DLP_MANAGED_BY_YLOADER = '1'
   }
 
   const ffmpegBinDir = resolveBundledFfmpegBinDir(toolsRoot)
@@ -1227,6 +1230,7 @@ function buildBackendEnv() {
 
   if (isRegularFile(ffmpegPath)) {
     env.FFMPEG_PATH = ffmpegPath
+    env.FFMPEG_MANAGED_BY_YLOADER = '1'
     prependToPath(env, ffmpegBinDir)
   }
   if (isRegularFile(ffprobePath)) {

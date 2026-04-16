@@ -17,6 +17,9 @@ const en = {
     loadingAria: 'Loading',
     notify: {
       ytDlpUpdated: 'yt-dlp was updated to version {version}',
+      ytDlpInstalling: 'yt-dlp update found ({version}) and installation has started.',
+      ffmpegUpdated: 'ffmpeg was updated to version {version}',
+      ffmpegInstalling: 'ffmpeg update found ({version}) and installation has started.',
     },
   },
   routes: {
@@ -155,6 +158,8 @@ const en = {
     updateManagedExternally: 'Updates are managed externally for this installation',
     updating: 'Updating...',
     updateNow: 'Update now',
+    autoUpdateEnabled: 'Automatic updates',
+    autoUpdateEnabledDesc: 'Periodically check for updates and install them automatically when available.',
     updateLogs: 'Update logs',
     readyToUpdate: 'Ready to update...',
     failedLoadStatus: 'Failed to load status: {message}',

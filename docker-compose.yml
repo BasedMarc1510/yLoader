@@ -9,8 +9,10 @@ services:
     environment:
       - DOWNLOAD_DIR=/downloads
       - DB_PATH=/app/data/metadata.db
-      - FFMPEG_PATH=/usr/bin/ffmpeg
-      - FFPROBE_PATH=/usr/bin/ffprobe
+      - FFMPEG_PATH=/usr/local/bin/ffmpeg
+      - FFPROBE_PATH=/usr/local/bin/ffprobe
+      - YT_DLP_MANAGED_BY_YLOADER=1
+      - FFMPEG_MANAGED_BY_YLOADER=1
     volumes:
       - ./downloads:/downloads
       - ./backend-data:/app/data

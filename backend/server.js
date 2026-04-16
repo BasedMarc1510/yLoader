@@ -80,6 +80,7 @@ const MAX_PROXY_IMAGE_SIZE_BYTES = 15 * 1024 * 1024
 const TAB_STATE_SETTINGS_KEY = 'ui.tabs.state.v1'
 const AUTO_DOWNLOAD_SETTINGS_KEY = 'ui.autoDownload.settings.v1'
 const DOWNLOAD_SETTINGS_KEY = 'ui.download.settings.v1'
+const TOOL_UPDATER_SETTINGS_KEY = 'tools.updater.settings.v1'
 const MAX_PERSISTED_TABS = 30
 const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
@@ -118,6 +119,12 @@ const DEFAULT_DOWNLOAD_SETTINGS = Object.freeze({
   videoAlwaysAsk: true,
   thumbnailAlwaysAsk: true,
 })
+const DEFAULT_TOOL_UPDATER_SETTINGS = Object.freeze({
+  ytDlpAutoUpdate: true,
+  ffmpegAutoUpdate: true,
+})
+const TOOL_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+const TOOL_UPDATE_SCHEDULER_TICK_MS = 5 * 60 * 1000
 const metaFormatsCache = new Map()
 const ALLOWED_TAB_PATHS = new Set([
   '/',
@@ -135,13 +142,25 @@ const YT_DLP_COOKIES_FILE = String(process.env.YT_DLP_COOKIES_FILE || '').trim()
 const YT_DLP_COOKIES_FROM_BROWSER = String(process.env.YT_DLP_COOKIES_FROM_BROWSER || '').trim()
 const YT_DLP_EXTRACTOR_ARGS = String(process.env.YT_DLP_EXTRACTOR_ARGS || '').trim()
 const YT_DLP_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
+const FFMPEG_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
 let FFMPEG_BIN = String(process.env.FFMPEG_PATH || '').trim()
 let FFPROBE_BIN = String(process.env.FFPROBE_PATH || '').trim()
 const ytDlpLatestVersionCache = {
   version: '',
   fetchedAt: 0,
+  releaseTag: '',
+  releaseName: '',
+  htmlUrl: '',
 }
 let ytDlpLatestVersionFetchPromise = null
+const ffmpegLatestVersionCache = {
+  version: '',
+  fetchedAt: 0,
+  releaseTag: '',
+  releaseName: '',
+  htmlUrl: '',
+}
+let ffmpegLatestVersionFetchPromise = null
 
 const TOOL_ROOT_CANDIDATES = [
   path.resolve(process.cwd(), '..', 'tools'),
@@ -411,6 +430,38 @@ function writeSettingValue(key, value) {
       }
     )
   })
+}
+
+function normalizeToolUpdaterSettingsPayload(value) {
+  const input = value && typeof value === 'object' ? value : {}
+  return {
+    ytDlpAutoUpdate: input.ytDlpAutoUpdate !== undefined
+      ? Boolean(input.ytDlpAutoUpdate)
+      : DEFAULT_TOOL_UPDATER_SETTINGS.ytDlpAutoUpdate,
+    ffmpegAutoUpdate: input.ffmpegAutoUpdate !== undefined
+      ? Boolean(input.ffmpegAutoUpdate)
+      : DEFAULT_TOOL_UPDATER_SETTINGS.ffmpegAutoUpdate,
+  }
+}
+
+async function readToolUpdaterSettings() {
+  const raw = await readSettingValue(TOOL_UPDATER_SETTINGS_KEY)
+  if (!raw) {
+    return { ...DEFAULT_TOOL_UPDATER_SETTINGS }
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    return normalizeToolUpdaterSettingsPayload(parsed)
+  } catch {
+    return { ...DEFAULT_TOOL_UPDATER_SETTINGS }
+  }
+}
+
+async function writeToolUpdaterSettings(nextValue) {
+  const merged = normalizeToolUpdaterSettingsPayload(nextValue)
+  await writeSettingValue(TOOL_UPDATER_SETTINGS_KEY, JSON.stringify(merged))
+  return merged
 }
 
 async function readDownloadSettings() {
@@ -1344,6 +1395,8 @@ if (!FFPROBE_BIN && isRegularFile(FFMPEG_BIN)) {
 
 const YT_PIP = process.env.YT_PIP_PATH || ''
 const YT_DLP_UPDATE_METHOD = (process.env.YT_DLP_UPDATE_METHOD || (YT_PIP ? 'pip' : 'self')).toLowerCase()
+const YT_DLP_MANAGED_BY_YLOADER = String(process.env.YT_DLP_MANAGED_BY_YLOADER || '').trim().toLowerCase()
+const FFMPEG_MANAGED_BY_YLOADER = String(process.env.FFMPEG_MANAGED_BY_YLOADER || '').trim().toLowerCase()
 const DISABLED_UPDATE_METHODS = new Set(['disabled', 'none', 'system'])
 const YTDLP_PATH_MARKERS = [
   path.normalize(path.join('.tools', 'yt-dlp-bin')).toLowerCase(),
@@ -1355,6 +1408,10 @@ const FFMPEG_PATH_MARKERS = [
 ]
 
 function isProjectManagedYtDlpBinary() {
+  if (YT_DLP_MANAGED_BY_YLOADER === '1' || YT_DLP_MANAGED_BY_YLOADER === 'true' || YT_DLP_MANAGED_BY_YLOADER === 'yes' || YT_DLP_MANAGED_BY_YLOADER === 'on') {
+    return true
+  }
+
   const normalizedBinaryPath = path.normalize(String(YT_DLP || '')).toLowerCase()
   return YTDLP_PATH_MARKERS.some((marker) => normalizedBinaryPath.includes(marker))
 }
@@ -1557,98 +1614,259 @@ setInterval(cleanupOldFiles, 60 * 60 * 1000) // Run every hour
 // --- Auto-Update Logic ---
 const UPDATE_STATE_FILE = path.join(path.dirname(DB_PATH), 'updater_state.json')
 
-async function checkAndAutoUpdateYtDlp() {
-  try {
-    let state = {}
-    try {
-      if (fs.existsSync(UPDATE_STATE_FILE)) {
-        state = JSON.parse(fs.readFileSync(UPDATE_STATE_FILE, 'utf-8'))
-      }
-    } catch (e) {
-      console.warn('Failed to read updater state:', e.message)
-    }
-
-    const now = Date.now()
-    const lastCheck = state.last_check || 0
-    const oneWeekMs = 7 * 24 * 60 * 60 * 1000
-
-    if (now - lastCheck < oneWeekMs) {
-      console.log('Skipping yt-dlp auto-update check (less than 1 week).')
-      return
-    }
-
-    const updateCmd = getYtDlpUpdateCommand()
-    if (!updateCmd) {
-      console.log(`Skipping yt-dlp auto-update check because updates are managed externally (${YT_DLP_UPDATE_METHOD}).`)
-      return
-    }
-    console.log(`Checking for yt-dlp updates via ${updateCmd.label}...`)
-
-    // Get current version first
-    const v1 = await runCmd(YT_DLP, ['--version']).catch(() => '')
-    const oldVer = v1.trim()
-
-    // Run update
-    await runCmd(updateCmd.cmd, updateCmd.args)
-
-    // Get new version
-    const v2 = await runCmd(YT_DLP, ['--version']).catch(() => '')
-    const newVer = v2.trim()
-
-    console.log(`Update check complete via ${updateCmd.label}. Old: ${oldVer}, New: ${newVer}`)
-
-    if (newVer && oldVer && normalizeVersion(newVer) !== normalizeVersion(oldVer)) {
-      state.notify_user = true
-      state.new_version = newVer
-    }
-
-    state.last_check = now
-    fs.writeFileSync(UPDATE_STATE_FILE, JSON.stringify(state, null, 2))
-  } catch (err) {
-    console.error('Auto-update failed:', err)
-  }
-}
-
-// Run check on startup
-checkAndAutoUpdateYtDlp()
-
-// GET /api/yt-dlp/update-notification
-// Returns { show: boolean, version?: string } and clears the flag if shown
-app.get('/api/yt-dlp/update-notification', (req, res) => {
-  try {
-    if (!fs.existsSync(UPDATE_STATE_FILE)) {
-      return res.json({ show: false })
-    }
-    const state = JSON.parse(fs.readFileSync(UPDATE_STATE_FILE, 'utf-8'))
-
-    if (state.notify_user) {
-      res.json({ show: true, version: state.new_version })
-
-      // Clear flag
-      state.notify_user = false
-      fs.writeFileSync(UPDATE_STATE_FILE, JSON.stringify(state, null, 2))
-    } else {
-      res.json({ show: false })
-    }
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to check notification' })
-  }
+const TOOL_UPDATE_STATE_VERSION = 2
+const TOOL_UPDATE_MAX_NOTIFICATIONS = 120
+const GITHUB_API_TOKEN = String(process.env.GITHUB_API_TOKEN || '').trim()
+const FFMPEG_RELEASE_SOURCE = Object.freeze({ owner: 'eugeneware', repo: 'ffmpeg-static' })
+const FFMPEG_ASSET_PLATFORM_MAP = Object.freeze({
+  win32: Object.freeze({ x64: 'win32-x64' }),
+  linux: Object.freeze({ x64: 'linux-x64', arm64: 'linux-arm64' }),
+  darwin: Object.freeze({ x64: 'darwin-x64', arm64: 'darwin-arm64' }),
 })
 
-// Helper: normalize version strings (e.g. 01 -> 1) for comparison
+let toolUpdateCyclePromise = null
+let toolUpdateScheduler = null
+
 function normalizeVersion(v) {
-  return (v || '').trim().split('.').map(x => parseInt(x, 10)).join('.')
+  const raw = String(v || '').trim().toLowerCase()
+  if (!raw) return ''
+
+  const cleaned = raw
+    .replace(/^v(?=\d)/, '')
+    .replace(/^b(?=\d)/, '')
+    .replace(/[^0-9.]+/g, '.')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^\./, '')
+    .replace(/\.$/, '')
+
+  return cleaned || raw
 }
 
-function parseBooleanQueryFlag(value) {
-  const raw = String(value || '').trim().toLowerCase()
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
+function versionsAreDifferent(a, b) {
+  const left = normalizeVersion(a)
+  const right = normalizeVersion(b)
+  if (!left && !right) return false
+  if (left && right) return left !== right
+  return String(a || '').trim().toLowerCase() !== String(b || '').trim().toLowerCase()
+}
+
+function createDefaultToolStatusState() {
+  return {
+    currentVersion: '',
+    latestVersion: '',
+    latestReleaseTag: '',
+    latestReleaseName: '',
+    latestHtmlUrl: '',
+    latestCheckedAt: 0,
+    latestFromCache: false,
+    latestSource: 'none',
+    latestError: '',
+    updateAvailable: false,
+    updateSupported: false,
+    updateInProgress: false,
+    lastUpdatedAt: 0,
+    lastUpdatedFrom: '',
+    lastUpdatedTo: '',
+    lastError: '',
+  }
+}
+
+function createDefaultToolUpdateState() {
+  return {
+    version: TOOL_UPDATE_STATE_VERSION,
+    lastCycleAt: 0,
+    nextCycleAt: 0,
+    tools: {
+      ytDlp: createDefaultToolStatusState(),
+      ffmpeg: createDefaultToolStatusState(),
+    },
+    notifications: [],
+  }
+}
+
+function sanitizeToolStatusState(raw) {
+  const base = createDefaultToolStatusState()
+  const input = raw && typeof raw === 'object' ? raw : {}
+  return {
+    ...base,
+    ...input,
+    latestCheckedAt: Number(input.latestCheckedAt || 0),
+    lastUpdatedAt: Number(input.lastUpdatedAt || 0),
+    latestFromCache: Boolean(input.latestFromCache),
+    updateAvailable: Boolean(input.updateAvailable),
+    updateSupported: Boolean(input.updateSupported),
+    updateInProgress: Boolean(input.updateInProgress),
+  }
+}
+
+function sanitizeToolUpdateState(raw) {
+  const base = createDefaultToolUpdateState()
+  const input = raw && typeof raw === 'object' ? raw : {}
+  const toolsInput = input.tools && typeof input.tools === 'object' ? input.tools : {}
+  const notificationsInput = Array.isArray(input.notifications) ? input.notifications : []
+
+  return {
+    ...base,
+    version: TOOL_UPDATE_STATE_VERSION,
+    lastCycleAt: Number(input.lastCycleAt || 0),
+    nextCycleAt: Number(input.nextCycleAt || 0),
+    tools: {
+      ytDlp: sanitizeToolStatusState(toolsInput.ytDlp),
+      ffmpeg: sanitizeToolStatusState(toolsInput.ffmpeg),
+    },
+    notifications: notificationsInput
+      .map((entry) => {
+        const item = entry && typeof entry === 'object' ? entry : null
+        if (!item) return null
+        return {
+          id: String(item.id || '').trim() || crypto.randomUUID(),
+          tool: String(item.tool || '').trim() || 'ytDlp',
+          type: String(item.type || '').trim() || 'updated',
+          version: String(item.version || '').trim(),
+          message: String(item.message || '').trim(),
+          createdAt: Number(item.createdAt || Date.now()),
+          consumed: Boolean(item.consumed),
+        }
+      })
+      .filter(Boolean)
+      .slice(-TOOL_UPDATE_MAX_NOTIFICATIONS),
+  }
+}
+
+function loadToolUpdateState() {
+  try {
+    if (!fs.existsSync(UPDATE_STATE_FILE)) {
+      return createDefaultToolUpdateState()
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(UPDATE_STATE_FILE, 'utf-8'))
+    const migrated = sanitizeToolUpdateState(parsed)
+
+    if (parsed?.notify_user && parsed?.new_version) {
+      migrated.notifications.push({
+        id: crypto.randomUUID(),
+        tool: 'ytDlp',
+        type: 'updated',
+        version: String(parsed.new_version || '').trim(),
+        message: '',
+        createdAt: Date.now(),
+        consumed: false,
+      })
+      migrated.notifications = migrated.notifications.slice(-TOOL_UPDATE_MAX_NOTIFICATIONS)
+    }
+
+    return migrated
+  } catch (err) {
+    console.warn('Failed to load updater state:', err?.message || err)
+    return createDefaultToolUpdateState()
+  }
+}
+
+const toolUpdateState = loadToolUpdateState()
+
+function saveToolUpdateState() {
+  try {
+    fs.writeFileSync(UPDATE_STATE_FILE, JSON.stringify(toolUpdateState, null, 2))
+  } catch (err) {
+    console.warn('Failed to persist updater state:', err?.message || err)
+  }
+}
+
+function getToolState(tool) {
+  if (tool !== 'ytDlp' && tool !== 'ffmpeg') {
+    throw new Error(`Unknown tool state key: ${tool}`)
+  }
+  return toolUpdateState.tools[tool]
+}
+
+function patchToolState(tool, patch) {
+  const target = getToolState(tool)
+  Object.assign(target, patch)
+  saveToolUpdateState()
+  return target
+}
+
+function queueToolNotification({ tool, type, version = '', message = '' }) {
+  const normalizedTool = String(tool || '').trim()
+  const normalizedType = String(type || '').trim()
+  const normalizedVersion = String(version || '').trim()
+  const normalizedMessage = String(message || '').trim()
+  if (!normalizedTool || !normalizedType) return
+
+  const alreadyQueued = toolUpdateState.notifications.some((entry) => (
+    !entry.consumed
+    && entry.tool === normalizedTool
+    && entry.type === normalizedType
+    && entry.version === normalizedVersion
+  ))
+  if (alreadyQueued) return
+
+  toolUpdateState.notifications.push({
+    id: crypto.randomUUID(),
+    tool: normalizedTool,
+    type: normalizedType,
+    version: normalizedVersion,
+    message: normalizedMessage,
+    createdAt: Date.now(),
+    consumed: false,
+  })
+  toolUpdateState.notifications = toolUpdateState.notifications.slice(-TOOL_UPDATE_MAX_NOTIFICATIONS)
+  saveToolUpdateState()
+}
+
+function consumeToolNotifications(filterFn = null) {
+  const pending = []
+  const hasFilter = typeof filterFn === 'function'
+
+  for (const notification of toolUpdateState.notifications) {
+    if (notification.consumed) continue
+    if (hasFilter && !filterFn(notification)) continue
+    notification.consumed = true
+    pending.push(notification)
+  }
+
+  if (pending.length) {
+    saveToolUpdateState()
+  }
+
+  return pending
+}
+
+function getGitHubHeaders() {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'yLoader',
+  }
+
+  if (GITHUB_API_TOKEN) {
+    headers.Authorization = `Bearer ${GITHUB_API_TOKEN}`
+  }
+
+  return headers
+}
+
+async function fetchLatestGitHubRelease(owner, repo) {
+  const url = `https://api.github.com/repos/${owner}/${repo}/releases/latest`
+  const response = await fetch(url, { headers: getGitHubHeaders() })
+  if (!response.ok) {
+    throw new Error(`GitHub releases API returned ${response.status} for ${owner}/${repo}`)
+  }
+
+  const payload = await response.json()
+  if (!payload || typeof payload !== 'object') {
+    throw new Error(`GitHub releases API returned invalid payload for ${owner}/${repo}`)
+  }
+
+  return payload
 }
 
 function getYtDlpLatestCacheSnapshot() {
   const hasVersion = Boolean(ytDlpLatestVersionCache.version)
   return {
     latestVersion: hasVersion ? ytDlpLatestVersionCache.version : '',
+    latestReleaseTag: hasVersion ? ytDlpLatestVersionCache.releaseTag : '',
+    latestReleaseName: hasVersion ? ytDlpLatestVersionCache.releaseName : '',
+    latestHtmlUrl: hasVersion ? ytDlpLatestVersionCache.htmlUrl : '',
     latestFromCache: hasVersion,
     latestCheckedAt: hasVersion ? ytDlpLatestVersionCache.fetchedAt : 0,
     latestSource: hasVersion ? 'cache' : 'none',
@@ -1660,19 +1878,23 @@ function isYtDlpLatestCacheFresh(now = Date.now()) {
   return (now - ytDlpLatestVersionCache.fetchedAt) < YT_DLP_LATEST_CACHE_TTL_MS
 }
 
-async function fetchLatestYtDlpVersionFromPypi() {
-  const pypiRes = await fetch('https://pypi.org/pypi/yt-dlp/json')
-  if (!pypiRes.ok) {
-    throw new Error(`PyPI returned ${pypiRes.status}`)
-  }
+async function fetchLatestYtDlpVersionFromGitHub() {
+  const release = await fetchLatestGitHubRelease('yt-dlp', 'yt-dlp')
+  const releaseTag = String(release?.tag_name || '').trim()
+  const releaseName = String(release?.name || '').trim()
+  const fallbackVersion = releaseTag.replace(/^v/i, '')
+  const latestVersion = fallbackVersion || releaseName
 
-  const pypiData = await pypiRes.json()
-  const latestVersion = String(pypiData?.info?.version || '').trim()
   if (!latestVersion) {
-    throw new Error('PyPI response did not include a yt-dlp version')
+    throw new Error('GitHub release response did not include a yt-dlp version')
   }
 
-  return latestVersion
+  return {
+    latestVersion,
+    latestReleaseTag: releaseTag,
+    latestReleaseName: releaseName,
+    latestHtmlUrl: String(release?.html_url || '').trim(),
+  }
 }
 
 async function getLatestYtDlpVersion({ forceRefresh = false } = {}) {
@@ -1681,6 +1903,9 @@ async function getLatestYtDlpVersion({ forceRefresh = false } = {}) {
   if (!forceRefresh && isYtDlpLatestCacheFresh(now)) {
     return {
       latestVersion: ytDlpLatestVersionCache.version,
+      latestReleaseTag: ytDlpLatestVersionCache.releaseTag,
+      latestReleaseName: ytDlpLatestVersionCache.releaseName,
+      latestHtmlUrl: ytDlpLatestVersionCache.htmlUrl,
       latestFromCache: true,
       latestCheckedAt: ytDlpLatestVersionCache.fetchedAt,
       latestSource: 'cache',
@@ -1692,12 +1917,15 @@ async function getLatestYtDlpVersion({ forceRefresh = false } = {}) {
   }
 
   const requestPromise = (async () => {
-    const latestVersion = await fetchLatestYtDlpVersionFromPypi()
-    ytDlpLatestVersionCache.version = latestVersion
+    const latestInfo = await fetchLatestYtDlpVersionFromGitHub()
+    ytDlpLatestVersionCache.version = latestInfo.latestVersion
+    ytDlpLatestVersionCache.releaseTag = latestInfo.latestReleaseTag
+    ytDlpLatestVersionCache.releaseName = latestInfo.latestReleaseName
+    ytDlpLatestVersionCache.htmlUrl = latestInfo.latestHtmlUrl
     ytDlpLatestVersionCache.fetchedAt = Date.now()
 
     return {
-      latestVersion,
+      ...latestInfo,
       latestFromCache: false,
       latestCheckedAt: ytDlpLatestVersionCache.fetchedAt,
       latestSource: 'network',
@@ -1714,6 +1942,808 @@ async function getLatestYtDlpVersion({ forceRefresh = false } = {}) {
     }
   }
 }
+
+function getFfmpegLatestCacheSnapshot() {
+  const hasVersion = Boolean(ffmpegLatestVersionCache.version)
+  return {
+    latestVersion: hasVersion ? ffmpegLatestVersionCache.version : '',
+    latestReleaseTag: hasVersion ? ffmpegLatestVersionCache.releaseTag : '',
+    latestReleaseName: hasVersion ? ffmpegLatestVersionCache.releaseName : '',
+    latestHtmlUrl: hasVersion ? ffmpegLatestVersionCache.htmlUrl : '',
+    latestFromCache: hasVersion,
+    latestCheckedAt: hasVersion ? ffmpegLatestVersionCache.fetchedAt : 0,
+    latestSource: hasVersion ? 'cache' : 'none',
+  }
+}
+
+function isFfmpegLatestCacheFresh(now = Date.now()) {
+  if (!ffmpegLatestVersionCache.version || !ffmpegLatestVersionCache.fetchedAt) return false
+  return (now - ffmpegLatestVersionCache.fetchedAt) < FFMPEG_LATEST_CACHE_TTL_MS
+}
+
+function getFfmpegAssetKey(platform = process.platform, arch = process.arch) {
+  const byPlatform = FFMPEG_ASSET_PLATFORM_MAP[platform]
+  if (!byPlatform) return ''
+  return byPlatform[arch] || ''
+}
+
+function findReleaseAssetByName(release, name) {
+  const assets = Array.isArray(release?.assets) ? release.assets : []
+  return assets.find((asset) => String(asset?.name || '').trim() === name) || null
+}
+
+async function fetchLatestFfmpegReleaseInfo() {
+  const release = await fetchLatestGitHubRelease(FFMPEG_RELEASE_SOURCE.owner, FFMPEG_RELEASE_SOURCE.repo)
+  const assetKey = getFfmpegAssetKey(process.platform, process.arch)
+  if (!assetKey) {
+    throw new Error(`No ffmpeg release asset mapping for ${process.platform}/${process.arch}`)
+  }
+
+  const ffmpegAssetName = `ffmpeg-${assetKey}`
+  const ffprobeAssetName = `ffprobe-${assetKey}`
+  const ffmpegAsset = findReleaseAssetByName(release, ffmpegAssetName)
+  const ffprobeAsset = findReleaseAssetByName(release, ffprobeAssetName)
+
+  if (!ffmpegAsset || !ffprobeAsset) {
+    throw new Error(`Release ${release?.tag_name || 'latest'} is missing ${ffmpegAssetName} or ${ffprobeAssetName}`)
+  }
+
+  const releaseTag = String(release?.tag_name || '').trim()
+  const releaseName = String(release?.name || '').trim()
+  const parsedTagVersion = releaseTag.replace(/^[^0-9]*/, '')
+  const parsedNameVersion = releaseName.replace(/^[^0-9]*/, '')
+  const latestVersion = parsedTagVersion || parsedNameVersion || releaseTag || releaseName
+
+  return {
+    latestVersion,
+    latestReleaseTag: releaseTag,
+    latestReleaseName: releaseName,
+    latestHtmlUrl: String(release?.html_url || '').trim(),
+    ffmpegAssetName,
+    ffprobeAssetName,
+    ffmpegAssetUrl: String(ffmpegAsset?.browser_download_url || '').trim(),
+    ffprobeAssetUrl: String(ffprobeAsset?.browser_download_url || '').trim(),
+  }
+}
+
+async function getLatestFfmpegVersion({ forceRefresh = false } = {}) {
+  const now = Date.now()
+
+  if (!forceRefresh && isFfmpegLatestCacheFresh(now)) {
+    return {
+      latestVersion: ffmpegLatestVersionCache.version,
+      latestReleaseTag: ffmpegLatestVersionCache.releaseTag,
+      latestReleaseName: ffmpegLatestVersionCache.releaseName,
+      latestHtmlUrl: ffmpegLatestVersionCache.htmlUrl,
+      latestFromCache: true,
+      latestCheckedAt: ffmpegLatestVersionCache.fetchedAt,
+      latestSource: 'cache',
+      ffmpegAssetName: ffmpegLatestVersionCache.ffmpegAssetName || '',
+      ffprobeAssetName: ffmpegLatestVersionCache.ffprobeAssetName || '',
+      ffmpegAssetUrl: ffmpegLatestVersionCache.ffmpegAssetUrl || '',
+      ffprobeAssetUrl: ffmpegLatestVersionCache.ffprobeAssetUrl || '',
+    }
+  }
+
+  if (!forceRefresh && ffmpegLatestVersionFetchPromise) {
+    return ffmpegLatestVersionFetchPromise
+  }
+
+  const requestPromise = (async () => {
+    const latestInfo = await fetchLatestFfmpegReleaseInfo()
+    ffmpegLatestVersionCache.version = latestInfo.latestVersion
+    ffmpegLatestVersionCache.releaseTag = latestInfo.latestReleaseTag
+    ffmpegLatestVersionCache.releaseName = latestInfo.latestReleaseName
+    ffmpegLatestVersionCache.htmlUrl = latestInfo.latestHtmlUrl
+    ffmpegLatestVersionCache.ffmpegAssetName = latestInfo.ffmpegAssetName
+    ffmpegLatestVersionCache.ffprobeAssetName = latestInfo.ffprobeAssetName
+    ffmpegLatestVersionCache.ffmpegAssetUrl = latestInfo.ffmpegAssetUrl
+    ffmpegLatestVersionCache.ffprobeAssetUrl = latestInfo.ffprobeAssetUrl
+    ffmpegLatestVersionCache.fetchedAt = Date.now()
+
+    return {
+      ...latestInfo,
+      latestFromCache: false,
+      latestCheckedAt: ffmpegLatestVersionCache.fetchedAt,
+      latestSource: 'network',
+    }
+  })()
+
+  ffmpegLatestVersionFetchPromise = requestPromise
+
+  try {
+    return await requestPromise
+  } finally {
+    if (ffmpegLatestVersionFetchPromise === requestPromise) {
+      ffmpegLatestVersionFetchPromise = null
+    }
+  }
+}
+
+function getFfmpegMetadataPath(ffmpegPath = FFMPEG_BIN) {
+  const binaryPath = String(ffmpegPath || '').trim()
+  if (!binaryPath) return ''
+  return path.join(path.dirname(binaryPath), '.yloader-ffmpeg-release.json')
+}
+
+function readFfmpegMetadata(ffmpegPath = FFMPEG_BIN) {
+  const metadataPath = getFfmpegMetadataPath(ffmpegPath)
+  if (!metadataPath || !fs.existsSync(metadataPath)) return null
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'))
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      releaseTag: String(parsed.releaseTag || '').trim(),
+      releaseName: String(parsed.releaseName || '').trim(),
+      version: String(parsed.version || '').trim(),
+      installedAt: Number(parsed.installedAt || 0),
+      ffmpegAssetName: String(parsed.ffmpegAssetName || '').trim(),
+      ffprobeAssetName: String(parsed.ffprobeAssetName || '').trim(),
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeFfmpegMetadata(info, ffmpegPath = FFMPEG_BIN) {
+  const metadataPath = getFfmpegMetadataPath(ffmpegPath)
+  if (!metadataPath) return
+
+  const payload = {
+    releaseTag: String(info?.releaseTag || '').trim(),
+    releaseName: String(info?.releaseName || '').trim(),
+    version: String(info?.version || '').trim(),
+    ffmpegAssetName: String(info?.ffmpegAssetName || '').trim(),
+    ffprobeAssetName: String(info?.ffprobeAssetName || '').trim(),
+    installedAt: Date.now(),
+  }
+
+  try {
+    fs.writeFileSync(metadataPath, JSON.stringify(payload, null, 2))
+  } catch (err) {
+    console.warn('Failed to write ffmpeg release metadata:', err?.message || err)
+  }
+}
+
+function parseBooleanQueryFlag(value) {
+  const raw = String(value || '').trim().toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
+}
+
+function getEffectiveFfprobeBinaryPath() {
+  if (FFPROBE_BIN && isRegularFile(FFPROBE_BIN)) {
+    return FFPROBE_BIN
+  }
+
+  if (!FFMPEG_BIN) return ''
+  const fallbackName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
+  const siblingPath = path.join(path.dirname(FFMPEG_BIN), fallbackName)
+  if (isRegularFile(siblingPath)) {
+    FFPROBE_BIN = siblingPath
+    return siblingPath
+  }
+
+  return ''
+}
+
+async function refreshYtDlpUpdateStatus({ forceLatest = false, localOnly = false } = {}) {
+  const updateSupported = !isYtDlpUpdateDisabled()
+  const currentRaw = await runCmd(YT_DLP, ['--version'])
+  const firstLine = String(currentRaw || '').split(/\r?\n/).find(Boolean) || ''
+  const currentVersion = extractVersionToken(firstLine)
+
+  let latestVersion = currentVersion
+  let latestReleaseTag = ''
+  let latestReleaseName = ''
+  let latestHtmlUrl = ''
+  let latestFromCache = false
+  let latestCheckedAt = 0
+  let latestSource = 'none'
+  let latestError = ''
+
+  if (localOnly) {
+    const cached = getYtDlpLatestCacheSnapshot()
+    if (cached.latestVersion) {
+      latestVersion = cached.latestVersion
+      latestReleaseTag = cached.latestReleaseTag
+      latestReleaseName = cached.latestReleaseName
+      latestHtmlUrl = cached.latestHtmlUrl
+      latestFromCache = true
+      latestCheckedAt = Number(cached.latestCheckedAt || 0)
+      latestSource = cached.latestSource || 'cache'
+    }
+  } else {
+    try {
+      const latestInfo = await getLatestYtDlpVersion({ forceRefresh: forceLatest })
+      latestVersion = latestInfo.latestVersion || currentVersion
+      latestReleaseTag = latestInfo.latestReleaseTag || ''
+      latestReleaseName = latestInfo.latestReleaseName || ''
+      latestHtmlUrl = latestInfo.latestHtmlUrl || ''
+      latestFromCache = Boolean(latestInfo.latestFromCache)
+      latestCheckedAt = Number(latestInfo.latestCheckedAt || 0)
+      latestSource = String(latestInfo.latestSource || 'none')
+    } catch (err) {
+      latestError = String(err?.message || err)
+      const cached = getYtDlpLatestCacheSnapshot()
+      if (cached.latestVersion) {
+        latestVersion = cached.latestVersion
+        latestReleaseTag = cached.latestReleaseTag
+        latestReleaseName = cached.latestReleaseName
+        latestHtmlUrl = cached.latestHtmlUrl
+        latestFromCache = true
+        latestCheckedAt = Number(cached.latestCheckedAt || 0)
+        latestSource = 'cache-fallback'
+      }
+    }
+  }
+
+  const updateAvailable = Boolean(currentVersion && latestVersion && versionsAreDifferent(latestVersion, currentVersion))
+
+  patchToolState('ytDlp', {
+    currentVersion,
+    latestVersion,
+    latestReleaseTag,
+    latestReleaseName,
+    latestHtmlUrl,
+    latestCheckedAt,
+    latestFromCache,
+    latestSource,
+    latestError,
+    updateAvailable,
+    updateSupported,
+    lastError: '',
+  })
+
+  return {
+    currentVersion,
+    latestVersion,
+    latestReleaseTag,
+    latestReleaseName,
+    latestHtmlUrl,
+    latestCheckedAt,
+    latestFromCache,
+    latestSource,
+    latestError,
+    updateAvailable,
+    updateSupported,
+  }
+}
+
+async function refreshFfmpegUpdateStatus({ forceLatest = false, localOnly = false } = {}) {
+  const projectManaged = isProjectManagedFfmpegBinary()
+  const updateSupported = Boolean(projectManaged && FFMPEG_BIN)
+  const ffprobePath = getEffectiveFfprobeBinaryPath()
+
+  const versionLine = await readBinaryVersionLine(FFMPEG_BIN)
+  const currentVersion = extractVersionToken(versionLine)
+
+  const ffprobeVersionLine = ffprobePath ? await readBinaryVersionLine(ffprobePath).catch(() => '') : ''
+  const ffprobeVersion = extractVersionToken(ffprobeVersionLine)
+
+  let latestVersion = currentVersion
+  let latestReleaseTag = ''
+  let latestReleaseName = ''
+  let latestHtmlUrl = ''
+  let latestFromCache = false
+  let latestCheckedAt = 0
+  let latestSource = 'none'
+  let latestError = ''
+  let ffmpegAssetName = ''
+  let ffprobeAssetName = ''
+
+  if (localOnly) {
+    const cached = getFfmpegLatestCacheSnapshot()
+    if (cached.latestVersion) {
+      latestVersion = cached.latestVersion
+      latestReleaseTag = cached.latestReleaseTag
+      latestReleaseName = cached.latestReleaseName
+      latestHtmlUrl = cached.latestHtmlUrl
+      latestFromCache = true
+      latestCheckedAt = Number(cached.latestCheckedAt || 0)
+      latestSource = cached.latestSource || 'cache'
+    }
+  } else {
+    try {
+      const latestInfo = await getLatestFfmpegVersion({ forceRefresh: forceLatest })
+      latestVersion = latestInfo.latestVersion || currentVersion
+      latestReleaseTag = latestInfo.latestReleaseTag || ''
+      latestReleaseName = latestInfo.latestReleaseName || ''
+      latestHtmlUrl = latestInfo.latestHtmlUrl || ''
+      latestFromCache = Boolean(latestInfo.latestFromCache)
+      latestCheckedAt = Number(latestInfo.latestCheckedAt || 0)
+      latestSource = String(latestInfo.latestSource || 'none')
+      ffmpegAssetName = latestInfo.ffmpegAssetName || ''
+      ffprobeAssetName = latestInfo.ffprobeAssetName || ''
+    } catch (err) {
+      latestError = String(err?.message || err)
+      const cached = getFfmpegLatestCacheSnapshot()
+      if (cached.latestVersion) {
+        latestVersion = cached.latestVersion
+        latestReleaseTag = cached.latestReleaseTag
+        latestReleaseName = cached.latestReleaseName
+        latestHtmlUrl = cached.latestHtmlUrl
+        latestFromCache = true
+        latestCheckedAt = Number(cached.latestCheckedAt || 0)
+        latestSource = 'cache-fallback'
+      }
+    }
+  }
+
+  const installedMeta = readFfmpegMetadata(FFMPEG_BIN)
+  let updateAvailable = false
+  if (installedMeta?.releaseTag && latestReleaseTag) {
+    updateAvailable = versionsAreDifferent(installedMeta.releaseTag, latestReleaseTag)
+  } else if (currentVersion && latestVersion) {
+    updateAvailable = versionsAreDifferent(currentVersion, latestVersion)
+  }
+
+  patchToolState('ffmpeg', {
+    currentVersion,
+    latestVersion,
+    latestReleaseTag,
+    latestReleaseName,
+    latestHtmlUrl,
+    latestCheckedAt,
+    latestFromCache,
+    latestSource,
+    latestError,
+    updateAvailable,
+    updateSupported,
+    ffmpegAssetName,
+    ffprobeAssetName,
+    ffprobeVersion,
+    lastError: '',
+  })
+
+  return {
+    currentVersion,
+    latestVersion,
+    latestReleaseTag,
+    latestReleaseName,
+    latestHtmlUrl,
+    latestCheckedAt,
+    latestFromCache,
+    latestSource,
+    latestError,
+    updateAvailable,
+    updateSupported,
+    ffmpegAssetName,
+    ffprobeAssetName,
+    ffprobeVersion,
+  }
+}
+
+async function downloadBinaryAsset(url, destinationPath) {
+  const response = await fetch(url, { headers: getGitHubHeaders() })
+  if (!response.ok) {
+    throw new Error(`Download failed (${response.status}) for ${url}`)
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true })
+  fs.writeFileSync(destinationPath, Buffer.from(arrayBuffer))
+}
+
+function replaceFileSafely(targetPath, tempPath) {
+  const backupPath = `${targetPath}.bak`
+  try {
+    if (fs.existsSync(backupPath)) {
+      fs.unlinkSync(backupPath)
+    }
+  } catch {
+    // ignore stale backup cleanup errors
+  }
+
+  const hadTarget = fs.existsSync(targetPath)
+  if (hadTarget) {
+    fs.renameSync(targetPath, backupPath)
+  }
+
+  try {
+    fs.renameSync(tempPath, targetPath)
+    try {
+      if (fs.existsSync(backupPath)) {
+        fs.unlinkSync(backupPath)
+      }
+    } catch {
+      // ignore backup cleanup failure
+    }
+  } catch (err) {
+    if (hadTarget && fs.existsSync(backupPath) && !fs.existsSync(targetPath)) {
+      try {
+        fs.renameSync(backupPath, targetPath)
+      } catch {
+        // ignore restore failure
+      }
+    }
+    throw err
+  }
+}
+
+async function runYtDlpUpdate({ onLog = null } = {}) {
+  const updateCmd = getYtDlpUpdateCommand()
+  if (!updateCmd) {
+    throw new Error(`Updates are managed externally for this yt-dlp installation (${YT_DLP_UPDATE_METHOD}).`)
+  }
+
+  const status = getToolState('ytDlp')
+  if (status.updateInProgress) {
+    throw new Error('yt-dlp update is already running')
+  }
+
+  patchToolState('ytDlp', { updateInProgress: true, lastError: '' })
+
+  const log = (message) => {
+    if (typeof onLog === 'function') {
+      onLog(String(message || ''))
+    }
+  }
+
+  try {
+    const beforeRaw = await runCmd(YT_DLP, ['--version']).catch(() => '')
+    const beforeVersion = extractVersionToken(String(beforeRaw || '').split(/\r?\n/).find(Boolean) || '')
+
+    log(`Starting yt-dlp update via ${updateCmd.label}...`)
+    const output = await runCmd(updateCmd.cmd, updateCmd.args, { maxBuffer: 10 * 1024 * 1024 })
+    const outputLines = String(output || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    for (const line of outputLines.slice(-20)) {
+      log(line)
+    }
+
+    const afterRaw = await runCmd(YT_DLP, ['--version']).catch(() => '')
+    const afterVersion = extractVersionToken(String(afterRaw || '').split(/\r?\n/).find(Boolean) || '')
+
+    const latestInfo = await getLatestYtDlpVersion({ forceRefresh: true }).catch(() => null)
+    const latestVersion = latestInfo?.latestVersion || afterVersion
+    const latestReleaseTag = latestInfo?.latestReleaseTag || ''
+    const latestReleaseName = latestInfo?.latestReleaseName || ''
+    const latestHtmlUrl = latestInfo?.latestHtmlUrl || ''
+    const updateAvailable = Boolean(afterVersion && latestVersion && versionsAreDifferent(afterVersion, latestVersion))
+
+    patchToolState('ytDlp', {
+      currentVersion: afterVersion,
+      latestVersion,
+      latestReleaseTag,
+      latestReleaseName,
+      latestHtmlUrl,
+      latestCheckedAt: Number(latestInfo?.latestCheckedAt || Date.now()),
+      latestFromCache: Boolean(latestInfo?.latestFromCache),
+      latestSource: String(latestInfo?.latestSource || 'network'),
+      latestError: '',
+      updateAvailable,
+      lastUpdatedAt: Date.now(),
+      lastUpdatedFrom: beforeVersion,
+      lastUpdatedTo: afterVersion,
+      lastError: '',
+      updateInProgress: false,
+    })
+
+    if (beforeVersion && afterVersion && versionsAreDifferent(beforeVersion, afterVersion)) {
+      queueToolNotification({ tool: 'ytDlp', type: 'updated', version: afterVersion })
+    }
+
+    return {
+      beforeVersion,
+      afterVersion,
+      latestVersion,
+      updated: Boolean(beforeVersion && afterVersion && versionsAreDifferent(beforeVersion, afterVersion)),
+    }
+  } catch (err) {
+    patchToolState('ytDlp', {
+      updateInProgress: false,
+      lastError: String(err?.message || err),
+    })
+    throw err
+  }
+}
+
+async function runFfmpegUpdate({ onLog = null } = {}) {
+  if (!FFMPEG_BIN) {
+    throw new Error('FFMPEG_PATH is not configured')
+  }
+  if (!isProjectManagedFfmpegBinary()) {
+    throw new Error('Updates are managed externally for this ffmpeg installation')
+  }
+
+  const status = getToolState('ffmpeg')
+  if (status.updateInProgress) {
+    throw new Error('ffmpeg update is already running')
+  }
+
+  patchToolState('ffmpeg', { updateInProgress: true, lastError: '' })
+  const log = (message) => {
+    if (typeof onLog === 'function') {
+      onLog(String(message || ''))
+    }
+  }
+
+  const ffprobePath = getEffectiveFfprobeBinaryPath()
+  const beforeVersionLine = await readBinaryVersionLine(FFMPEG_BIN).catch(() => '')
+  const beforeVersion = extractVersionToken(beforeVersionLine)
+
+  const tempDir = path.join(path.dirname(FFMPEG_BIN), `.ffmpeg-update-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`)
+
+  try {
+    const latestInfo = await getLatestFfmpegVersion({ forceRefresh: true })
+    if (!latestInfo.ffmpegAssetUrl || !latestInfo.ffprobeAssetUrl) {
+      throw new Error('Latest ffmpeg release does not include required assets for this platform')
+    }
+
+    fs.mkdirSync(tempDir, { recursive: true })
+    const ffmpegTempPath = path.join(tempDir, path.basename(FFMPEG_BIN))
+    const targetFfprobePath = ffprobePath || path.join(path.dirname(FFMPEG_BIN), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
+    const ffprobeTempPath = path.join(tempDir, path.basename(targetFfprobePath))
+
+    log(`Downloading ${latestInfo.ffmpegAssetName}...`)
+    await downloadBinaryAsset(latestInfo.ffmpegAssetUrl, ffmpegTempPath)
+    log(`Downloading ${latestInfo.ffprobeAssetName}...`)
+    await downloadBinaryAsset(latestInfo.ffprobeAssetUrl, ffprobeTempPath)
+
+    if (process.platform !== 'win32') {
+      fs.chmodSync(ffmpegTempPath, 0o755)
+      fs.chmodSync(ffprobeTempPath, 0o755)
+    }
+
+    log('Replacing ffmpeg binary...')
+    replaceFileSafely(FFMPEG_BIN, ffmpegTempPath)
+    log('Replacing ffprobe binary...')
+    replaceFileSafely(targetFfprobePath, ffprobeTempPath)
+
+    FFPROBE_BIN = targetFfprobePath
+
+    const afterVersionLine = await readBinaryVersionLine(FFMPEG_BIN).catch(() => '')
+    const afterVersion = extractVersionToken(afterVersionLine)
+
+    writeFfmpegMetadata({
+      releaseTag: latestInfo.latestReleaseTag,
+      releaseName: latestInfo.latestReleaseName,
+      version: latestInfo.latestVersion,
+      ffmpegAssetName: latestInfo.ffmpegAssetName,
+      ffprobeAssetName: latestInfo.ffprobeAssetName,
+    }, FFMPEG_BIN)
+
+    patchToolState('ffmpeg', {
+      currentVersion: afterVersion,
+      latestVersion: latestInfo.latestVersion,
+      latestReleaseTag: latestInfo.latestReleaseTag,
+      latestReleaseName: latestInfo.latestReleaseName,
+      latestHtmlUrl: latestInfo.latestHtmlUrl,
+      latestCheckedAt: Number(latestInfo.latestCheckedAt || Date.now()),
+      latestFromCache: Boolean(latestInfo.latestFromCache),
+      latestSource: String(latestInfo.latestSource || 'network'),
+      latestError: '',
+      updateAvailable: false,
+      lastUpdatedAt: Date.now(),
+      lastUpdatedFrom: beforeVersion,
+      lastUpdatedTo: afterVersion,
+      lastError: '',
+      updateInProgress: false,
+    })
+
+    if (beforeVersion && afterVersion && versionsAreDifferent(beforeVersion, afterVersion)) {
+      queueToolNotification({ tool: 'ffmpeg', type: 'updated', version: afterVersion })
+    }
+
+    return {
+      beforeVersion,
+      afterVersion,
+      latestVersion: latestInfo.latestVersion,
+      updated: Boolean(beforeVersion && afterVersion && versionsAreDifferent(beforeVersion, afterVersion)),
+    }
+  } catch (err) {
+    patchToolState('ffmpeg', {
+      updateInProgress: false,
+      lastError: String(err?.message || err),
+    })
+    throw err
+  } finally {
+    try {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true })
+      }
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
+async function runToolUpdateCycle({ force = false } = {}) {
+  if (toolUpdateCyclePromise) {
+    return toolUpdateCyclePromise
+  }
+
+  toolUpdateCyclePromise = (async () => {
+    const now = Date.now()
+    if (!force && toolUpdateState.nextCycleAt && now < toolUpdateState.nextCycleAt) {
+      return
+    }
+
+    const settings = await readToolUpdaterSettings().catch(() => ({ ...DEFAULT_TOOL_UPDATER_SETTINGS }))
+
+    try {
+      const ytStatus = await refreshYtDlpUpdateStatus({ forceLatest: true })
+      if (ytStatus.updateAvailable && ytStatus.updateSupported && settings.ytDlpAutoUpdate) {
+        queueToolNotification({ tool: 'ytDlp', type: 'installing', version: ytStatus.latestVersion })
+        await runYtDlpUpdate()
+      }
+    } catch (err) {
+      patchToolState('ytDlp', { lastError: String(err?.message || err) })
+    }
+
+    try {
+      if (FFMPEG_BIN) {
+        const ffmpegStatus = await refreshFfmpegUpdateStatus({ forceLatest: true })
+        if (ffmpegStatus.updateAvailable && ffmpegStatus.updateSupported && settings.ffmpegAutoUpdate) {
+          queueToolNotification({ tool: 'ffmpeg', type: 'installing', version: ffmpegStatus.latestVersion })
+          await runFfmpegUpdate()
+        }
+      }
+    } catch (err) {
+      patchToolState('ffmpeg', { lastError: String(err?.message || err) })
+    }
+
+    toolUpdateState.lastCycleAt = Date.now()
+    toolUpdateState.nextCycleAt = toolUpdateState.lastCycleAt + TOOL_UPDATE_CHECK_INTERVAL_MS
+    saveToolUpdateState()
+  })()
+
+  try {
+    await toolUpdateCyclePromise
+  } finally {
+    toolUpdateCyclePromise = null
+  }
+}
+
+function startToolUpdateScheduler() {
+  if (toolUpdateScheduler) return
+
+  const runScheduledCheck = () => {
+    runToolUpdateCycle({ force: false }).catch((err) => {
+      console.warn('Scheduled tool update check failed:', err?.message || err)
+    })
+  }
+
+  toolUpdateScheduler = setInterval(runScheduledCheck, TOOL_UPDATE_SCHEDULER_TICK_MS)
+  toolUpdateScheduler.unref?.()
+
+  runToolUpdateCycle({ force: true }).catch((err) => {
+    console.warn('Initial tool update check failed:', err?.message || err)
+  })
+}
+
+startToolUpdateScheduler()
+
+function buildToolUpdateSummaryPayload(settings) {
+  const normalizedSettings = normalizeToolUpdaterSettingsPayload(settings)
+  const yt = getToolState('ytDlp')
+  const ff = getToolState('ffmpeg')
+  const pendingNotifications = toolUpdateState.notifications.filter((entry) => !entry.consumed).length
+
+  return {
+    lastCycleAt: Number(toolUpdateState.lastCycleAt || 0),
+    nextCycleAt: Number(toolUpdateState.nextCycleAt || 0),
+    pendingNotifications,
+    anyUpdateAvailable: Boolean(yt.updateAvailable || ff.updateAvailable),
+    anyUpdateInProgress: Boolean(yt.updateInProgress || ff.updateInProgress),
+    ytDlp: {
+      updateAvailable: Boolean(yt.updateAvailable),
+      updateInProgress: Boolean(yt.updateInProgress),
+      updateSupported: Boolean(yt.updateSupported),
+      currentVersion: String(yt.currentVersion || ''),
+      latestVersion: String(yt.latestVersion || ''),
+      autoUpdateEnabled: Boolean(normalizedSettings.ytDlpAutoUpdate),
+      lastUpdatedAt: Number(yt.lastUpdatedAt || 0),
+      latestCheckedAt: Number(yt.latestCheckedAt || 0),
+      lastError: String(yt.lastError || ''),
+    },
+    ffmpeg: {
+      updateAvailable: Boolean(ff.updateAvailable),
+      updateInProgress: Boolean(ff.updateInProgress),
+      updateSupported: Boolean(ff.updateSupported),
+      currentVersion: String(ff.currentVersion || ''),
+      latestVersion: String(ff.latestVersion || ''),
+      autoUpdateEnabled: Boolean(normalizedSettings.ffmpegAutoUpdate),
+      lastUpdatedAt: Number(ff.lastUpdatedAt || 0),
+      latestCheckedAt: Number(ff.latestCheckedAt || 0),
+      lastError: String(ff.lastError || ''),
+    },
+  }
+}
+
+app.get('/api/tool-updates/settings', async (_req, res) => {
+  try {
+    const settings = await readToolUpdaterSettings()
+    return res.json(settings)
+  } catch (err) {
+    return res.status(500).json({ error: String(err?.message || err) })
+  }
+})
+
+app.put('/api/tool-updates/settings', express.json({ limit: '200kb' }), async (req, res) => {
+  try {
+    const current = await readToolUpdaterSettings()
+    const next = normalizeToolUpdaterSettingsPayload({
+      ...current,
+      ...(req?.body && typeof req.body === 'object' ? req.body : {}),
+    })
+    const saved = await writeToolUpdaterSettings(next)
+    return res.json(saved)
+  } catch (err) {
+    return res.status(500).json({ error: String(err?.message || err) })
+  }
+})
+
+app.get('/api/tool-updates/summary', async (_req, res) => {
+  try {
+    await runToolUpdateCycle({ force: false })
+    const settings = await readToolUpdaterSettings()
+    return res.json(buildToolUpdateSummaryPayload(settings))
+  } catch (err) {
+    return res.status(500).json({ error: String(err?.message || err) })
+  }
+})
+
+app.post('/api/tool-updates/check', express.json({ limit: '100kb' }), async (req, res) => {
+  const requestedTool = String(req?.body?.tool || '').trim()
+
+  try {
+    if (requestedTool === 'ytDlp') {
+      await refreshYtDlpUpdateStatus({ forceLatest: true, localOnly: false })
+    } else if (requestedTool === 'ffmpeg') {
+      if (!FFMPEG_BIN) {
+        return res.status(400).json({ error: 'FFMPEG_PATH is not configured' })
+      }
+      await refreshFfmpegUpdateStatus({ forceLatest: true, localOnly: false })
+    } else {
+      await runToolUpdateCycle({ force: true })
+    }
+
+    const settings = await readToolUpdaterSettings()
+    return res.json(buildToolUpdateSummaryPayload(settings))
+  } catch (err) {
+    return res.status(500).json({ error: String(err?.message || err) })
+  }
+})
+
+app.get('/api/tool-updates/notifications', async (req, res) => {
+  try {
+    const peekOnly = parseBooleanQueryFlag(req?.query?.peek)
+    const notifications = peekOnly
+      ? toolUpdateState.notifications.filter((entry) => !entry.consumed)
+      : consumeToolNotifications()
+
+    return res.json({
+      notifications: notifications
+        .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
+        .map((entry) => ({
+          id: entry.id,
+          tool: entry.tool,
+          type: entry.type,
+          version: entry.version,
+          message: entry.message,
+          createdAt: Number(entry.createdAt || 0),
+        })),
+    })
+  } catch (err) {
+    return res.status(500).json({ error: String(err?.message || err) })
+  }
+})
+
+// Legacy endpoint: keep behavior for old frontend versions.
+app.get('/api/yt-dlp/update-notification', (_req, res) => {
+  try {
+    const pending = consumeToolNotifications((entry) => entry.tool === 'ytDlp' && entry.type === 'updated')
+    if (!pending.length) {
+      return res.json({ show: false })
+    }
+
+    const latest = pending.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
+    return res.json({ show: true, version: latest.version || '' })
+  } catch {
+    return res.status(500).json({ error: 'Failed to check notification' })
+  }
+})
 
 function extractVersionToken(rawValue) {
   const line = String(rawValue || '').trim()
@@ -1751,6 +2781,10 @@ function resolveExistingPath(filePath) {
 }
 
 function isProjectManagedFfmpegBinary() {
+  if (FFMPEG_MANAGED_BY_YLOADER === '1' || FFMPEG_MANAGED_BY_YLOADER === 'true' || FFMPEG_MANAGED_BY_YLOADER === 'yes' || FFMPEG_MANAGED_BY_YLOADER === 'on') {
+    return true
+  }
+
   const normalizedBinaryPath = path.normalize(String(FFMPEG_BIN || '')).toLowerCase()
   return FFMPEG_PATH_MARKERS.some((marker) => normalizedBinaryPath.includes(marker))
 }
@@ -1782,84 +2816,34 @@ app.get('/api/yt-dlp/status', async (req, res) => {
   const ytDlpFileSize = getFileSizeInfo(ytDlpPath)
   const localOnly = parseBooleanQueryFlag(req?.query?.localOnly)
   const forceLatest = parseBooleanQueryFlag(req?.query?.forceLatest)
+  const settings = await readToolUpdaterSettings().catch(() => ({ ...DEFAULT_TOOL_UPDATER_SETTINGS }))
+  const stateSnapshot = getToolState('ytDlp')
 
   try {
-    // Current version from configured yt-dlp binary path
-    const currentRaw = await runCmd(YT_DLP, ['--version'])
-    const firstLine = String(currentRaw || '').split(/\r?\n/).find(Boolean) || ''
-    const currentVersion = extractVersionToken(firstLine)
-    const localVersion = currentVersion || ''
-
-    if (localOnly) {
-      const cached = getYtDlpLatestCacheSnapshot()
-      const latestVersion = cached.latestVersion || localVersion
-      const outdated = cached.latestVersion
-        ? normalizeVersion(cached.latestVersion) !== normalizeVersion(localVersion)
-        : false
-
-      return res.json({
-        available: true,
-        currentVersion: localVersion,
-        latestVersion,
-        outdated,
-        latestFromCache: cached.latestFromCache,
-        latestCheckedAt: cached.latestCheckedAt,
-        latestSource: cached.latestSource,
-        latestError: '',
-        platform: os.platform(),
-        updateMethod: getEffectiveYtDlpUpdateMethod(),
-        updateSupported: !isYtDlpUpdateDisabled(),
-        binaryPath: ytDlpPath,
-        binarySizeBytes: ytDlpFileSize.bytes,
-        binarySizeHuman: ytDlpFileSize.human,
-        error: '',
-      })
-    }
-
-    let latestVersion = localVersion
-    let outdated = false
-    let latestFromCache = false
-    let latestCheckedAt = 0
-    let latestSource = 'none'
-    let latestError = ''
-
-    try {
-      const latestInfo = await getLatestYtDlpVersion({ forceRefresh: forceLatest })
-      latestVersion = latestInfo.latestVersion || localVersion
-      latestFromCache = Boolean(latestInfo.latestFromCache)
-      latestCheckedAt = Number(latestInfo.latestCheckedAt || 0)
-      latestSource = String(latestInfo.latestSource || 'none')
-      outdated = normalizeVersion(latestVersion) !== normalizeVersion(localVersion)
-    } catch (e) {
-      latestError = String(e?.message || e)
-      const cached = getYtDlpLatestCacheSnapshot()
-      if (cached.latestVersion) {
-        latestVersion = cached.latestVersion
-        latestFromCache = true
-        latestCheckedAt = Number(cached.latestCheckedAt || 0)
-        latestSource = 'cache-fallback'
-        outdated = normalizeVersion(latestVersion) !== normalizeVersion(localVersion)
-      }
-
-      if (forceLatest) {
-        console.warn('Failed to force-refresh latest yt-dlp version from PyPI:', latestError)
-      } else {
-        console.warn('Failed to fetch latest yt-dlp version from PyPI:', latestError)
-      }
-    }
+    const status = await refreshYtDlpUpdateStatus({ forceLatest, localOnly })
+    const outdated = Boolean(status.updateAvailable)
 
     res.json({
       available: true,
-      currentVersion: localVersion,
-      latestVersion,
+      currentVersion: status.currentVersion || '',
+      latestVersion: status.latestVersion || status.currentVersion || '',
+      latestReleaseTag: status.latestReleaseTag || '',
+      latestReleaseName: status.latestReleaseName || '',
+      latestHtmlUrl: status.latestHtmlUrl || '',
       outdated,
-      latestFromCache,
-      latestCheckedAt,
-      latestSource,
-      latestError,
+      latestFromCache: Boolean(status.latestFromCache),
+      latestCheckedAt: Number(status.latestCheckedAt || 0),
+      latestSource: String(status.latestSource || 'none'),
+      latestError: String(status.latestError || ''),
       platform: os.platform(),
       updateMethod: getEffectiveYtDlpUpdateMethod(),
-      updateSupported: !isYtDlpUpdateDisabled(),
+      updateSupported: Boolean(status.updateSupported),
+      updateInProgress: Boolean(stateSnapshot.updateInProgress),
+      autoUpdateEnabled: Boolean(settings.ytDlpAutoUpdate),
+      lastUpdatedAt: Number(stateSnapshot.lastUpdatedAt || 0),
+      lastUpdatedFrom: String(stateSnapshot.lastUpdatedFrom || ''),
+      lastUpdatedTo: String(stateSnapshot.lastUpdatedTo || ''),
+      lastError: String(stateSnapshot.lastError || ''),
       binaryPath: ytDlpPath,
       binarySizeBytes: ytDlpFileSize.bytes,
       binarySizeHuman: ytDlpFileSize.human,
@@ -1870,6 +2854,9 @@ app.get('/api/yt-dlp/status', async (req, res) => {
       available: false,
       currentVersion: '',
       latestVersion: '',
+      latestReleaseTag: '',
+      latestReleaseName: '',
+      latestHtmlUrl: '',
       outdated: false,
       latestFromCache: false,
       latestCheckedAt: 0,
@@ -1878,6 +2865,12 @@ app.get('/api/yt-dlp/status', async (req, res) => {
       platform: os.platform(),
       updateMethod: getEffectiveYtDlpUpdateMethod(),
       updateSupported: !isYtDlpUpdateDisabled(),
+      updateInProgress: Boolean(stateSnapshot.updateInProgress),
+      autoUpdateEnabled: Boolean(settings.ytDlpAutoUpdate),
+      lastUpdatedAt: Number(stateSnapshot.lastUpdatedAt || 0),
+      lastUpdatedFrom: String(stateSnapshot.lastUpdatedFrom || ''),
+      lastUpdatedTo: String(stateSnapshot.lastUpdatedTo || ''),
+      lastError: String(stateSnapshot.lastError || ''),
       binaryPath: ytDlpPath,
       binarySizeBytes: ytDlpFileSize.bytes,
       binarySizeHuman: ytDlpFileSize.human,
@@ -1887,8 +2880,12 @@ app.get('/api/yt-dlp/status', async (req, res) => {
 })
 
 // GET /api/ffmpeg/status -> { available, version, path, ffprobeVersion }
-app.get('/api/ffmpeg/status', async (_req, res) => {
+app.get('/api/ffmpeg/status', async (req, res) => {
+  const localOnly = parseBooleanQueryFlag(req?.query?.localOnly)
+  const forceLatest = parseBooleanQueryFlag(req?.query?.forceLatest)
   const projectManaged = isProjectManagedFfmpegBinary()
+  const settings = await readToolUpdaterSettings().catch(() => ({ ...DEFAULT_TOOL_UPDATER_SETTINGS }))
+  const stateSnapshot = getToolState('ffmpeg')
 
   if (!FFMPEG_BIN) {
     return res.json({
@@ -1896,55 +2893,75 @@ app.get('/api/ffmpeg/status', async (_req, res) => {
       projectManaged,
       path: '',
       version: '',
+      latestVersion: '',
+      latestReleaseTag: '',
+      latestReleaseName: '',
+      latestHtmlUrl: '',
+      outdated: false,
+      latestFromCache: false,
+      latestCheckedAt: 0,
+      latestSource: 'none',
+      latestError: '',
+      updateSupported: false,
+      updateInProgress: Boolean(stateSnapshot.updateInProgress),
+      autoUpdateEnabled: Boolean(settings.ffmpegAutoUpdate),
+      lastUpdatedAt: Number(stateSnapshot.lastUpdatedAt || 0),
+      lastUpdatedFrom: String(stateSnapshot.lastUpdatedFrom || ''),
+      lastUpdatedTo: String(stateSnapshot.lastUpdatedTo || ''),
+      lastError: String(stateSnapshot.lastError || ''),
       fileSizeBytes: null,
       fileSizeHuman: '',
       ffprobePath: '',
       ffprobeVersion: '',
       ffprobeFileSizeBytes: null,
       ffprobeFileSizeHuman: '',
+      ffmpegAssetName: '',
+      ffprobeAssetName: '',
       error: 'FFMPEG_PATH is not configured',
     })
   }
 
   try {
-    const versionLine = await readBinaryVersionLine(FFMPEG_BIN)
-    const version = extractVersionToken(versionLine)
+    const status = await refreshFfmpegUpdateStatus({ forceLatest, localOnly })
     const ffmpegFileSize = getFileSizeInfo(FFMPEG_BIN)
-    const ffmpegPath = ffmpegFileSize.resolvedPath || resolveExistingPath(FFMPEG_BIN) || FFMPEG_BIN
+    const ffmpegPath = ffmpegFileSize.resolvedPath || resolveExistingPath(FFMPEG_BIN) || String(FFMPEG_BIN || '')
 
-    let ffprobePath = FFPROBE_BIN
-    if (!ffprobePath) {
-      const fallbackName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
-      const siblingPath = path.join(path.dirname(FFMPEG_BIN), fallbackName)
-      if (fs.existsSync(siblingPath)) {
-        ffprobePath = siblingPath
-      }
-    }
-
-    let ffprobeVersion = ''
-    let ffprobeFileSize = { bytes: null, human: '' }
+    let ffprobePath = getEffectiveFfprobeBinaryPath()
+    let ffprobeFileSize = { bytes: null, human: '', resolvedPath: '' }
     if (ffprobePath) {
-      try {
-        const ffprobeVersionLine = await readBinaryVersionLine(ffprobePath)
-        ffprobeVersion = extractVersionToken(ffprobeVersionLine)
-        ffprobeFileSize = getFileSizeInfo(ffprobePath)
-        ffprobePath = ffprobeFileSize.resolvedPath || resolveExistingPath(ffprobePath) || ffprobePath
-      } catch {
-        ffprobeVersion = ''
-      }
+      ffprobeFileSize = getFileSizeInfo(ffprobePath)
+      ffprobePath = ffprobeFileSize.resolvedPath || resolveExistingPath(ffprobePath) || ffprobePath
     }
 
     return res.json({
       available: true,
       projectManaged,
       path: ffmpegPath,
-      version,
+      version: status.currentVersion || '',
+      latestVersion: status.latestVersion || status.currentVersion || '',
+      latestReleaseTag: status.latestReleaseTag || '',
+      latestReleaseName: status.latestReleaseName || '',
+      latestHtmlUrl: status.latestHtmlUrl || '',
+      outdated: Boolean(status.updateAvailable),
+      latestFromCache: Boolean(status.latestFromCache),
+      latestCheckedAt: Number(status.latestCheckedAt || 0),
+      latestSource: String(status.latestSource || 'none'),
+      latestError: String(status.latestError || ''),
+      updateSupported: Boolean(status.updateSupported),
+      updateInProgress: Boolean(stateSnapshot.updateInProgress),
+      autoUpdateEnabled: Boolean(settings.ffmpegAutoUpdate),
+      lastUpdatedAt: Number(stateSnapshot.lastUpdatedAt || 0),
+      lastUpdatedFrom: String(stateSnapshot.lastUpdatedFrom || ''),
+      lastUpdatedTo: String(stateSnapshot.lastUpdatedTo || ''),
+      lastError: String(stateSnapshot.lastError || ''),
       fileSizeBytes: ffmpegFileSize.bytes,
       fileSizeHuman: ffmpegFileSize.human,
       ffprobePath,
-      ffprobeVersion,
+      ffprobeVersion: status.ffprobeVersion || '',
       ffprobeFileSizeBytes: ffprobeFileSize.bytes,
       ffprobeFileSizeHuman: ffprobeFileSize.human,
+      ffmpegAssetName: String(status.ffmpegAssetName || stateSnapshot.ffmpegAssetName || ''),
+      ffprobeAssetName: String(status.ffprobeAssetName || stateSnapshot.ffprobeAssetName || ''),
       error: '',
     })
   } catch (err) {
@@ -1953,12 +2970,30 @@ app.get('/api/ffmpeg/status', async (_req, res) => {
       projectManaged,
       path: FFMPEG_BIN,
       version: '',
+      latestVersion: '',
+      latestReleaseTag: '',
+      latestReleaseName: '',
+      latestHtmlUrl: '',
+      outdated: false,
+      latestFromCache: false,
+      latestCheckedAt: 0,
+      latestSource: 'none',
+      latestError: '',
+      updateSupported: Boolean(projectManaged && FFMPEG_BIN),
+      updateInProgress: Boolean(stateSnapshot.updateInProgress),
+      autoUpdateEnabled: Boolean(settings.ffmpegAutoUpdate),
+      lastUpdatedAt: Number(stateSnapshot.lastUpdatedAt || 0),
+      lastUpdatedFrom: String(stateSnapshot.lastUpdatedFrom || ''),
+      lastUpdatedTo: String(stateSnapshot.lastUpdatedTo || ''),
+      lastError: String(stateSnapshot.lastError || ''),
       fileSizeBytes: null,
       fileSizeHuman: '',
       ffprobePath: FFPROBE_BIN,
       ffprobeVersion: '',
       ffprobeFileSizeBytes: null,
       ffprobeFileSizeHuman: '',
+      ffmpegAssetName: String(stateSnapshot.ffmpegAssetName || ''),
+      ffprobeAssetName: String(stateSnapshot.ffprobeAssetName || ''),
       error: String(err?.message || err),
     })
   }
@@ -2115,13 +3150,18 @@ app.get('/api/meta/formats', async (req, res) => {
 
 // GET /api/yt-dlp/update/stream -> SSE with live yt-dlp update output
 app.get('/api/yt-dlp/update/stream', async (req, res) => {
-  // Setup SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders?.()
 
+  let clientClosed = false
+  req.on('close', () => {
+    clientClosed = true
+  })
+
   const send = (event, data) => {
+    if (clientClosed || res.writableEnded) return
     if (event) res.write(`event: ${event}\n`)
     if (data !== undefined) {
       const payload = typeof data === 'string' ? data : JSON.stringify(data)
@@ -2131,56 +3171,86 @@ app.get('/api/yt-dlp/update/stream', async (req, res) => {
     }
   }
 
-  let updateCmd
   try {
-    updateCmd = getYtDlpUpdateCommand()
-    if (!updateCmd) {
-      send('error', `Updates are managed externally for this yt-dlp installation (${YT_DLP_UPDATE_METHOD}).`)
+    const status = getToolState('ytDlp')
+    if (status.updateInProgress) {
+      send('error', 'A yt-dlp update is already running.')
       send('end', 'failed')
       return res.end()
     }
-  } catch (cmdErr) {
-    send('error', String(cmdErr?.message || cmdErr))
-    send('end', 'failed')
-    return res.end()
-  }
 
-  send('info', `Starting yt-dlp update via ${updateCmd.label}...`)
-
-  try {
-    const child = spawn(updateCmd.cmd, updateCmd.args)
-    const onData = (chunk) => {
-      const lines = chunk.toString().split(/\r?\n/)
-      for (const line of lines) {
-        if (line.length) send('message', line)
-      }
+    const preStatus = await refreshYtDlpUpdateStatus({ forceLatest: true, localOnly: false }).catch(() => null)
+    if (preStatus?.updateAvailable) {
+      queueToolNotification({ tool: 'ytDlp', type: 'installing', version: preStatus.latestVersion || '' })
     }
-    child.stdout.on('data', onData)
-    child.stderr.on('data', onData)
-    child.on('error', (e) => {
-      send('error', String(e?.message || e))
-    })
-    child.on('close', async (code) => {
-      if (code === 0) {
-        // Report final version
-        const ver = await runCmd(YT_DLP, ['--version']).catch(() => '')
-        send('message', `Update finished. yt-dlp version now: ${ver.trim()}`)
-        send('end', 'done')
-      } else {
-        send('error', `${updateCmd.label} updater exited with code ${code}`)
-        send('end', 'failed')
-      }
-      res.end()
+
+    await runYtDlpUpdate({
+      onLog: (line) => send('message', line),
     })
 
-    // If client disconnects, kill child
-    req.on('close', () => {
-      try { child.kill('SIGTERM') } catch { }
-    })
+    const postStatus = getToolState('ytDlp')
+    send('message', `Update finished. yt-dlp version now: ${postStatus.currentVersion || 'unknown'}`)
+    send('end', 'done')
   } catch (e) {
     send('error', String(e?.message || e))
     send('end', 'failed')
-    res.end()
+  } finally {
+    if (!res.writableEnded) {
+      res.end()
+    }
+  }
+})
+
+// GET /api/ffmpeg/update/stream -> SSE with ffmpeg update output
+app.get('/api/ffmpeg/update/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+
+  let clientClosed = false
+  req.on('close', () => {
+    clientClosed = true
+  })
+
+  const send = (event, data) => {
+    if (clientClosed || res.writableEnded) return
+    if (event) res.write(`event: ${event}\n`)
+    if (data !== undefined) {
+      const payload = typeof data === 'string' ? data : JSON.stringify(data)
+      res.write(`data: ${payload}\n\n`)
+    } else {
+      res.write('data: \n\n')
+    }
+  }
+
+  try {
+    const status = getToolState('ffmpeg')
+    if (status.updateInProgress) {
+      send('error', 'An ffmpeg update is already running.')
+      send('end', 'failed')
+      return res.end()
+    }
+
+    const preStatus = await refreshFfmpegUpdateStatus({ forceLatest: true, localOnly: false }).catch(() => null)
+    if (preStatus?.updateAvailable) {
+      queueToolNotification({ tool: 'ffmpeg', type: 'installing', version: preStatus.latestVersion || '' })
+    }
+
+    await runFfmpegUpdate({
+      onLog: (line) => send('message', line),
+    })
+
+    const postStatus = getToolState('ffmpeg')
+    send('message', `Update finished. ffmpeg version now: ${postStatus.currentVersion || 'unknown'}`)
+    send('end', 'done')
+  } catch (e) {
+    send('error', String(e?.message || e))
+    send('end', 'failed')
+  } finally {
+    if (!res.writableEnded) {
+      res.end()
+    }
   }
 })
 

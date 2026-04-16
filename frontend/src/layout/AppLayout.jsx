@@ -41,21 +41,57 @@ export default function AppLayout({
   })
 
   useEffect(() => {
-    const checkUpdate = async () => {
+    let cancelled = false
+
+    const handleNotificationEntry = (entry) => {
+      const tool = String(entry?.tool || '').trim()
+      const type = String(entry?.type || '').trim()
+      const version = String(entry?.version || '').trim()
+
+      if (tool === 'ytDlp' && type === 'updated' && version) {
+        showNotification(t('app.notify.ytDlpUpdated', { version }), 'success')
+        return
+      }
+
+      if (tool === 'ytDlp' && type === 'installing') {
+        showNotification(t('app.notify.ytDlpInstalling', { version: version || t('settings.appUpdateVersionUnknown') }), 'info')
+        return
+      }
+
+      if (tool === 'ffmpeg' && type === 'updated' && version) {
+        showNotification(t('app.notify.ffmpegUpdated', { version }), 'success')
+        return
+      }
+
+      if (tool === 'ffmpeg' && type === 'installing') {
+        showNotification(t('app.notify.ffmpegInstalling', { version: version || t('settings.appUpdateVersionUnknown') }), 'info')
+      }
+    }
+
+    const pollToolNotifications = async () => {
       try {
         const API_BASE = getApiBase()
-        const res = await fetch(`${API_BASE}/api/yt-dlp/update-notification`)
+        const res = await fetch(`${API_BASE}/api/tool-updates/notifications`)
         if (res.ok) {
           const data = await res.json()
-          if (data.show && data.version) {
-            showNotification(t('app.notify.ytDlpUpdated', { version: data.version }), 'success')
+          if (cancelled) return
+          const list = Array.isArray(data?.notifications) ? data.notifications : []
+          for (const entry of list) {
+            handleNotificationEntry(entry)
           }
         }
       } catch {
         // ignore quietly
       }
     }
-    checkUpdate()
+
+    pollToolNotifications()
+    const interval = window.setInterval(pollToolNotifications, 45_000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
   }, [showNotification, t])
 
   useEffect(() => {

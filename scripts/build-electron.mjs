@@ -130,6 +130,7 @@ function stageToolBinaries() {
   const ytdlpSource = path.join(TOOLS_DIR, 'yt-dlp-bin', YTDLP_BINARY_NAME)
   const ffmpegSource = path.join(TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', FFMPEG_BINARY_NAME)
   const ffprobeSource = path.join(TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', FFPROBE_BINARY_NAME)
+  const ffmpegMetadataSource = path.join(TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', '.yloader-ffmpeg-release.json')
 
   if (!fs.existsSync(ytdlpSource)) {
     throw new Error(`Missing yt-dlp runtime binary at ${ytdlpSource}.`)
@@ -142,6 +143,7 @@ function stageToolBinaries() {
   const ytdlpTarget = path.join(STAGE_TOOLS_DIR, 'yt-dlp-bin', YTDLP_BINARY_NAME)
   const ffmpegTarget = path.join(STAGE_TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', FFMPEG_BINARY_NAME)
   const ffprobeTarget = path.join(STAGE_TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', FFPROBE_BINARY_NAME)
+  const ffmpegMetadataTarget = path.join(STAGE_TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', '.yloader-ffmpeg-release.json')
 
   fs.mkdirSync(path.dirname(ytdlpTarget), { recursive: true })
   fs.mkdirSync(path.dirname(ffmpegTarget), { recursive: true })
@@ -151,6 +153,10 @@ function stageToolBinaries() {
 
   if (fs.existsSync(ffprobeSource)) {
     fs.copyFileSync(ffprobeSource, ffprobeTarget)
+  }
+
+  if (fs.existsSync(ffmpegMetadataSource)) {
+    fs.copyFileSync(ffmpegMetadataSource, ffmpegMetadataTarget)
   }
 
   if (process.platform !== 'win32') {
