@@ -51,6 +51,27 @@ db.serialize(() => {
 
 const app = express()
 const PORT = process.env.PORT || 4000
+
+function getDefaultSystemDownloadsDir() {
+  const configured = String(process.env.SYSTEM_DOWNLOADS_DIR || '').trim()
+  if (configured) {
+    try {
+      return path.resolve(configured)
+    } catch {
+      // ignore invalid configured path and fall back
+    }
+  }
+
+  const homeDir = String(os.homedir() || '').trim()
+  if (homeDir) {
+    return path.join(homeDir, 'Downloads')
+  }
+
+  return path.resolve('./downloads')
+}
+
+const DEFAULT_SYSTEM_DOWNLOADS_DIR = getDefaultSystemDownloadsDir()
+
 const ALLOWED_AUDIO_CONTAINERS = new Set(['mp3', 'm4a', 'wav', 'ogg', 'flac', 'opus'])
 const ALLOWED_VIDEO_CONTAINERS = new Set(['mp4', 'webm', 'mkv'])
 const ALLOWED_IMAGE_CONTAINERS = new Set(['jpg', 'png', 'webp'])
@@ -66,6 +87,7 @@ const DOWNLOAD_CONCURRENT_OPTIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8])
 const DOWNLOAD_STAGGER_OPTIONS = new Set([0, 100, 150, 250, 500, 1000])
 const DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
+const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
 const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
 const META_FORMATS_CACHE_MAX_ENTRIES = 150
 const SEARCH_PROVIDER_OPTIONS = new Set(['youtube', 'youtubemusic', 'spotify', 'soundcloud'])
@@ -86,6 +108,15 @@ const DEFAULT_DOWNLOAD_SETTINGS = Object.freeze({
   defaultEmbedCoverArt: true,
   maxAudioBitrateKbps: 0,
   maxVideoHeight: 0,
+  downloadLocationMode: 'all',
+  globalDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
+  globalAlwaysAsk: true,
+  audioDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
+  videoDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
+  thumbnailDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
+  audioAlwaysAsk: true,
+  videoAlwaysAsk: true,
+  thumbnailAlwaysAsk: true,
 })
 const metaFormatsCache = new Map()
 const ALLOWED_TAB_PATHS = new Set([
@@ -268,6 +299,24 @@ function normalizeDownloadSettingsPayload(value) {
   const videoContainerRaw = normalizeVideoContainer(input.defaultVideoContainer)
   const maxAudioBitrateRaw = Number(input.maxAudioBitrateKbps)
   const maxVideoHeightRaw = Number(input.maxVideoHeight)
+  const downloadLocationModeRaw = String(input.downloadLocationMode || '').trim().toLowerCase()
+
+  const globalDownloadPath = normalizeDownloadDirectoryPath(
+    input.globalDownloadPath,
+    DEFAULT_DOWNLOAD_SETTINGS.globalDownloadPath
+  )
+  const audioDownloadPath = normalizeDownloadDirectoryPath(
+    input.audioDownloadPath,
+    DEFAULT_DOWNLOAD_SETTINGS.audioDownloadPath
+  )
+  const videoDownloadPath = normalizeDownloadDirectoryPath(
+    input.videoDownloadPath,
+    DEFAULT_DOWNLOAD_SETTINGS.videoDownloadPath
+  )
+  const thumbnailDownloadPath = normalizeDownloadDirectoryPath(
+    input.thumbnailDownloadPath,
+    DEFAULT_DOWNLOAD_SETTINGS.thumbnailDownloadPath
+  )
 
   return {
     maxConcurrentDownloads: DOWNLOAD_CONCURRENT_OPTIONS.has(maxConcurrentRaw)
@@ -287,6 +336,25 @@ function normalizeDownloadSettingsPayload(value) {
     maxVideoHeight: DOWNLOAD_VIDEO_HEIGHT_OPTIONS.has(maxVideoHeightRaw)
       ? maxVideoHeightRaw
       : DEFAULT_DOWNLOAD_SETTINGS.maxVideoHeight,
+    downloadLocationMode: DOWNLOAD_LOCATION_MODE_OPTIONS.has(downloadLocationModeRaw)
+      ? downloadLocationModeRaw
+      : DEFAULT_DOWNLOAD_SETTINGS.downloadLocationMode,
+    globalDownloadPath,
+    globalAlwaysAsk: input.globalAlwaysAsk !== undefined
+      ? Boolean(input.globalAlwaysAsk)
+      : DEFAULT_DOWNLOAD_SETTINGS.globalAlwaysAsk,
+    audioDownloadPath,
+    videoDownloadPath,
+    thumbnailDownloadPath,
+    audioAlwaysAsk: input.audioAlwaysAsk !== undefined
+      ? Boolean(input.audioAlwaysAsk)
+      : DEFAULT_DOWNLOAD_SETTINGS.audioAlwaysAsk,
+    videoAlwaysAsk: input.videoAlwaysAsk !== undefined
+      ? Boolean(input.videoAlwaysAsk)
+      : DEFAULT_DOWNLOAD_SETTINGS.videoAlwaysAsk,
+    thumbnailAlwaysAsk: input.thumbnailAlwaysAsk !== undefined
+      ? Boolean(input.thumbnailAlwaysAsk)
+      : DEFAULT_DOWNLOAD_SETTINGS.thumbnailAlwaysAsk,
   }
 }
 
@@ -1014,6 +1082,21 @@ function normalizeVideoContainer(value) {
 function normalizeImageContainer(value) {
   const normalized = String(value || '').trim().toLowerCase().replace('jpeg', 'jpg')
   return ALLOWED_IMAGE_CONTAINERS.has(normalized) ? normalized : ''
+}
+
+function normalizeDownloadDirectoryPath(value, fallbackPath) {
+  const fallback = String(fallbackPath || '').trim()
+  const raw = String(value || '')
+    .replace(/\u0000/g, '')
+    .trim()
+
+  if (!raw) return fallback
+
+  try {
+    return path.resolve(raw)
+  } catch {
+    return fallback
+  }
 }
 
 function sanitizeFormatId(value) {

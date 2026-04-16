@@ -22,6 +22,47 @@ import { useAutoDownload } from './home/useAutoDownload'
 
 const INPUT_BORDER_RUNNER_ANIMATION = 'input-border-runner 3.4s ease-in-out infinite'
 
+function normalizeMultiModeValue(rawValue) {
+  const text = String(rawValue || '').replace(/\r/g, '')
+  if (!text) return ''
+
+  const commaSeparatedAsLines = text.replace(
+    /(\S)\s*,\s*(?=\S)/g,
+    '$1\n'
+  )
+
+  return commaSeparatedAsLines
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n')
+}
+
+function isLikelyValidHttpLink(rawValue) {
+  const input = String(rawValue || '').trim()
+  if (!input) return false
+
+  const candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `https://${input}`
+
+  let parsed
+  try {
+    parsed = new URL(candidate)
+  } catch {
+    return false
+  }
+
+  const protocol = String(parsed.protocol || '').toLowerCase()
+  if (protocol !== 'http:' && protocol !== 'https:') return false
+
+  const hostname = String(parsed.hostname || '').trim().toLowerCase()
+  if (!hostname) return false
+
+  if (hostname === 'localhost') return true
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) return true
+  if (hostname.includes(':')) return true
+
+  return hostname.includes('.')
+}
+
 export default function HomePage({ onOpenDownloader }) {
   const { t } = useI18n()
   const { showNotification } = useNotification()
@@ -61,6 +102,11 @@ export default function HomePage({ onOpenDownloader }) {
     [value]
   )
 
+  const hasSingleInput = React.useMemo(
+    () => Boolean(String(value || '').trim()),
+    [value]
+  )
+
   const multiInputRows = React.useMemo(() => {
     if (!multiModeEnabled) return 1
 
@@ -79,13 +125,18 @@ export default function HomePage({ onOpenDownloader }) {
 
   const resolveAndOpenDownloader = React.useCallback((rawUrl) => {
     const target = String(rawUrl || '').trim()
+    if (!isLikelyValidHttpLink(target)) {
+      showNotification(t('home.invalidUrlNotification'), 'warning')
+      return
+    }
+
     const detectedService = detectService(target)
     if (!detectedService || !target || interactionLocked) return
     if (!isLikelyValidUrlFor(detectedService, target)) return
 
     setFetchError(null)
     onOpenDownloader?.(detectedService, target)
-  }, [interactionLocked, onOpenDownloader])
+  }, [interactionLocked, onOpenDownloader, showNotification, t])
 
   React.useEffect(() => {
     persistHomeAutoDownloadPrefs(autoDownloadEnabled, autoDownloadFormat)
@@ -115,8 +166,13 @@ export default function HomePage({ onOpenDownloader }) {
 
   const handleValueChange = React.useCallback((nextValue) => {
     if (fetchError) setFetchError(null)
-    setValue(nextValue)
-  }, [fetchError])
+
+    const normalizedValue = multiModeEnabled
+      ? normalizeMultiModeValue(nextValue)
+      : nextValue
+
+    setValue(normalizedValue)
+  }, [fetchError, multiModeEnabled])
 
   const disableMultiModeNow = React.useCallback(() => {
     setConfirmDisableMultiOpen(false)
@@ -142,6 +198,7 @@ export default function HomePage({ onOpenDownloader }) {
 
     if (autoDownloadEnabled) setAutoDownloadEnabled(false)
     setMultiModeEnabled(true)
+    setValue((previous) => normalizeMultiModeValue(previous))
     setMenuAnchorEl(null)
   }, [autoDownloadEnabled, disableMultiModeNow, hasMultiInput, interactionLocked, multiModeEnabled])
 
@@ -154,21 +211,29 @@ export default function HomePage({ onOpenDownloader }) {
   }, [disableMultiModeNow, interactionLocked, multiModeEnabled])
 
   const handleSubmit = React.useCallback(() => {
+    const target = String(value || '').trim()
+    if (!target) return
     if (multiModeEnabled || interactionLocked) return
 
-    if (autoDownloadEnabled) {
-      startAutoDownload(value)
+    if (!isLikelyValidHttpLink(target)) {
+      showNotification(t('home.invalidUrlNotification'), 'warning')
       return
     }
 
-    const serviceKey = detectService(value)
-    if (serviceKey) resolveAndOpenDownloader(value)
+    if (autoDownloadEnabled) {
+      startAutoDownload(target)
+      return
+    }
+
+    resolveAndOpenDownloader(target)
   }, [
     autoDownloadEnabled,
     interactionLocked,
     multiModeEnabled,
     resolveAndOpenDownloader,
+    showNotification,
     startAutoDownload,
+    t,
     value,
   ])
 
@@ -218,6 +283,8 @@ export default function HomePage({ onOpenDownloader }) {
     />
   )
 
+  const disableGoAction = interactionLocked || (multiModeEnabled ? !hasMultiInput : !hasSingleInput)
+
   return (
     <Box sx={{ position: 'relative', height: '100%' }}>
       <Box sx={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '100%', maxWidth: 780, px: 2 }}>
@@ -227,6 +294,7 @@ export default function HomePage({ onOpenDownloader }) {
             onChange={handleValueChange}
             onSubmit={handleSubmit}
             isResolving={interactionLocked}
+            disableGoAction={disableGoAction}
             quickActionsTrigger={quickActionsTrigger}
             showAutoDownloadProgress={showAutoDownloadProgress}
             autoDownloadProgressKnown={autoDownloadProgressKnown}
@@ -242,6 +310,7 @@ export default function HomePage({ onOpenDownloader }) {
             onSubmit={handleSubmit}
             onServiceDetected={handleSingleInputServiceDetected}
             isResolving={interactionLocked}
+            disableGoAction={disableGoAction}
             quickActionsTrigger={quickActionsTrigger}
             showAutoDownloadProgress={showAutoDownloadProgress}
             autoDownloadProgressKnown={autoDownloadProgressKnown}

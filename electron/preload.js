@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 const apiBase = String(process.env.ELECTRON_API_BASE || 'http://127.0.0.1:4000').trim() || 'http://127.0.0.1:4000'
+const downloadsPath = String(process.env.ELECTRON_DEFAULT_DOWNLOADS_PATH || '').trim()
 
 const windowControls = {
   minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -40,10 +41,22 @@ const appUpdater = {
   },
 }
 
+const downloads = {
+  pickDirectory: (initialPath = '') => ipcRenderer.invoke('downloads:pick-directory', {
+    initialPath: String(initialPath || ''),
+  }),
+  validateDirectory: (pathValue = '') => ipcRenderer.invoke('downloads:validate-directory', {
+    path: String(pathValue || ''),
+  }),
+  settingsUpdated: () => ipcRenderer.invoke('downloads:settings-updated'),
+}
+
 contextBridge.exposeInMainWorld('yloaderRuntime', {
   apiBase,
   isElectron: true,
   platform: process.platform,
+  downloadsPath,
   windowControls,
   appUpdater,
+  downloads,
 })

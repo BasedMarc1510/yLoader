@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, screen } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, screen, session, dialog } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const { spawn } = require('child_process')
 const fs = require('fs')
@@ -20,6 +20,20 @@ const APP_NAME = 'yLoader'
 const APP_ID = 'com.yloader.app'
 const APP_UPDATER_EVENT_CHANNEL = 'app-updater:event'
 const APP_REPOSITORY_URL = 'https://github.com/BasedMarc1510/yLoader'
+const ELECTRON_API_BASE = String(process.env.ELECTRON_API_BASE || 'http://127.0.0.1:4000').trim() || 'http://127.0.0.1:4000'
+const DOWNLOAD_SETTINGS_CACHE_TTL_MS = 1500
+const DOWNLOAD_SETTINGS_REQUEST_TIMEOUT_MS = 2000
+const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
+const AUDIO_FILE_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.opus'])
+const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv'])
+const THUMBNAIL_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
+
+let ELECTRON_API_ORIGIN = ''
+try {
+  ELECTRON_API_ORIGIN = new URL(ELECTRON_API_BASE).origin
+} catch {
+  ELECTRON_API_ORIGIN = ''
+}
 
 app.setName(APP_NAME)
 if (IS_WINDOWS) {
@@ -29,12 +43,14 @@ if (IS_WINDOWS) {
 const APP_DATA_BASE_DIR = app.getPath('appData')
 const APP_USER_DATA_DIR = path.join(APP_DATA_BASE_DIR, 'yLoader')
 const APP_SESSION_DATA_DIR = path.join(APP_USER_DATA_DIR, 'session-data')
+const APP_DEFAULT_DOWNLOADS_DIR = app.getPath('downloads')
 
 // Ensure Chromium cache/session paths always point to a writable user profile location.
 fs.mkdirSync(APP_USER_DATA_DIR, { recursive: true })
 fs.mkdirSync(APP_SESSION_DATA_DIR, { recursive: true })
 app.setPath('userData', APP_USER_DATA_DIR)
 app.setPath('sessionData', APP_SESSION_DATA_DIR)
+process.env.ELECTRON_DEFAULT_DOWNLOADS_PATH = APP_DEFAULT_DOWNLOADS_DIR
 
 let mainWindow = null
 let backendProcess = null
@@ -44,6 +60,10 @@ let windowIpcRegistered = false
 let updaterIpcRegistered = false
 let updaterConfigured = false
 let isInstallingUpdate = false
+let downloadsIpcRegistered = false
+let downloadInterceptionRegistered = false
+let cachedDownloadSettings = null
+let cachedDownloadSettingsFetchedAt = 0
 
 const UPDATE_PROGRESS_EMPTY = Object.freeze({
   percent: 0,
@@ -113,6 +133,341 @@ function isFiniteNumber(value) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function getSystemDownloadsDir() {
+  const configured = String(APP_DEFAULT_DOWNLOADS_DIR || '').trim()
+  if (configured) return configured
+
+  try {
+    return app.getPath('downloads')
+  } catch {
+    return path.join(app.getPath('home'), 'Downloads')
+  }
+}
+
+function sanitizeDownloadFilename(value) {
+  const sanitized = String(value || '')
+    .replace(/\u0000/g, '')
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!sanitized || sanitized === '.' || sanitized === '..') return 'download'
+  return sanitized
+}
+
+function normalizeDownloadDirectoryPath(value, fallbackPath) {
+  const fallback = String(fallbackPath || '').trim()
+  const raw = String(value || '')
+    .replace(/\u0000/g, '')
+    .trim()
+
+  if (!raw) return fallback
+
+  try {
+    return path.resolve(raw)
+  } catch {
+    return fallback
+  }
+}
+
+function inspectDownloadDirectory(directoryPath, { createIfMissing = false } = {}) {
+  const resolvedPath = normalizeDownloadDirectoryPath(directoryPath, '')
+  if (!resolvedPath) {
+    return {
+      path: '',
+      exists: false,
+      isDirectory: false,
+      writable: false,
+      valid: false,
+    }
+  }
+
+  try {
+    const stat = fs.statSync(resolvedPath)
+    if (!stat.isDirectory()) {
+      return {
+        path: resolvedPath,
+        exists: true,
+        isDirectory: false,
+        writable: false,
+        valid: false,
+      }
+    }
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      if (!createIfMissing) {
+        return {
+          path: resolvedPath,
+          exists: false,
+          isDirectory: false,
+          writable: false,
+          valid: false,
+        }
+      }
+
+      try {
+        fs.mkdirSync(resolvedPath, { recursive: true })
+      } catch {
+        return {
+          path: resolvedPath,
+          exists: false,
+          isDirectory: false,
+          writable: false,
+          valid: false,
+        }
+      }
+
+      try {
+        const createdStat = fs.statSync(resolvedPath)
+        if (!createdStat.isDirectory()) {
+          return {
+            path: resolvedPath,
+            exists: true,
+            isDirectory: false,
+            writable: false,
+            valid: false,
+          }
+        }
+      } catch {
+        return {
+          path: resolvedPath,
+          exists: false,
+          isDirectory: false,
+          writable: false,
+          valid: false,
+        }
+      }
+    } else {
+      return {
+        path: resolvedPath,
+        exists: false,
+        isDirectory: false,
+        writable: false,
+        valid: false,
+      }
+    }
+  }
+
+  let writable = false
+  try {
+    fs.accessSync(resolvedPath, fs.constants.W_OK)
+    writable = true
+  } catch {
+    writable = false
+  }
+
+  return {
+    path: resolvedPath,
+    exists: true,
+    isDirectory: true,
+    writable,
+    valid: writable,
+  }
+}
+
+function resolvePreferredDownloadDirectory(preferredDirectoryPath) {
+  const preferred = inspectDownloadDirectory(preferredDirectoryPath, { createIfMissing: true })
+  if (preferred.valid && preferred.path) return preferred.path
+
+  const fallbackPath = getSystemDownloadsDir()
+  const fallback = inspectDownloadDirectory(fallbackPath, { createIfMissing: true })
+  if (fallback.path) return fallback.path
+
+  return fallbackPath
+}
+
+function createDefaultDownloadSettings() {
+  const defaultPath = getSystemDownloadsDir()
+  return {
+    downloadLocationMode: 'all',
+    globalDownloadPath: defaultPath,
+    globalAlwaysAsk: true,
+    audioDownloadPath: defaultPath,
+    videoDownloadPath: defaultPath,
+    thumbnailDownloadPath: defaultPath,
+    audioAlwaysAsk: true,
+    videoAlwaysAsk: true,
+    thumbnailAlwaysAsk: true,
+  }
+}
+
+function normalizeDownloadSettings(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+  const defaults = createDefaultDownloadSettings()
+  const modeRaw = String(input.downloadLocationMode || '').trim().toLowerCase()
+
+  return {
+    downloadLocationMode: DOWNLOAD_LOCATION_MODE_OPTIONS.has(modeRaw)
+      ? modeRaw
+      : defaults.downloadLocationMode,
+    globalDownloadPath: normalizeDownloadDirectoryPath(
+      input.globalDownloadPath,
+      defaults.globalDownloadPath
+    ),
+    globalAlwaysAsk: input.globalAlwaysAsk !== undefined
+      ? Boolean(input.globalAlwaysAsk)
+      : defaults.globalAlwaysAsk,
+    audioDownloadPath: normalizeDownloadDirectoryPath(
+      input.audioDownloadPath,
+      defaults.audioDownloadPath
+    ),
+    videoDownloadPath: normalizeDownloadDirectoryPath(
+      input.videoDownloadPath,
+      defaults.videoDownloadPath
+    ),
+    thumbnailDownloadPath: normalizeDownloadDirectoryPath(
+      input.thumbnailDownloadPath,
+      defaults.thumbnailDownloadPath
+    ),
+    audioAlwaysAsk: input.audioAlwaysAsk !== undefined
+      ? Boolean(input.audioAlwaysAsk)
+      : defaults.audioAlwaysAsk,
+    videoAlwaysAsk: input.videoAlwaysAsk !== undefined
+      ? Boolean(input.videoAlwaysAsk)
+      : defaults.videoAlwaysAsk,
+    thumbnailAlwaysAsk: input.thumbnailAlwaysAsk !== undefined
+      ? Boolean(input.thumbnailAlwaysAsk)
+      : defaults.thumbnailAlwaysAsk,
+  }
+}
+
+async function syncDownloadSettingsFromBackend({ force = false } = {}) {
+  const now = Date.now()
+
+  if (!cachedDownloadSettings) {
+    cachedDownloadSettings = createDefaultDownloadSettings()
+    cachedDownloadSettingsFetchedAt = now
+  }
+
+  if (!force && (now - cachedDownloadSettingsFetchedAt) < DOWNLOAD_SETTINGS_CACHE_TTL_MS) {
+    return cachedDownloadSettings
+  }
+
+  if (typeof fetch !== 'function') {
+    cachedDownloadSettingsFetchedAt = now
+    return cachedDownloadSettings
+  }
+
+  const controller = typeof AbortController === 'function' ? new AbortController() : null
+  const timeout = setTimeout(() => {
+    try {
+      controller?.abort()
+    } catch {
+      // ignore abort races
+    }
+  }, DOWNLOAD_SETTINGS_REQUEST_TIMEOUT_MS)
+  timeout.unref?.()
+
+  try {
+    const response = await fetch(`${ELECTRON_API_BASE}/api/download/settings`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller?.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const data = await response.json()
+    cachedDownloadSettings = normalizeDownloadSettings(data)
+    cachedDownloadSettingsFetchedAt = Date.now()
+    return cachedDownloadSettings
+  } catch {
+    cachedDownloadSettingsFetchedAt = Date.now()
+    return cachedDownloadSettings
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function classifyManagedDownloadType(downloadUrl, fallbackFilename = '') {
+  const rawUrl = String(downloadUrl || '').trim()
+  if (!rawUrl) return null
+
+  let parsedUrl
+  try {
+    parsedUrl = new URL(rawUrl)
+  } catch {
+    return null
+  }
+
+  if (ELECTRON_API_ORIGIN && parsedUrl.origin !== ELECTRON_API_ORIGIN) {
+    return null
+  }
+
+  const pathname = String(parsedUrl.pathname || '')
+  const isFileDownload = pathname.startsWith('/api/download/file/')
+  const isThumbnailProxy = pathname.startsWith('/api/proxy-image')
+  if (!isFileDownload && !isThumbnailProxy) return null
+  if (isThumbnailProxy) return 'thumbnail'
+
+  let filename = String(fallbackFilename || '').trim()
+  if (!filename) {
+    let decodedPath = pathname
+    try {
+      decodedPath = decodeURIComponent(pathname)
+    } catch {
+      decodedPath = pathname
+    }
+    filename = path.basename(decodedPath)
+  }
+
+  const ext = path.extname(filename).toLowerCase()
+  if (THUMBNAIL_FILE_EXTENSIONS.has(ext)) return 'thumbnail'
+  if (AUDIO_FILE_EXTENSIONS.has(ext)) return 'audio'
+  if (VIDEO_FILE_EXTENSIONS.has(ext)) return 'video'
+
+  return 'video'
+}
+
+function resolveDownloadTargetSettings(downloadType) {
+  const defaults = createDefaultDownloadSettings()
+  const settings = normalizeDownloadSettings(cachedDownloadSettings || defaults)
+
+  if (settings.downloadLocationMode !== 'separate') {
+    return {
+      directoryPath: settings.globalDownloadPath,
+      alwaysAsk: settings.globalAlwaysAsk,
+    }
+  }
+
+  if (downloadType === 'audio') {
+    return {
+      directoryPath: settings.audioDownloadPath,
+      alwaysAsk: settings.audioAlwaysAsk,
+    }
+  }
+
+  if (downloadType === 'thumbnail') {
+    return {
+      directoryPath: settings.thumbnailDownloadPath,
+      alwaysAsk: settings.thumbnailAlwaysAsk,
+    }
+  }
+
+  return {
+    directoryPath: settings.videoDownloadPath,
+    alwaysAsk: settings.videoAlwaysAsk,
+  }
+}
+
+function buildUniqueDownloadPath(directoryPath, filename) {
+  const safeFilename = sanitizeDownloadFilename(filename)
+  const parsed = path.parse(safeFilename)
+  const ext = parsed.ext || ''
+  const baseName = parsed.name || 'download'
+  let candidate = path.join(directoryPath, `${baseName}${ext}`)
+  let index = 1
+
+  while (fs.existsSync(candidate) && index < 1000) {
+    candidate = path.join(directoryPath, `${baseName} (${index})${ext}`)
+    index += 1
+  }
+
+  return candidate
 }
 
 function createEmptyUpdateProgress() {
@@ -646,6 +1001,93 @@ function registerUpdaterIpcHandlers() {
   ipcMain.handle('app-updater:quit-and-install', () => quitAndInstallAppUpdate())
 }
 
+function registerDownloadsIpcHandlers() {
+  if (downloadsIpcRegistered) return
+  downloadsIpcRegistered = true
+
+  ipcMain.handle('downloads:pick-directory', async (_event, payload = {}) => {
+    const initialPath = String(payload?.initialPath || '').trim()
+    const defaultPath = normalizeDownloadDirectoryPath(initialPath, getSystemDownloadsDir())
+    const ownerWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+
+    const result = await dialog.showOpenDialog(ownerWindow, {
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath,
+    })
+
+    if (result.canceled || !Array.isArray(result.filePaths) || !result.filePaths[0]) {
+      return { canceled: true, path: '' }
+    }
+
+    return {
+      canceled: false,
+      path: String(result.filePaths[0] || ''),
+    }
+  })
+
+  ipcMain.handle('downloads:settings-updated', async () => {
+    await syncDownloadSettingsFromBackend({ force: true })
+    return true
+  })
+
+  ipcMain.handle('downloads:validate-directory', async (_event, payload = {}) => {
+    const inputPath = String(payload?.path || '').trim()
+    const inspection = inspectDownloadDirectory(inputPath, { createIfMissing: false })
+
+    return {
+      path: inspection.path,
+      exists: Boolean(inspection.exists),
+      isDirectory: Boolean(inspection.isDirectory),
+      writable: Boolean(inspection.writable),
+      valid: Boolean(inspection.valid),
+    }
+  })
+}
+
+function registerDownloadInterception() {
+  if (downloadInterceptionRegistered) return
+  downloadInterceptionRegistered = true
+
+  session.defaultSession.on('will-download', (event, item, webContents) => {
+    const downloadType = classifyManagedDownloadType(item?.getURL?.(), item?.getFilename?.())
+    if (!downloadType) return
+
+    // Refresh in background so manual edits from other windows are picked up quickly.
+    syncDownloadSettingsFromBackend().catch(() => {
+      // ignore transient backend errors and keep cached settings
+    })
+
+    const target = resolveDownloadTargetSettings(downloadType)
+    const preferredDirectoryPath = normalizeDownloadDirectoryPath(target.directoryPath, getSystemDownloadsDir()) || getSystemDownloadsDir()
+    const resolvedDirectoryPath = resolvePreferredDownloadDirectory(preferredDirectoryPath)
+    const safeFilename = sanitizeDownloadFilename(item?.getFilename?.() || 'download')
+    const defaultSavePath = path.join(resolvedDirectoryPath, safeFilename)
+
+    if (target.alwaysAsk) {
+      let ownerWindow = null
+      try {
+        ownerWindow = webContents ? BrowserWindow.fromWebContents(webContents) : null
+      } catch {
+        ownerWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+      }
+
+      const chosenPath = dialog.showSaveDialogSync(ownerWindow || undefined, {
+        defaultPath: defaultSavePath,
+      })
+
+      if (!chosenPath) {
+        event.preventDefault()
+        return
+      }
+
+      item.setSavePath(chosenPath)
+      return
+    }
+
+    item.setSavePath(buildUniqueDownloadPath(resolvedDirectoryPath, safeFilename))
+  })
+}
+
 function prependToPath(envObj, entryPath) {
   if (!entryPath) return
 
@@ -763,6 +1205,7 @@ function buildBackendEnv() {
     PORT: '4000',
     DB_PATH: path.join(backendDataDir, 'metadata.db'),
     DOWNLOAD_DIR: downloadsDir,
+    SYSTEM_DOWNLOADS_DIR: getSystemDownloadsDir(),
   }
 
   // Prevent stale externally configured tool paths from overriding bundled binaries.
@@ -930,8 +1373,13 @@ if (hasSingleInstanceLock) {
   app.whenReady().then(() => {
     registerWindowIpcHandlers()
     registerUpdaterIpcHandlers()
+    registerDownloadsIpcHandlers()
+    registerDownloadInterception()
     configureAutoUpdater()
     startBackendProcessIfNeeded()
+    syncDownloadSettingsFromBackend({ force: true }).catch(() => {
+      // ignore startup backend race; defaults stay active until refresh succeeds
+    })
     createMainWindow()
     scheduleStartupUpdateCheck()
 

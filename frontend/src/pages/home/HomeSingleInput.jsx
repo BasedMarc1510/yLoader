@@ -9,6 +9,7 @@ export default function HomeSingleInput({
   onSubmit,
   onServiceDetected,
   isResolving,
+  disableGoAction,
   quickActionsTrigger,
   showAutoDownloadProgress,
   autoDownloadProgressKnown,
@@ -20,7 +21,7 @@ export default function HomeSingleInput({
 
   return (
     <TextField
-      placeholder={t('placeholders.genericUrl')}
+      placeholder={t('placeholders.homeSingleUrl')}
       variant="outlined"
       fullWidth
       size="medium"
@@ -49,6 +50,7 @@ export default function HomeSingleInput({
               onClick={onSubmit}
               progressKnown={autoDownloadProgressKnown}
               progressValue={normalizedAutoDownloadProgress}
+              disabled={disableGoAction}
               t={t}
               edge="end"
             />

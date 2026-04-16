@@ -280,6 +280,15 @@ export default function SettingsModal({
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data = await resp.json()
       setDownloadSettings(normalizeDownloadSettings(data))
+
+      try {
+        const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+        if (runtime?.isElectron && typeof runtime?.downloads?.settingsUpdated === 'function') {
+          await runtime.downloads.settingsUpdated()
+        }
+      } catch {
+        // keep UI flow resilient even when runtime bridge is temporarily unavailable
+      }
     } catch (error) {
       setDownloadSettingsError(t('settings.downloadSettingsSaveFailed', { message: error?.message || error }))
     } finally {

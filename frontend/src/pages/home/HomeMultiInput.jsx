@@ -7,6 +7,7 @@ export default function HomeMultiInput({
   onChange,
   onSubmit,
   isResolving,
+  disableGoAction,
   quickActionsTrigger,
   showAutoDownloadProgress,
   autoDownloadProgressKnown,
@@ -50,7 +51,7 @@ export default function HomeMultiInput({
       })}
     >
       <TextField
-        placeholder={t('placeholders.genericUrl')}
+        placeholder={t('placeholders.homeMultiUrls')}
         variant="standard"
         fullWidth
         multiline
@@ -109,6 +110,7 @@ export default function HomeMultiInput({
           onClick={onSubmit}
           progressKnown={autoDownloadProgressKnown}
           progressValue={normalizedAutoDownloadProgress}
+          disabled={disableGoAction}
           t={t}
         />
       </Box>

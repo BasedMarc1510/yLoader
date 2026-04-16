@@ -22,8 +22,10 @@ export default function GoActionButton({
   progressValue,
   t,
   edge,
+  disabled = false,
 }) {
   const isBusy = mode === 'progress' || mode === 'loading'
+  const isDisabled = Boolean(disabled)
 
   if (isBusy) {
     return (
@@ -60,11 +62,25 @@ export default function GoActionButton({
       edge={edge}
       aria-label={t('app.startDownloadAria')}
       onClick={onClick}
+      disabled={isDisabled}
       sx={(muiTheme) => ({
         ...buttonSx(muiTheme),
         '&:hover': {
           bgcolor: muiTheme.palette.mode === 'dark' ? '#f5f5f5' : '#111111',
         },
+        ...(isDisabled
+          ? {
+              opacity: 0.55,
+              '&.Mui-disabled': {
+                opacity: 0.55,
+                color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+              },
+              '&:hover': {
+                bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+              },
+            }
+          : {}),
       })}
     >
       <ArrowRight size={18} />

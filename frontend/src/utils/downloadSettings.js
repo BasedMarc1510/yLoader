@@ -4,6 +4,23 @@ const CONCURRENT_DOWNLOAD_OPTIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8])
 const STAGGER_DOWNLOAD_OPTIONS = new Set([0, 100, 150, 250, 500, 1000])
 const AUDIO_BITRATE_THRESHOLD_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const VIDEO_HEIGHT_THRESHOLD_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
+const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
+
+function getRuntimeDownloadsPath() {
+  if (typeof window === 'undefined') return ''
+  const runtimePath = String(window?.yloaderRuntime?.downloadsPath || '').trim()
+  return runtimePath
+}
+
+function normalizeDownloadPath(value, fallbackPath) {
+  const fallback = String(fallbackPath || '').trim()
+  const raw = String(value || '')
+    .replace(/\u0000/g, '')
+    .trim()
+  return raw || fallback
+}
+
+const RUNTIME_DOWNLOADS_PATH = getRuntimeDownloadsPath()
 
 export const DOWNLOAD_SETTINGS_DEFAULTS = Object.freeze({
   maxConcurrentDownloads: 3,
@@ -13,6 +30,15 @@ export const DOWNLOAD_SETTINGS_DEFAULTS = Object.freeze({
   defaultEmbedCoverArt: true,
   maxAudioBitrateKbps: 0,
   maxVideoHeight: 0,
+  downloadLocationMode: 'all',
+  globalDownloadPath: RUNTIME_DOWNLOADS_PATH,
+  globalAlwaysAsk: true,
+  audioDownloadPath: RUNTIME_DOWNLOADS_PATH,
+  videoDownloadPath: RUNTIME_DOWNLOADS_PATH,
+  thumbnailDownloadPath: RUNTIME_DOWNLOADS_PATH,
+  audioAlwaysAsk: true,
+  videoAlwaysAsk: true,
+  thumbnailAlwaysAsk: true,
 })
 
 export const DOWNLOAD_CONCURRENCY_OPTIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8])
@@ -29,6 +55,24 @@ export function normalizeDownloadSettings(value) {
   const defaultVideoContainer = String(input.defaultVideoContainer || '').trim().toLowerCase()
   const maxAudioBitrateRaw = Number(input.maxAudioBitrateKbps)
   const maxVideoHeightRaw = Number(input.maxVideoHeight)
+  const downloadLocationModeRaw = String(input.downloadLocationMode || '').trim().toLowerCase()
+
+  const globalDownloadPath = normalizeDownloadPath(
+    input.globalDownloadPath,
+    DOWNLOAD_SETTINGS_DEFAULTS.globalDownloadPath
+  )
+  const audioDownloadPath = normalizeDownloadPath(
+    input.audioDownloadPath,
+    DOWNLOAD_SETTINGS_DEFAULTS.audioDownloadPath || globalDownloadPath
+  )
+  const videoDownloadPath = normalizeDownloadPath(
+    input.videoDownloadPath,
+    DOWNLOAD_SETTINGS_DEFAULTS.videoDownloadPath || globalDownloadPath
+  )
+  const thumbnailDownloadPath = normalizeDownloadPath(
+    input.thumbnailDownloadPath,
+    DOWNLOAD_SETTINGS_DEFAULTS.thumbnailDownloadPath || globalDownloadPath
+  )
 
   return {
     maxConcurrentDownloads: CONCURRENT_DOWNLOAD_OPTIONS.has(maxConcurrentRaw)
@@ -52,5 +96,24 @@ export function normalizeDownloadSettings(value) {
     maxVideoHeight: VIDEO_HEIGHT_THRESHOLD_OPTIONS.has(maxVideoHeightRaw)
       ? maxVideoHeightRaw
       : DOWNLOAD_SETTINGS_DEFAULTS.maxVideoHeight,
+    downloadLocationMode: DOWNLOAD_LOCATION_MODE_OPTIONS.has(downloadLocationModeRaw)
+      ? downloadLocationModeRaw
+      : DOWNLOAD_SETTINGS_DEFAULTS.downloadLocationMode,
+    globalDownloadPath,
+    globalAlwaysAsk: input.globalAlwaysAsk !== undefined
+      ? Boolean(input.globalAlwaysAsk)
+      : DOWNLOAD_SETTINGS_DEFAULTS.globalAlwaysAsk,
+    audioDownloadPath,
+    videoDownloadPath,
+    thumbnailDownloadPath,
+    audioAlwaysAsk: input.audioAlwaysAsk !== undefined
+      ? Boolean(input.audioAlwaysAsk)
+      : DOWNLOAD_SETTINGS_DEFAULTS.audioAlwaysAsk,
+    videoAlwaysAsk: input.videoAlwaysAsk !== undefined
+      ? Boolean(input.videoAlwaysAsk)
+      : DOWNLOAD_SETTINGS_DEFAULTS.videoAlwaysAsk,
+    thumbnailAlwaysAsk: input.thumbnailAlwaysAsk !== undefined
+      ? Boolean(input.thumbnailAlwaysAsk)
+      : DOWNLOAD_SETTINGS_DEFAULTS.thumbnailAlwaysAsk,
   }
 }

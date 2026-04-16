@@ -3,7 +3,6 @@ import {
   Box,
   Menu,
   MenuItem,
-  Divider,
   Switch,
   Button,
   Tooltip,
@@ -29,36 +28,59 @@ export default function HomeQuickActions({
   if (multiModeEnabled) {
     return (
       <Box
+        component="button"
+        type="button"
+        onClick={() => onRequestToggleMultiMode(false)}
+        aria-label={t('home.quickActions.multiDisableWarningTitle')}
         sx={(theme) => ({
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 0.35,
+          gap: 0.55,
           height: 32,
-          px: 0.85,
-          borderRadius: 1.5,
-          border: `1px solid ${theme.palette.mode === 'dark' ? '#535353' : '#d2d4d8'}`,
-          bgcolor: theme.palette.mode === 'dark' ? '#3a3a3a' : '#f1f2f4',
-          color: theme.palette.mode === 'dark' ? '#f2f3f5' : '#1f2937',
+          px: 0.6,
+          borderRadius: 999,
+          border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(147,197,253,0.52)' : '#b4d2ff'}`,
+          bgcolor: theme.palette.mode === 'dark' ? 'rgba(59,130,246,0.22)' : '#e8f1ff',
+          color: theme.palette.mode === 'dark' ? '#dbeafe' : '#1f4f99',
+          boxShadow: theme.palette.mode === 'dark'
+            ? 'inset 0 1px 0 rgba(255,255,255,0.08)'
+            : 'inset 0 1px 0 rgba(255,255,255,0.92)',
+          cursor: 'pointer',
+          transition: 'background-color 160ms ease, border-color 160ms ease, transform 120ms ease',
+          '&:hover': {
+            bgcolor: theme.palette.mode === 'dark' ? 'rgba(59,130,246,0.3)' : '#deecff',
+            borderColor: theme.palette.mode === 'dark' ? 'rgba(191,219,254,0.65)' : '#9dc4ff',
+          },
+          '&:active': {
+            transform: 'translateY(0.5px)',
+          },
         })}
       >
-        <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.1, lineHeight: 1 }}>
-          {t('home.quickActions.multiDownload')}
-        </Typography>
-        <IconButton
-          size="small"
-          onClick={() => onRequestToggleMultiMode(false)}
-          aria-label={t('home.quickActions.multiDisableWarningTitle')}
+        <Box
           sx={(theme) => ({
-            width: 20,
-            height: 20,
-            color: 'inherit',
-            '&:hover': {
-              bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
-            },
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: theme.palette.mode === 'dark' ? 'rgba(37,99,235,0.44)' : '#d5e6ff',
+            border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(191,219,254,0.42)' : '#a5c8ff'}`,
           })}
         >
-          <X size={12} />
-        </IconButton>
+          <X size={11} />
+        </Box>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 800,
+            letterSpacing: 0.15,
+            lineHeight: 1,
+            pr: 0.2,
+          }}
+        >
+          {t('home.quickActions.multiDownload')}
+        </Typography>
       </Box>
     )
   }
@@ -174,8 +196,6 @@ export default function HomeQuickActions({
             inputProps={{ 'aria-label': t('home.quickActions.multiDownloadSwitchAria') }}
           />
         </MenuItem>
-
-        <Divider sx={(theme) => ({ borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })} />
 
         <MenuItem
           onClick={() => onToggleAutoDownload(!autoDownloadEnabled)}
