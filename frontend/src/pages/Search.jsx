@@ -342,6 +342,10 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
   const [quickDownloadState, setQuickDownloadState] = React.useState(null)
   const [selectedEntriesMap, setSelectedEntriesMap] = React.useState(() => new Map())
 
+  const selectedServiceOption = React.useMemo(() => {
+    return SEARCH_SERVICE_OPTIONS.find((o) => o.value === selectedService) || SEARCH_SERVICE_OPTIONS[0]
+  }, [selectedService])
+
   const handleClearSearch = React.useCallback(() => {
     setQuery('')
     setLastQuery('')
@@ -969,7 +973,6 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
   const showEmptyState = !showInitialLoading && !errorMessage && Boolean(lastQuery) && results.length === 0
 
   const isSearched = loadingInitial || loadingMore || results.length > 0 || errorMessage || Boolean(lastQuery)
-  const selectedServiceOption = SEARCH_SERVICE_OPTIONS.find((o) => o.value === selectedService) || SEARCH_SERVICE_OPTIONS[0]
   const quickDownloadOptions = React.useMemo(() => ([
     {
       key: 'mp4',
@@ -1156,6 +1159,7 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
         }}
         inputProps={{
           'aria-label': t('search.queryAria'),
+          spellCheck: 'false',
         }}
       />
     </>
@@ -1163,7 +1167,7 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
 
   return (
     <SimpleBarScrollArea
-      sx={{ height: '100%', opacity: hasMeasured ? 1 : 0, transition: 'opacity 0.2s' }}
+      sx={{ height: '100%', opacity: hasMeasured ? 1 : 0 }}
       scrollableNodeProps={{ ref: scrollRootRef }}
     >
       <Container maxWidth="xl" sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', px: { xs: 2, sm: 3 } }}>
@@ -1201,6 +1205,18 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
               zIndex: -1,
             }
           }}>
+            {!isSearched && (
+              <Box sx={{ position: 'absolute', bottom: 'calc(100% + 16px)', left: 0, right: 0 }}>
+                <Stack spacing={0}>
+                  <Typography variant="h1" align="center" className="youtube-title" sx={{ fontSize: { xs: '3.5rem', sm: '5rem', md: '6rem' } }}>
+                    {t('search.title')}
+                  </Typography>
+                  <Typography variant="h4" align="center" sx={{ color: 'text.secondary', fontWeight: 700, mt: 0.5, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.75rem' } }}>
+                    {t('search.subtitle', { service: t(selectedServiceOption.labelKey) })}
+                  </Typography>
+                </Stack>
+              </Box>
+            )}
             {searchBarJsx}
           </Box>
 
@@ -1297,15 +1313,20 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
                             sx={{
                               position: 'absolute',
                               inset: 0,
+                              transition: 'none',
                               '& .search-thumb-overlay': {
                                 opacity: 0,
+                                transition: 'none',
                               },
                               '&:hover .search-thumb-media, &.Mui-focusVisible .search-thumb-media': {
-                                filter: 'blur(2px) brightness(0.72)',
+                                filter: 'brightness(0.6)',
                               },
                               '&:hover .search-thumb-overlay, &.Mui-focusVisible .search-thumb-overlay': {
                                 opacity: 1,
                               },
+                              '& .MuiCardActionArea-focusHighlight': {
+                                transition: 'none',
+                              }
                             }}
                           >
                             {thumbnail ? (

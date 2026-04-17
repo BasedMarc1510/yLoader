@@ -35,52 +35,55 @@ export default function HomeQuickActions({
         sx={(theme) => ({
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 0.55,
-          height: 32,
-          px: 0.6,
+          gap: 0.75,
+          height: 28,
+          pl: 1.25,
+          pr: 0.6,
           borderRadius: 999,
-          border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(147,197,253,0.52)' : '#b4d2ff'}`,
-          bgcolor: theme.palette.mode === 'dark' ? 'rgba(59,130,246,0.22)' : '#e8f1ff',
-          color: theme.palette.mode === 'dark' ? '#dbeafe' : '#1f4f99',
-          boxShadow: theme.palette.mode === 'dark'
-            ? 'inset 0 1px 0 rgba(255,255,255,0.08)'
-            : 'inset 0 1px 0 rgba(255,255,255,0.92)',
+          border: '1px solid',
+          borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+          bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+          color: theme.palette.text.secondary,
           cursor: 'pointer',
-          transition: 'background-color 160ms ease, border-color 160ms ease, transform 120ms ease',
+          outline: 'none',
+          transition: 'all 150ms ease',
           '&:hover': {
-            bgcolor: theme.palette.mode === 'dark' ? 'rgba(59,130,246,0.3)' : '#deecff',
-            borderColor: theme.palette.mode === 'dark' ? 'rgba(191,219,254,0.65)' : '#9dc4ff',
+            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+            color: theme.palette.text.primary,
+            borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)',
           },
-          '&:active': {
-            transform: 'translateY(0.5px)',
+          '&:hover .multi-badge-icon': {
+            color: theme.palette.mode === 'dark' ? '#ef4444' : '#dc2626',
           },
         })}
       >
-        <Box
-          sx={(theme) => ({
-            width: 18,
-            height: 18,
-            borderRadius: '50%',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: theme.palette.mode === 'dark' ? 'rgba(37,99,235,0.44)' : '#d5e6ff',
-            border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(191,219,254,0.42)' : '#a5c8ff'}`,
-          })}
-        >
-          <X size={11} />
-        </Box>
         <Typography
           variant="caption"
           sx={{
-            fontWeight: 800,
-            letterSpacing: 0.15,
+            fontWeight: 700,
             lineHeight: 1,
-            pr: 0.2,
+            fontSize: '0.72rem',
+            letterSpacing: 0.4,
+            textTransform: 'uppercase',
+            mt: '1px',
           }}
         >
           {t('home.quickActions.multiDownload')}
         </Typography>
+        <Box
+          className="multi-badge-icon"
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'color 150ms ease',
+            color: 'inherit',
+            opacity: 0.8,
+            ml: 0.25,
+          }}
+        >
+          <X size={14} strokeWidth={2.5} />
+        </Box>
       </Box>
     )
   }

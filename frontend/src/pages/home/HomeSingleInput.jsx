@@ -139,7 +139,10 @@ export default function HomeSingleInput({
         },
       })}
       disabled={isResolving}
-      inputProps={{ 'aria-label': t('app.urlInputAria', { service: t('routes.downloader') }) }}
+      inputProps={{
+        'aria-label': t('app.urlInputAria', { service: t('routes.downloader') }),
+        spellCheck: 'false',
+      }}
     />
   )
 }

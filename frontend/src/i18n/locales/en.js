@@ -35,7 +35,7 @@ const en = {
   },
   search: {
     title: 'Search',
-    subtitle: 'Choose a service, search content, and open a selected result in the downloader.',
+    subtitle: 'Search directly on {service}',
     queryPlaceholder: 'Search videos, tracks, or artists...',
     queryAria: 'Search query or direct URL',
     serviceAria: 'Search service',
