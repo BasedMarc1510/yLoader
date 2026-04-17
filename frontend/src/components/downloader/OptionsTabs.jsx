@@ -77,11 +77,11 @@ export default function OptionsTabs({
   const tabHoverBorder = isDark ? '#555555' : '#909090'
   const tabTextColor = isDark ? '#ffffff' : theme.palette.text.primary
   const skeletonSx = React.useMemo(() => ({
-    bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
+    bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
     '&::after': {
       background: isDark
-        ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent)'
-        : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent)',
+        ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)'
+        : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',
     },
   }), [isDark])
   const showCookieSettingsHint = React.useMemo(

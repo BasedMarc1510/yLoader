@@ -931,7 +931,7 @@ app.get('/api/search', async (req, res) => {
         uploader,
         url: sourceUrl,
         service: resolvedService,
-        thumbnail: pickSearchEntryThumbnail(rawEntry),
+        thumbnail: pickSearchEntryThumbnail(rawEntry, provider),
         duration,
         durationString: formatDurationLabel(duration),
       })
@@ -1484,6 +1484,53 @@ function normalizeImageContainer(value) {
   return ALLOWED_IMAGE_CONTAINERS.has(normalized) ? normalized : ''
 }
 
+function inferImageContainerFromContentType(contentType) {
+  const value = String(contentType || '').trim().toLowerCase()
+  if (!value) return ''
+  if (value.includes('image/jpeg') || value.includes('image/jpg')) return 'jpg'
+  if (value.includes('image/png')) return 'png'
+  if (value.includes('image/webp')) return 'webp'
+  return ''
+}
+
+function inferImageContainerFromUrlPath(rawUrl) {
+  const value = String(rawUrl || '').trim()
+  if (!value) return ''
+
+  try {
+    const parsed = new NodeURL(value)
+    const pathname = String(parsed.pathname || '')
+    const ext = pathname.includes('.') ? pathname.split('.').pop() : ''
+    return normalizeImageContainer(ext)
+  } catch {
+    return ''
+  }
+}
+
+function inferImageMimeByContainer(container) {
+  const normalized = normalizeImageContainer(container)
+  if (normalized === 'png') return 'image/png'
+  if (normalized === 'webp') return 'image/webp'
+  if (normalized === 'jpg') return 'image/jpeg'
+  return 'application/octet-stream'
+}
+
+function buildUniqueDownloadFilename(baseName, ext) {
+  const safeBase = sanitizeFilename(baseName || 'download', 120) || 'download'
+  const normalizedExt = normalizeImageContainer(ext) || 'jpg'
+  let attempt = 0
+
+  while (attempt < 1000) {
+    const suffix = attempt > 0 ? ` (${attempt})` : ''
+    const candidate = `${safeBase}${suffix}.${normalizedExt}`
+    const candidatePath = path.join(DOWNLOADS_DIR, candidate)
+    if (!fs.existsSync(candidatePath)) return candidate
+    attempt += 1
+  }
+
+  return `${safeBase}-${Date.now()}.${normalizedExt}`
+}
+
 function normalizeDownloadDirectoryPath(value, fallbackPath) {
   const fallback = String(fallbackPath || '').trim()
   const raw = String(value || '')
@@ -1571,15 +1618,62 @@ function buildYtDlpSearchTarget(provider, query, desiredWindowEnd) {
   return `https://www.youtube.com/results?search_query=${encoded}&sp=EgIQAQ%253D%253D`
 }
 
-function pickSearchEntryThumbnail(entry) {
+function normalizeThumbnailDimension(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  const rounded = Math.round(numeric)
+  return rounded > 0 ? rounded : 0
+}
+
+function resolveThumbnailCandidateUrl(candidate) {
+  if (candidate && typeof candidate === 'object') {
+    const targetUrl = String(candidate.url || '').trim()
+    return isValidHttpUrl(targetUrl) ? targetUrl : ''
+  }
+
+  const rawValue = String(candidate || '').trim()
+  return isValidHttpUrl(rawValue) ? rawValue : ''
+}
+
+function pickSearchEntryThumbnail(entry, _provider = '') {
+  const thumbnails = Array.isArray(entry?.thumbnails) ? entry.thumbnails : []
+
+  if (thumbnails.length > 0) {
+    const filtered = thumbnails.filter((candidate) => {
+      if (!candidate || typeof candidate !== 'object') return false
+      if (!isValidHttpUrl(String(candidate.url || '').trim())) return false
+      const width = normalizeThumbnailDimension(candidate.width)
+      const height = normalizeThumbnailDimension(candidate.height)
+      return width > 0 && height > 0
+    })
+
+    const preferredFilter = [
+      ...filtered.filter((candidate) => normalizeThumbnailDimension(candidate.width) >= 512 && normalizeThumbnailDimension(candidate.height) >= 512),
+      ...filtered,
+    ]
+
+    let highestGivenResolution = null
+    for (const candidate of preferredFilter) {
+      if (!highestGivenResolution) {
+        highestGivenResolution = candidate
+        continue
+      }
+
+      const candidateArea = normalizeThumbnailDimension(candidate.width) * normalizeThumbnailDimension(candidate.height)
+      const highestArea = normalizeThumbnailDimension(highestGivenResolution.width) * normalizeThumbnailDimension(highestGivenResolution.height)
+      if (candidateArea > highestArea) {
+        highestGivenResolution = candidate
+      }
+    }
+
+    const fallback = thumbnails[thumbnails.length - 1]
+    const selected = highestGivenResolution || fallback
+    const selectedUrl = resolveThumbnailCandidateUrl(selected)
+    if (selectedUrl) return selectedUrl
+  }
+
   const directThumbnail = String(entry?.thumbnail || '').trim()
   if (isValidHttpUrl(directThumbnail)) return directThumbnail
-
-  const thumbnails = Array.isArray(entry?.thumbnails) ? entry.thumbnails : []
-  for (const thumbnail of thumbnails) {
-    const targetUrl = String(thumbnail?.url || '').trim()
-    if (isValidHttpUrl(targetUrl)) return targetUrl
-  }
 
   return ''
 }
@@ -3749,6 +3843,191 @@ app.get('/api/proxy-image', async (req, res) => {
 
   } catch (err) {
     res.status(500).json({ error: 'Failed to proxy image', details: String(err?.message || err) })
+  }
+})
+
+// POST /api/download/thumbnail/stream -> SSE with live thumbnail download progress
+// Body: { url, thumbnailUrl, format?, videoTitle?, service? }
+app.post('/api/download/thumbnail/stream', async (req, res) => {
+  const sourceUrl = String(req.body?.url || req.body?.sourceUrl || '').trim()
+  const thumbnailUrl = String(req.body?.thumbnailUrl || '').trim()
+  const formatRaw = String(req.body?.format || '').trim().toLowerCase()
+  const requestedFormat = formatRaw ? normalizeImageContainer(formatRaw) : ''
+  const requestedService = String(req.body?.service || '').trim()
+  const rawTitle = String(req.body?.videoTitle || req.body?.filename || '').trim()
+  const targetTitle = sanitizeFilename(rawTitle || 'thumbnail', 120) || 'thumbnail'
+
+  if (!thumbnailUrl) {
+    return res.status(400).json({ error: 'Missing required field: thumbnailUrl' })
+  }
+  if (!isValidHttpUrl(thumbnailUrl)) {
+    return res.status(400).json({ error: 'Invalid thumbnailUrl' })
+  }
+  if (sourceUrl && !isValidHttpUrl(sourceUrl)) {
+    return res.status(400).json({ error: 'Invalid url' })
+  }
+  if (formatRaw && !requestedFormat) {
+    return res.status(400).json({ error: 'Unsupported image format' })
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+
+  let responseClosed = false
+  const safeEnd = () => {
+    if (responseClosed) return
+    responseClosed = true
+    try { res.end() } catch { }
+  }
+
+  const send = (event, data) => {
+    if (responseClosed) return false
+    try {
+      if (event) res.write(`event: ${event}\n`)
+      if (data !== undefined) {
+        const payload = typeof data === 'string' ? data : JSON.stringify(data)
+        res.write(`data: ${payload}\n\n`)
+      } else {
+        res.write('data: \n\n')
+      }
+      return true
+    } catch {
+      responseClosed = true
+      return false
+    }
+  }
+
+  const tempFiles = []
+  try {
+    send('progress', { percent: 2, stage: 'starting' })
+
+    const imageTimeoutController = new AbortController()
+    const imageTimeout = setTimeout(() => imageTimeoutController.abort(), 20000)
+    let upstream
+    try {
+      upstream = await fetch(thumbnailUrl, { signal: imageTimeoutController.signal })
+    } finally {
+      clearTimeout(imageTimeout)
+    }
+
+    if (!upstream.ok) {
+      throw new Error(`Upstream error ${upstream.status}`)
+    }
+
+    const contentLengthRaw = Number(upstream.headers.get('content-length') || 0)
+    const contentLength = Number.isFinite(contentLengthRaw) && contentLengthRaw > 0 ? contentLengthRaw : 0
+    const contentType = String(upstream.headers.get('content-type') || '').trim().toLowerCase()
+
+    const chunks = []
+    let receivedBytes = 0
+
+    if (upstream.body && typeof upstream.body.getReader === 'function') {
+      const reader = upstream.body.getReader()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value) continue
+
+        const chunk = Buffer.from(value)
+        receivedBytes += chunk.length
+        chunks.push(chunk)
+
+        if (receivedBytes > MAX_PROXY_IMAGE_SIZE_BYTES) {
+          throw new Error('Image too large')
+        }
+
+        const ratio = contentLength > 0
+          ? Math.max(0, Math.min(1, receivedBytes / contentLength))
+          : Math.max(0, Math.min(1, chunks.length / 25))
+        send('progress', {
+          percent: 5 + (ratio * 70),
+          stage: 'downloading',
+        })
+      }
+    } else {
+      const ab = await upstream.arrayBuffer()
+      const chunk = Buffer.from(ab)
+      receivedBytes = chunk.length
+      chunks.push(chunk)
+      send('progress', { percent: 75, stage: 'downloading' })
+    }
+
+    const downloadedBuffer = Buffer.concat(chunks)
+    if (!downloadedBuffer.length) {
+      throw new Error('Downloaded image is empty')
+    }
+    if (downloadedBuffer.length > MAX_PROXY_IMAGE_SIZE_BYTES) {
+      throw new Error('Image too large')
+    }
+
+    const sourceContainer = inferImageContainerFromContentType(contentType)
+      || inferImageContainerFromUrlPath(thumbnailUrl)
+      || 'jpg'
+    const outputContainer = requestedFormat || sourceContainer || 'jpg'
+    const needsConversion = Boolean(requestedFormat && sourceContainer !== requestedFormat)
+
+    let outputBuffer = downloadedBuffer
+
+    if (needsConversion) {
+      if (!HAS_FFMPEG) {
+        throw new Error('ffmpeg is required to convert thumbnail format')
+      }
+
+      send('progress', { percent: 82, stage: 'processing' })
+
+      const conversionHash = crypto.randomBytes(4).toString('hex')
+      const tempInput = path.join(os.tmpdir(), `yloader_thumb_stream_in_${conversionHash}.${sourceContainer || 'jpg'}`)
+      const tempOutput = path.join(os.tmpdir(), `yloader_thumb_stream_out_${conversionHash}.${outputContainer}`)
+      tempFiles.push(tempInput, tempOutput)
+
+      fs.writeFileSync(tempInput, downloadedBuffer)
+      await runCmd(FFMPEG_BIN, ['-y', '-i', tempInput, tempOutput])
+
+      if (!fs.existsSync(tempOutput)) {
+        throw new Error('Thumbnail conversion failed')
+      }
+
+      outputBuffer = fs.readFileSync(tempOutput)
+      send('progress', { percent: 92, stage: 'processing' })
+    }
+
+    const finalFilename = buildUniqueDownloadFilename(targetTitle || 'thumbnail', outputContainer)
+    const finalPath = path.join(DOWNLOADS_DIR, finalFilename)
+    fs.writeFileSync(finalPath, outputBuffer)
+
+    try {
+      const timestamp = new Date().toISOString()
+      const resolvedSourceUrl = isValidHttpUrl(sourceUrl) ? sourceUrl : thumbnailUrl
+      const resolvedService = resolveServiceKey(requestedService, resolvedSourceUrl)
+      const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      stmt.run(null, targetTitle || 'thumbnail', 0, timestamp, 'thumbnail', outputContainer, finalFilename, resolvedService, resolvedSourceUrl)
+      stmt.finalize()
+    } catch (dbErr) {
+      console.error('DB Insert Error (Thumbnail Stream):', dbErr)
+    }
+
+    send('progress', { percent: 100, stage: 'complete' })
+    send('complete', {
+      filename: finalFilename,
+      url: `/api/download/file/${encodeURIComponent(finalFilename)}`,
+      mime: inferImageMimeByContainer(outputContainer),
+    })
+    send('end', 'done')
+  } catch (err) {
+    const message = String(err?.message || err || 'Failed to download thumbnail')
+    send('error', { message })
+    send('end', 'failed')
+  } finally {
+    for (const filePath of tempFiles) {
+      try {
+        if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath)
+      } catch {
+        // ignore temporary file cleanup errors
+      }
+    }
+    safeEnd()
   }
 })
 

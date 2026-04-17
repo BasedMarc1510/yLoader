@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react'
-import { Box, Paper, Typography, IconButton, Collapse, useTheme, keyframes } from '@mui/material'
+import { Box, Paper, Typography, IconButton, Collapse, Button, useTheme, keyframes } from '@mui/material'
 import { X, AlertCircle, CheckCircle, Info, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useI18n } from './I18nProvider'
 
@@ -17,7 +17,16 @@ const slideIn = keyframes`
 `
 
 // Individual Notification Component
-const NotificationItem = ({ id, message, severity, onClose, duration = 5000 }) => {
+const NotificationItem = ({
+    id,
+    message,
+    severity,
+    onClose,
+    duration = 5000,
+    actionLabel = '',
+    onAction = null,
+    actionAutoClose = true,
+}) => {
     const theme = useTheme()
     const { t } = useI18n()
     const isDark = theme.palette.mode === 'dark'
@@ -86,6 +95,19 @@ const NotificationItem = ({ id, message, severity, onClose, duration = 5000 }) =
 
     // Check if message is long
     const isLong = message.length > 60
+    const hasAction = Boolean(actionLabel && typeof onAction === 'function')
+
+    const handleActionClick = async () => {
+        if (!hasAction) return
+        try {
+            await onAction()
+        } catch {
+            // ignore action callback errors to keep notification system resilient
+        }
+        if (actionAutoClose) {
+            onClose(id)
+        }
+    }
 
     return (
         <Collapse in={true} unmountOnExit sx={{ mb: 1.5 }}>
@@ -155,6 +177,30 @@ const NotificationItem = ({ id, message, severity, onClose, duration = 5000 }) =
                                 )}
                             </Box>
                         )}
+
+                        {hasAction && (
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={handleActionClick}
+                                sx={{
+                                    mt: 1,
+                                    minHeight: 28,
+                                    borderRadius: 999,
+                                    textTransform: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '0.75rem',
+                                    borderColor: isDark ? '#5f5f5f' : '#c7c7c7',
+                                    color: textColor,
+                                    '&:hover': {
+                                        borderColor: isDark ? '#8a8a8a' : '#9f9f9f',
+                                        bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
+                                    },
+                                }}
+                            >
+                                {actionLabel}
+                            </Button>
+                        )}
                     </Box>
 
                     <IconButton size="small" onClick={() => onClose(id)} sx={{ mt: -0.5, mr: -0.5, color: isDark ? '#666' : '#999', '&:hover': { color: textColor, bgcolor: isDark ? '#333' : '#f0f0f0' } }}>
@@ -182,9 +228,17 @@ const NotificationItem = ({ id, message, severity, onClose, duration = 5000 }) =
 export default function NotificationProvider({ children }) {
     const [notifications, setNotifications] = useState([])
 
-    const showNotification = useCallback((message, severity = 'info') => {
+    const showNotification = useCallback((message, severity = 'info', options = {}) => {
         const id = Date.now().toString() + Math.random().toString(36).substr(2, 9)
-        setNotifications((prev) => [...prev, { id, message, severity }])
+        setNotifications((prev) => [...prev, {
+            id,
+            message,
+            severity,
+            duration: Number.isFinite(Number(options?.duration)) ? Math.max(1000, Number(options.duration)) : 5000,
+            actionLabel: String(options?.actionLabel || '').trim(),
+            onAction: typeof options?.onAction === 'function' ? options.onAction : null,
+            actionAutoClose: options?.actionAutoClose !== false,
+        }])
     }, [])
 
     const removeNotification = useCallback((id) => {

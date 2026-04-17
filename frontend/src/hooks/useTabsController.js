@@ -38,6 +38,28 @@ function buildBrowserUrl(path, search) {
   return `#${normalizedPath}${normalizedSearch}`
 }
 
+const HOME_MULTI_IMPORT_STORAGE_PREFIX = 'yloader.home.multiImport.'
+
+function createRuntimeToken() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+}
+
+function persistHomeMultiImportPayload(rawText) {
+  const text = String(rawText || '').replace(/\r/g, '').trim()
+  if (!text || typeof window === 'undefined' || !window.sessionStorage) return ''
+
+  const token = createRuntimeToken()
+  try {
+    window.sessionStorage.setItem(`${HOME_MULTI_IMPORT_STORAGE_PREFIX}${token}`, text)
+    return token
+  } catch {
+    return ''
+  }
+}
+
 export function useTabsController({ t }) {
   const [tabs, setTabs] = React.useState(() => [createTabFromCurrentLocation('tab-home')])
   const [activeTabId, setActiveTabId] = React.useState('tab-home')
@@ -226,6 +248,36 @@ export function useTabsController({ t }) {
       openDownloaderInTab(newTab.id, serviceKey, rawUrl)
     }, 0)
   }, [openDownloaderInTab])
+
+  const openHomeMultiInNewTab = React.useCallback((rawUrls = []) => {
+    const urls = Array.isArray(rawUrls)
+      ? Array.from(new Set(
+          rawUrls
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+        ))
+      : []
+
+    if (!urls.length) return
+
+    const linksBlock = urls.join('\n')
+    const params = new URLSearchParams()
+    params.set('multi', '1')
+
+    const token = persistHomeMultiImportPayload(linksBlock)
+    if (token) {
+      params.set('multiImportToken', token)
+    } else {
+      params.set('links', linksBlock)
+    }
+
+    const newTab = createDefaultTab()
+    newTab.path = '/'
+    newTab.search = `?${params.toString()}`
+
+    setTabs((prevTabs) => [...prevTabs, newTab])
+    setActiveTabId(newTab.id)
+  }, [])
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0]
 
@@ -593,6 +645,7 @@ export function useTabsController({ t }) {
     navigateActiveTab,
     openDownloaderInTab,
     openDownloaderInNewTab,
+    openHomeMultiInNewTab,
     selectRelativeTab,
     handleRequestCloseTab,
     handleConfirmClose,

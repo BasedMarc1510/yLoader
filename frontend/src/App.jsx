@@ -44,6 +44,7 @@ export default function App() {
     navigateActiveTab,
     openDownloaderInTab,
     openDownloaderInNewTab,
+    openHomeMultiInNewTab,
     selectRelativeTab,
     handleRequestCloseTab,
     handleConfirmClose,
@@ -86,6 +87,7 @@ export default function App() {
         <SearchPage
           onOpenDownloader={(serviceKey, rawUrl, options) => openDownloaderInTab(tab.id, serviceKey, rawUrl, options)}
           onOpenInNewTab={(serviceKey, rawUrl) => openDownloaderInNewTab(serviceKey, rawUrl)}
+          onOpenMultiInNewTab={(urls) => openHomeMultiInNewTab(urls)}
         />
       )
     }
@@ -104,9 +106,13 @@ export default function App() {
     }
 
     return (
-      <HomePage onOpenDownloader={(serviceKey, rawUrl, options) => openDownloaderInTab(tab.id, serviceKey, rawUrl, options)} />
+      <HomePage
+        routeSearch={tab.search}
+        routeToken={tab.navToken}
+        onOpenDownloader={(serviceKey, rawUrl, options) => openDownloaderInTab(tab.id, serviceKey, rawUrl, options)}
+      />
     )
-  }, [handleTabRuntimeChange, navigateTab, openDownloaderInTab])
+  }, [handleTabRuntimeChange, navigateTab, openDownloaderInTab, openDownloaderInNewTab, openHomeMultiInNewTab])
 
   return (
     <>

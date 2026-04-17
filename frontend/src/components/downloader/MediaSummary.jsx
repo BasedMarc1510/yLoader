@@ -7,11 +7,11 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
   const theme = useTheme()
   const interactive = !loading && Boolean(url)
   const skeletonSx = React.useMemo(() => ({
-    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
+    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
     '&::after': {
       background: theme.palette.mode === 'dark'
-        ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)'
-        : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.72), transparent)',
+        ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)'
+        : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',
     },
   }), [theme.palette.mode])
 
@@ -46,7 +46,7 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
         borderRadius: 0.75,
         overflow: 'hidden',
         flex: '0 0 auto',
-        bgcolor: 'black',
+        bgcolor: loading ? 'transparent' : 'black',
         display: 'flex',
         aspectRatio: '16/9',
       }}>

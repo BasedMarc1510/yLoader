@@ -54,6 +54,21 @@ const downloads = {
   validateFile: (pathValue = '') => ipcRenderer.invoke('downloads:validate-file', {
     path: String(pathValue || ''),
   }),
+  revealFile: (pathValue = '') => ipcRenderer.invoke('downloads:reveal-file', {
+    path: String(pathValue || ''),
+  }),
+  onDownloadCompleted: (callback) => {
+    if (typeof callback !== 'function') return () => {}
+
+    const listener = (_event, payload) => {
+      callback(payload || {})
+    }
+
+    ipcRenderer.on('downloads:completed', listener)
+    return () => {
+      ipcRenderer.removeListener('downloads:completed', listener)
+    }
+  },
   settingsUpdated: () => ipcRenderer.invoke('downloads:settings-updated'),
 }
 

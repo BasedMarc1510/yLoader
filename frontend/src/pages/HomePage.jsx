@@ -22,6 +22,7 @@ import { useAutoDownload } from './home/useAutoDownload'
 import { openSettingsModal } from './home/settingsBridge'
 
 const INPUT_BORDER_RUNNER_ANIMATION = 'input-border-runner 3.4s ease-in-out infinite'
+const HOME_MULTI_IMPORT_STORAGE_PREFIX = 'yloader.home.multiImport.'
 
 function normalizeMultiModeValue(rawValue) {
   const text = String(rawValue || '').replace(/\r/g, '')
@@ -64,9 +65,10 @@ function isLikelyValidHttpLink(rawValue) {
   return hostname.includes('.')
 }
 
-export default function HomePage({ onOpenDownloader }) {
+export default function HomePage({ onOpenDownloader, routeSearch = '', routeToken = 0 }) {
   const { t } = useI18n()
   const { showNotification } = useNotification()
+  const consumedRouteImportRef = React.useRef('')
 
   const [value, setValue] = React.useState('')
   const [menuAnchorEl, setMenuAnchorEl] = React.useState(null)
@@ -142,6 +144,46 @@ export default function HomePage({ onOpenDownloader }) {
   React.useEffect(() => {
     persistHomeAutoDownloadPrefs(autoDownloadEnabled, autoDownloadFormat)
   }, [autoDownloadEnabled, autoDownloadFormat])
+
+  React.useEffect(() => {
+    const search = String(routeSearch || '').trim()
+    if (!search) return
+
+    const params = new URLSearchParams(search)
+    const multiFlag = String(params.get('multi') || '').trim()
+    const importToken = String(params.get('multiImportToken') || '').trim()
+    const inlineLinks = String(params.get('links') || '')
+
+    if (multiFlag !== '1' && !importToken && !inlineLinks) return
+    if (importToken && consumedRouteImportRef.current === importToken) return
+
+    let importedLinks = ''
+    if (importToken && typeof window !== 'undefined' && window.sessionStorage) {
+      try {
+        importedLinks = String(window.sessionStorage.getItem(`${HOME_MULTI_IMPORT_STORAGE_PREFIX}${importToken}`) || '')
+        window.sessionStorage.removeItem(`${HOME_MULTI_IMPORT_STORAGE_PREFIX}${importToken}`)
+      } catch {
+        importedLinks = ''
+      }
+    }
+
+    if (!importedLinks && inlineLinks) {
+      importedLinks = inlineLinks
+    }
+
+    const normalizedLinks = normalizeMultiModeValue(importedLinks)
+    if (!normalizedLinks.trim()) {
+      consumedRouteImportRef.current = importToken || `inline-${routeToken}`
+      return
+    }
+
+    consumedRouteImportRef.current = importToken || `inline-${routeToken}`
+    setFetchError(null)
+    setMenuAnchorEl(null)
+    if (autoDownloadEnabled) setAutoDownloadEnabled(false)
+    setMultiModeEnabled(true)
+    setValue(normalizedLinks)
+  }, [autoDownloadEnabled, routeSearch, routeToken])
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return undefined

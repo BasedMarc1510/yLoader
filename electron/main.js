@@ -1201,6 +1201,34 @@ function registerDownloadsIpcHandlers() {
       valid: Boolean(inspection.valid),
     }
   })
+
+  ipcMain.handle('downloads:reveal-file', async (_event, payload = {}) => {
+    const inputPath = String(payload?.path || '').trim()
+    if (!inputPath) {
+      return { ok: false, error: 'Missing path' }
+    }
+
+    const resolvedPath = path.resolve(inputPath)
+    const directoryPath = fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory()
+      ? resolvedPath
+      : path.dirname(resolvedPath)
+
+    try {
+      if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
+        shell.showItemInFolder(resolvedPath)
+        return { ok: true, path: resolvedPath }
+      }
+
+      const openError = await shell.openPath(directoryPath)
+      if (openError) {
+        return { ok: false, error: openError }
+      }
+
+      return { ok: true, path: directoryPath }
+    } catch (error) {
+      return { ok: false, error: String(error?.message || error || 'Failed to reveal file') }
+    }
+  })
 }
 
 function registerDownloadInterception() {
@@ -1210,6 +1238,38 @@ function registerDownloadInterception() {
   session.defaultSession.on('will-download', (event, item, webContents) => {
     const downloadType = classifyManagedDownloadType(item?.getURL?.(), item?.getFilename?.())
     if (!downloadType) return
+
+    let ownerWindow = null
+    try {
+      ownerWindow = webContents ? BrowserWindow.fromWebContents(webContents) : null
+    } catch {
+      ownerWindow = null
+    }
+    const targetWindow = ownerWindow && !ownerWindow.isDestroyed()
+      ? ownerWindow
+      : (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
+    const sourceUrl = String(item?.getURL?.() || '').trim()
+    const originalFilename = sanitizeDownloadFilename(item?.getFilename?.() || 'download')
+    let selectedSavePath = ''
+
+    const emitDownloadCompleted = (state, savePath = '') => {
+      if (!targetWindow || targetWindow.isDestroyed()) return
+      try {
+        targetWindow.webContents.send('downloads:completed', {
+          state: String(state || '').trim().toLowerCase() || 'unknown',
+          sourceUrl,
+          filename: originalFilename,
+          savePath: String(savePath || '').trim(),
+        })
+      } catch {
+        // ignore dispatch errors during teardown/navigation
+      }
+    }
+
+    item.on('done', (_downloadEvent, state) => {
+      const runtimePath = String(item?.getSavePath?.() || '').trim()
+      emitDownloadCompleted(state, runtimePath || selectedSavePath)
+    })
 
     // Refresh in background so manual edits from other windows are picked up quickly.
     syncDownloadSettingsFromBackend().catch(() => {
@@ -1223,27 +1283,23 @@ function registerDownloadInterception() {
     const defaultSavePath = path.join(resolvedDirectoryPath, safeFilename)
 
     if (target.alwaysAsk) {
-      let ownerWindow = null
-      try {
-        ownerWindow = webContents ? BrowserWindow.fromWebContents(webContents) : null
-      } catch {
-        ownerWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
-      }
-
       const chosenPath = dialog.showSaveDialogSync(ownerWindow || undefined, {
         defaultPath: defaultSavePath,
       })
 
       if (!chosenPath) {
         event.preventDefault()
+        emitDownloadCompleted('cancelled', '')
         return
       }
 
+      selectedSavePath = String(chosenPath || '').trim()
       item.setSavePath(chosenPath)
       return
     }
 
-    item.setSavePath(buildUniqueDownloadPath(resolvedDirectoryPath, safeFilename))
+    selectedSavePath = buildUniqueDownloadPath(resolvedDirectoryPath, safeFilename)
+    item.setSavePath(selectedSavePath)
   })
 }
 
