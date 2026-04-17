@@ -59,6 +59,10 @@ const en = {
       spotify: 'Spotify',
       soundcloud: 'SoundCloud',
     },
+    download: 'Download',
+    openInNewTab: 'Open in new tab',
+    openInBrowser: 'Open in browser',
+    downloadFormat: 'Download {format}',
   },
   services: {
     generic: 'Generic',

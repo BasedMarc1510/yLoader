@@ -15,8 +15,9 @@ import {
   Stack,
   TextField,
   Typography,
+  ButtonGroup,
 } from '@mui/material'
-import { ArrowRight, Search as SearchIcon, X, ChevronDown } from 'lucide-react'
+import { ArrowRight, Search as SearchIcon, X, ChevronDown, MoreVertical } from 'lucide-react'
 import ServiceIcon from '../components/ServiceIcon'
 import { useI18n } from '../providers/I18nProvider'
 import {
@@ -25,6 +26,7 @@ import {
   getApiBase,
   getServiceDisplayName,
   normalizeServiceKey,
+  getServiceThemeColor,
 } from '../utils/metadata'
 import { formatYtDlpErrorMessage } from '../utils/ytDlpErrorPresentation'
 import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
@@ -79,7 +81,7 @@ function formatDuration(durationSeconds) {
   return `${pad2(minutes)}:${pad2(seconds)}`
 }
 
-export default function SearchPage({ onOpenDownloader }) {
+export default function SearchPage({ onOpenDownloader, onOpenInNewTab }) {
   const { t } = useI18n()
   const scrollRootRef = React.useRef(null)
   const loadMoreSentinelRef = React.useRef(null)
@@ -101,6 +103,10 @@ export default function SearchPage({ onOpenDownloader }) {
   const [enableAnimation, setEnableAnimation] = React.useState(false)
   const [availableHeight, setAvailableHeight] = React.useState(0)
 
+  const [kebabAnchorEl, setKebabAnchorEl] = React.useState(null)
+  const [downloadAnchorEl, setDownloadAnchorEl] = React.useState(null)
+  const [actionEntry, setActionEntry] = React.useState(null)
+
   const handleClearSearch = React.useCallback(() => {
     setQuery('')
     setLastQuery('')
@@ -118,7 +124,7 @@ export default function SearchPage({ onOpenDownloader }) {
     return getServiceDisplayName(normalized)
   }, [t])
 
-  const openDownloaderForUrl = React.useCallback((rawUrl, preferredService) => {
+  const openDownloaderForUrl = React.useCallback((rawUrl, preferredService, options) => {
     const targetUrl = toHttpUrl(rawUrl)
     if (!targetUrl) return false
 
@@ -130,7 +136,7 @@ export default function SearchPage({ onOpenDownloader }) {
     const normalizedPreferred = normalizeServiceKey(preferred)
     const serviceKey = detected || normalizedPreferred || GENERIC_SERVICE_KEY
 
-    onOpenDownloader?.(serviceKey, targetUrl)
+    onOpenDownloader?.(serviceKey, targetUrl, options)
     return true
   }, [onOpenDownloader])
 
@@ -249,9 +255,54 @@ export default function SearchPage({ onOpenDownloader }) {
     return () => observer.disconnect()
   }, [hasMore, lastQuery, loadMore, loadingInitial, loadingMore])
 
-  const handleOpenResult = React.useCallback((entry) => {
-    openDownloaderForUrl(entry?.url, entry?.service || lastService)
+  const handleOpenResult = React.useCallback((entry, options = {}) => {
+    openDownloaderForUrl(entry?.url, entry?.service || lastService, options)
   }, [lastService, openDownloaderForUrl])
+
+  const handleOpenKebab = (e, entry) => {
+    e.stopPropagation()
+    setKebabAnchorEl(e.currentTarget)
+    setActionEntry(entry)
+  }
+
+  const handleOpenDownloadDropdown = (e, entry) => {
+    e.stopPropagation()
+    setDownloadAnchorEl(e.currentTarget)
+    setActionEntry(entry)
+  }
+
+  const handleCloseKebab = () => {
+    setKebabAnchorEl(null)
+  }
+
+  const handleCloseDownloadDropdown = () => {
+    setDownloadAnchorEl(null)
+  }
+
+  const handleKebabNewTab = () => {
+    if (actionEntry && onOpenInNewTab) {
+      onOpenInNewTab(actionEntry.service || lastService, actionEntry.url)
+    }
+    handleCloseKebab()
+  }
+
+  const handleKebabBrowser = () => {
+    if (actionEntry?.url) {
+      window.open(actionEntry.url, '_blank')
+    }
+    handleCloseKebab()
+  }
+
+  const handleDownloadMain = (entry) => {
+    handleOpenResult(entry)
+  }
+
+  const handleDownloadQuick = (format) => {
+    if (actionEntry) {
+      handleOpenResult(actionEntry, { autostart: format })
+    }
+    handleCloseDownloadDropdown()
+  }
 
   React.useEffect(() => {
     const root = scrollRootRef.current
@@ -473,12 +524,6 @@ export default function SearchPage({ onOpenDownloader }) {
             {searchBarJsx}
           </Box>
 
-          {Boolean(lastQuery) && !loadingInitial && !errorMessage && results.length > 0 && (
-            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2, px: 0.5 }}>
-              {t('search.resultsFor', { query: lastQuery })}
-            </Typography>
-          )}
-
           {errorMessage && (
             <Typography sx={{ color: 'error.main', mb: 2, fontWeight: 700, px: 0.5 }}>
               {errorMessage}
@@ -519,10 +564,9 @@ export default function SearchPage({ onOpenDownloader }) {
                 const itemId = String(entry?.id || entry?.url || `${serviceKey}-${title}`).trim()
 
                 return (
-                  <Card elevation={0} key={itemId} sx={{ borderRadius: 1.5, border: '1px solid', borderColor: 'divider', display: 'flex', overflow: 'hidden', height: { xs: 110, sm: 130 } }}>
+                  <Card elevation={0} key={itemId} sx={{ position: 'relative', borderRadius: 1.5, border: '1px solid', borderColor: 'divider', display: 'flex', overflow: 'hidden', height: { xs: 110, sm: 130 } }}>
                     <Box
-                      onClick={() => handleOpenResult(entry)}
-                      sx={{ display: 'flex', alignItems: 'stretch', width: '100%', justifyContent: 'flex-start', cursor: 'pointer' }}
+                      sx={{ display: 'flex', alignItems: 'stretch', width: '100%', justifyContent: 'flex-start' }}
                     >
                       <Box sx={{ width: { xs: 140, sm: 230 }, minWidth: { xs: 140, sm: 230 }, position: 'relative', bgcolor: 'action.hover', flexShrink: 0 }}>
                         {thumbnail ? (
@@ -562,7 +606,7 @@ export default function SearchPage({ onOpenDownloader }) {
                         ) : null}
                       </Box>
 
-                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: { xs: 1.5, sm: 2 }, overflow: 'hidden', justifyContent: 'center' }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: { xs: 1.5, sm: 2 }, pr: { xs: 7, sm: 10 }, overflow: 'hidden', justifyContent: 'center', position: 'relative' }}>
                         <Typography variant="body1" fontWeight={800} noWrap>
                           {title}
                         </Typography>
@@ -576,6 +620,56 @@ export default function SearchPage({ onOpenDownloader }) {
                         </Box>
                       </Box>
                     </Box>
+
+                    <IconButton
+                      size="small"
+                      onClick={(e) => handleOpenKebab(e, entry)}
+                      sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'background.paper', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', '&:hover': { bgcolor: 'action.hover' } }}
+                    >
+                      <MoreVertical size={16} />
+                    </IconButton>
+
+                    <ButtonGroup
+                      variant="contained"
+                      disableElevation
+                      size="small"
+                      sx={(theme) => {
+                        const baseColor = getServiceThemeColor(serviceKey)
+                        const bgColor = (theme.palette.mode === 'dark' && /^#000000$/i.test(baseColor)) ? '#333333' : baseColor
+                        const effectiveBg = bgColor || 'primary.main'
+                        const effectiveText = (theme.palette.mode === 'light' && /^#FFFFFF$/i.test(baseColor)) ? '#000000' : '#ffffff'
+
+                        return {
+                          position: 'absolute',
+                          bottom: 12,
+                          right: 12,
+                          borderRadius: 9999,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                          '& .MuiButton-root': {
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            bgcolor: effectiveBg,
+                            color: effectiveText,
+                          },
+                          '& .MuiButton-root:hover': {
+                            bgcolor: effectiveBg,
+                            filter: 'brightness(1.15)',
+                          },
+                          '& .MuiButtonGroup-grouped:not(:last-of-type)': {
+                            borderColor: theme.palette.mode === 'light' && /^#FFFFFF$/i.test(baseColor) 
+                              ? 'rgba(0,0,0,0.15)' 
+                              : 'rgba(255,255,255,0.25)',
+                          }
+                        }
+                      }}
+                    >
+                      <Button onClick={() => handleDownloadMain(entry)} sx={{ px: 2, borderRadius: '9999px 0 0 9999px' }}>
+                        {t('search.download')}
+                      </Button>
+                      <Button size="small" onClick={(e) => handleOpenDownloadDropdown(e, entry)} sx={{ px: 0.75, minWidth: 0, borderRadius: '0 9999px 9999px 0' }}>
+                        <ChevronDown size={16} />
+                      </Button>
+                    </ButtonGroup>
                   </Card>
                 )
               })}
@@ -593,6 +687,38 @@ export default function SearchPage({ onOpenDownloader }) {
             </Stack>
           )}
         </Box>
+
+        <Menu
+          anchorEl={kebabAnchorEl}
+          open={Boolean(kebabAnchorEl)}
+          onClose={handleCloseKebab}
+          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          slotProps={{ paper: { sx: { width: 220, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
+        >
+          <MenuItem onClick={handleKebabNewTab} sx={{ py: 1.5, borderRadius: 2, mx: 1 }}>
+            <Typography variant="body2" fontWeight={700}>{t('search.openInNewTab')}</Typography>
+          </MenuItem>
+          <MenuItem onClick={handleKebabBrowser} sx={{ py: 1.5, borderRadius: 2, mx: 1 }}>
+            <Typography variant="body2" fontWeight={700}>{t('search.openInBrowser')}</Typography>
+          </MenuItem>
+        </Menu>
+
+        <Menu
+          anchorEl={downloadAnchorEl}
+          open={Boolean(downloadAnchorEl)}
+          onClose={handleCloseDownloadDropdown}
+          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          slotProps={{ paper: { sx: { width: 200, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
+        >
+          <MenuItem onClick={() => handleDownloadQuick('mp4')} sx={{ py: 1.5, borderRadius: 2, mx: 1 }}>
+            <Typography variant="body2" fontWeight={700}>{t('search.downloadFormat', { format: 'MP4' })}</Typography>
+          </MenuItem>
+          <MenuItem onClick={() => handleDownloadQuick('mp3')} sx={{ py: 1.5, borderRadius: 2, mx: 1 }}>
+            <Typography variant="body2" fontWeight={700}>{t('search.downloadFormat', { format: 'MP3' })}</Typography>
+          </MenuItem>
+        </Menu>
       </Container>
     </SimpleBarScrollArea>
   )

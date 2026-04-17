@@ -28,6 +28,7 @@ export default function Downloader({
   const params = React.useMemo(() => new URLSearchParams(routeSearch), [routeSearch])
   const serviceParam = React.useMemo(() => normalizeServiceKey(params.get('service')), [params])
   const queryUrl = React.useMemo(() => String(params.get('url') || '').trim(), [params])
+  const autostartFormat = React.useMemo(() => String(params.get('autostart') || '').trim().toLowerCase(), [params])
   const serviceFromQuery = services[serviceParam] ? serviceParam : null
   const resolvedServiceKey = serviceFromQuery || detectService(queryUrl) || serviceKey || 'generic'
   const cfg = services[resolvedServiceKey] || services.generic
@@ -314,6 +315,7 @@ export default function Downloader({
             onFetchError={handleFetchError}
             onDownloadStateChange={handleDownloadStateChange}
             loadingState={showLoadingShell}
+            autostartFormat={autostartFormat}
           />
         </Box>
       )}

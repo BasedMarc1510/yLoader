@@ -212,10 +212,20 @@ export function useTabsController({ t }) {
     params.set('service', detected)
     if (trimmedUrl) params.set('url', trimmedUrl)
     if (options?.prefetched) params.set('prefetch', '1')
+    if (options?.autostart) params.set('autostart', options.autostart)
 
     const search = params.toString() ? `?${params.toString()}` : ''
     navigateTab(tabId, path, search)
   }, [navigateTab])
+
+  const openDownloaderInNewTab = React.useCallback((serviceKey, rawUrl) => {
+    const newTab = createDefaultTab()
+    setTabs((prevTabs) => [...prevTabs, newTab])
+    setActiveTabId(newTab.id)
+    setTimeout(() => {
+      openDownloaderInTab(newTab.id, serviceKey, rawUrl)
+    }, 0)
+  }, [openDownloaderInTab])
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0]
 
@@ -582,6 +592,7 @@ export function useTabsController({ t }) {
     navigateTab,
     navigateActiveTab,
     openDownloaderInTab,
+    openDownloaderInNewTab,
     selectRelativeTab,
     handleRequestCloseTab,
     handleConfirmClose,

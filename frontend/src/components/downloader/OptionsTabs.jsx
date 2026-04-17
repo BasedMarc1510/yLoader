@@ -22,6 +22,7 @@ export default function OptionsTabs({
   onFetchError = null,
   onDownloadStateChange = null,
   loadingState = false,
+  autostartFormat = '',
 }) {
   const theme = useTheme()
   const { t: i18nT } = useI18n()
@@ -91,6 +92,30 @@ export default function OptionsTabs({
   const openCookieSettings = React.useCallback(() => {
     openSettingsModal('yt-dlp', 'cookies')
   }, [])
+
+  const [hasAutostarted, setHasAutostarted] = React.useState(false)
+
+  React.useEffect(() => {
+    const format = String(autostartFormat || '').trim().toLowerCase()
+    if (!format || loadingState || hasAutostarted || interactionsDisabled) return
+
+    const formatIsMp3 = format === 'mp3'
+    const formatIsMp4 = format === 'mp4'
+    const canMp3 = formatIsMp3 && data.audioFormats.length > 0
+    const canMp4 = formatIsMp4 && data.videoFormats.length > 0
+
+    if (canMp3 || canMp4) {
+      if (formatIsMp3 && data.tab !== 'audio') data.handleTabChange('audio')
+      if (formatIsMp4 && data.tab !== 'video') data.handleTabChange('video')
+
+      setHasAutostarted(true)
+
+      // Small delay to ensure tab state renders and no other effects block the trigger
+      setTimeout(() => {
+        download.handleDownload(true)
+      }, 150)
+    }
+  }, [autostartFormat, loadingState, data, hasAutostarted, interactionsDisabled, download])
 
   return (
     <Box>

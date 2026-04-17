@@ -5,7 +5,7 @@ import MediaSummary from './MediaSummary'
 import OptionsTabs from './OptionsTabs'
 import { useI18n } from '../../providers/I18nProvider'
 
-export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFetchError, onDownloadStateChange, loadingState = false }) {
+export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFetchError, onDownloadStateChange, loadingState = false, autostartFormat }) {
   const { t } = useI18n()
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
@@ -44,6 +44,7 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFe
               onFetchError={onFetchError}
               onDownloadStateChange={onDownloadStateChange}
               loadingState={loadingState}
+              autostartFormat={autostartFormat}
             />
           </Box>
         </Box>

@@ -43,6 +43,7 @@ export default function App() {
     navigateTab,
     navigateActiveTab,
     openDownloaderInTab,
+    openDownloaderInNewTab,
     selectRelativeTab,
     handleRequestCloseTab,
     handleConfirmClose,
@@ -83,7 +84,8 @@ export default function App() {
     if (normalizedPath === '/search') {
       return (
         <SearchPage
-          onOpenDownloader={(serviceKey, rawUrl) => openDownloaderInTab(tab.id, serviceKey, rawUrl)}
+          onOpenDownloader={(serviceKey, rawUrl, options) => openDownloaderInTab(tab.id, serviceKey, rawUrl, options)}
+          onOpenInNewTab={(serviceKey, rawUrl) => openDownloaderInNewTab(serviceKey, rawUrl)}
         />
       )
     }
