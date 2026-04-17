@@ -14,7 +14,8 @@ import {
     Tooltip,
     useTheme,
     Button,
-    Container
+    Container,
+    Skeleton
 } from '@mui/material'
 import { Search, Trash2, Download, RefreshCw, Music, Video, Image as ImageIcon, Filter } from 'lucide-react'
 import ServiceIcon from '../components/ServiceIcon'
@@ -28,6 +29,11 @@ import {
 } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
+
+const INITIAL_VISIBLE_DOWNLOADS = 60
+const DOWNLOADS_CHUNK_SIZE = 40
+const LOAD_MORE_THRESHOLD_PX = 360
+const DOWNLOAD_SKELETON_COUNT = 12
 
 function getVideoSourceUrl(item) {
     const raw = typeof item.source_url === 'string' ? item.source_url.trim() : ''
@@ -45,6 +51,53 @@ function toKnownServiceKey(rawService, fallbackUrl = '') {
     return normalizeServiceKey(rawService) || detectService(fallbackUrl) || GENERIC_SERVICE_KEY
 }
 
+function DownloadCardSkeleton({ isDark }) {
+    const skeletonSx = {
+        bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+        '&::after': {
+            background: isDark
+                ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)'
+                : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)',
+        },
+    }
+
+    return (
+        <Card
+            elevation={0}
+            sx={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                borderRadius: 1.5,
+                border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`,
+                bgcolor: isDark ? '#1e1e1e' : '#fff',
+            }}
+        >
+            <Box sx={{ position: 'relative', paddingTop: '56.25%', bgcolor: '#000' }}>
+                <Skeleton variant="rectangular" animation="wave" sx={{ ...skeletonSx, position: 'absolute', inset: 0 }} />
+            </Box>
+
+            <CardContent sx={{ flexGrow: 1, p: 2, pb: 1 }}>
+                <Skeleton variant="text" animation="wave" width="90%" height={30} sx={skeletonSx} />
+                <Skeleton variant="rounded" animation="wave" width={118} height={24} sx={{ ...skeletonSx, borderRadius: 0.75, mt: 0.75 }} />
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1.5 }}>
+                    <Skeleton variant="text" animation="wave" width={90} height={18} sx={skeletonSx} />
+                    <Skeleton variant="rounded" animation="wave" width={64} height={22} sx={{ ...skeletonSx, borderRadius: 0.75 }} />
+                </Box>
+                <Skeleton variant="text" animation="wave" width="78%" height={18} sx={{ ...skeletonSx, mt: 1.5 }} />
+            </CardContent>
+
+            <CardActions sx={{ px: 2, pb: 2, pt: 1, justifyContent: 'space-between' }}>
+                <Skeleton variant="rounded" animation="wave" width={112} height={34} sx={{ ...skeletonSx, borderRadius: 1 }} />
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Skeleton variant="rounded" animation="wave" width={34} height={34} sx={{ ...skeletonSx, borderRadius: 1 }} />
+                    <Skeleton variant="rounded" animation="wave" width={34} height={34} sx={{ ...skeletonSx, borderRadius: 1 }} />
+                </Box>
+            </CardActions>
+        </Card>
+    )
+}
+
 export default function DownloadsPage({ onOpenDownloader }) {
     const { t, language } = useI18n()
     const theme = useTheme()
@@ -53,35 +106,64 @@ export default function DownloadsPage({ onOpenDownloader }) {
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
     const [filterService, setFilterService] = useState('all')
+    const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_DOWNLOADS)
+    const fetchControllerRef = React.useRef(null)
 
-    const fetchDownloads = async () => {
+    const fetchDownloads = React.useCallback(async () => {
+        fetchControllerRef.current?.abort()
+        const controller = new AbortController()
+        fetchControllerRef.current = controller
+
         setLoading(true)
+        setVisibleCount(INITIAL_VISIBLE_DOWNLOADS)
+
         try {
             const dbBase = getApiBase()
             const query = new URLSearchParams()
-            if (searchTerm) query.append('q', searchTerm)
+            const normalizedSearch = String(searchTerm || '').trim()
+            if (normalizedSearch) query.append('q', normalizedSearch)
             if (filterService !== 'all') query.append('service', filterService)
 
-            const res = await fetch(`${dbBase}/api/downloads?${query.toString()}`)
-            if (res.ok) {
-                const data = await res.json()
-                setDownloads(data)
+            const res = await fetch(`${dbBase}/api/downloads?${query.toString()}`, {
+                signal: controller.signal,
+            })
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`)
             }
+
+            const data = await res.json()
+
+            if (fetchControllerRef.current !== controller) return
+            setDownloads(Array.isArray(data) ? data : [])
         } catch (err) {
-            console.error('Failed to fetch downloads', err)
+            if (err?.name !== 'AbortError') {
+                console.error('Failed to fetch downloads', err)
+            }
         } finally {
-            setLoading(false)
+            if (fetchControllerRef.current === controller) {
+                fetchControllerRef.current = null
+                setLoading(false)
+            }
         }
-    }
+    }, [filterService, searchTerm])
 
     useEffect(() => {
         const handler = setTimeout(() => {
             fetchDownloads()
         }, 300)
         return () => clearTimeout(handler)
-    }, [searchTerm, filterService])
+    }, [fetchDownloads])
 
-    const handleDelete = async (id) => {
+    useEffect(() => () => {
+        fetchControllerRef.current?.abort()
+    }, [])
+
+    useEffect(() => {
+        setVisibleCount(INITIAL_VISIBLE_DOWNLOADS)
+    }, [downloads])
+
+    const handleDelete = React.useCallback(async (id) => {
         if (!window.confirm(t('downloads.confirmDelete'))) return
         try {
             const dbBase = getApiBase()
@@ -92,28 +174,28 @@ export default function DownloadsPage({ onOpenDownloader }) {
         } catch (err) {
             console.error('Failed to delete', err)
         }
-    }
+    }, [t])
 
-    const handleDownloadFile = (filename) => {
+    const handleDownloadFile = React.useCallback((filename) => {
         const dbBase = getApiBase()
         const url = `${dbBase}/api/download/file/${encodeURIComponent(filename)}`
         window.location.href = url
-    }
+    }, [])
 
-    const handleRedownload = (item) => {
+    const handleRedownload = React.useCallback((item) => {
         const url = getVideoSourceUrl(item)
         const service = toKnownServiceKey(item.service, url)
         if (url) onOpenDownloader?.(service, url)
-    }
+    }, [onOpenDownloader])
 
-    const formatDuration = (sec) => {
+    const formatDuration = React.useCallback((sec) => {
         if (!sec) return '00:00'
         const h = Math.floor(sec / 3600)
         const m = Math.floor((sec % 3600) / 60)
         const s = Math.floor(sec % 60)
         if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
         return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-    }
+    }, [])
 
     const getServiceLabel = React.useCallback((serviceKey) => {
         if (serviceKey === GENERIC_SERVICE_KEY) return t('services.generic')
@@ -152,23 +234,49 @@ export default function DownloadsPage({ onOpenDownloader }) {
         return options
     }, [downloads, filterService, getServiceLabel, t])
 
-    const getTypeIcon = (type) => {
+    const getTypeIcon = React.useCallback((type) => {
         if (type === 'audio') return <Music size={14} />
         if (type === 'video') return <Video size={14} />
         return <ImageIcon size={14} />
-    }
+    }, [])
 
-    const formatTimestampTooltip = (ts) => {
+    const formatTimestampTooltip = React.useCallback((ts) => {
         if (!ts) return ''
         const d = new Date(ts)
         if (Number.isNaN(d.getTime())) return String(ts)
         const localeTag = language === 'de' ? 'de-DE' : 'en-US'
         const human = d.toLocaleString(localeTag, { dateStyle: 'full', timeStyle: 'medium' })
         return `${human}\n${d.toISOString()}`
-    }
+    }, [language])
+
+    const visibleDownloads = React.useMemo(
+        () => downloads.slice(0, visibleCount),
+        [downloads, visibleCount]
+    )
+
+    const hasMoreDownloads = visibleCount < downloads.length
+    const showSkeletonCards = loading && downloads.length === 0
+
+    const handleDownloadsScroll = React.useCallback((event) => {
+        if (loading) return
+
+        const node = event.currentTarget
+        const remainingDistance = node.scrollHeight - node.scrollTop - node.clientHeight
+        if (remainingDistance > LOAD_MORE_THRESHOLD_PX) return
+
+        setVisibleCount((prev) => {
+            if (prev >= downloads.length) return prev
+            return Math.min(downloads.length, prev + DOWNLOADS_CHUNK_SIZE)
+        })
+    }, [downloads.length, loading])
+
+    const scrollableNodeProps = React.useMemo(
+        () => ({ onScroll: handleDownloadsScroll }),
+        [handleDownloadsScroll]
+    )
 
     return (
-        <SimpleBarScrollArea sx={{ height: '100%' }}>
+        <SimpleBarScrollArea sx={{ height: '100%' }} hideHorizontal scrollableNodeProps={scrollableNodeProps}>
             <Container maxWidth="xl" sx={{ py: 4 }}>
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h4" component="h1" fontWeight={800} gutterBottom>
@@ -262,7 +370,13 @@ export default function DownloadsPage({ onOpenDownloader }) {
                 </Box>
 
                 <Grid container spacing={2.5}>
-                    {downloads.map((item) => {
+                    {showSkeletonCards && Array.from({ length: DOWNLOAD_SKELETON_COUNT }).map((_, index) => (
+                        <Grid item xs={12} sm={6} md={4} lg={3} xl={2.4} key={`download-skeleton-${index}`}>
+                            <DownloadCardSkeleton isDark={isDark} />
+                        </Grid>
+                    ))}
+
+                    {!showSkeletonCards && visibleDownloads.map((item) => {
                         const videoPageUrl = getVideoSourceUrl(item)
                         const serviceKey = toKnownServiceKey(item.service, videoPageUrl || item.source_url)
                         const serviceLabel = getServiceLabel(serviceKey)
@@ -280,6 +394,8 @@ export default function DownloadsPage({ onOpenDownloader }) {
                                     border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`,
                                     bgcolor: isDark ? '#1e1e1e' : '#fff',
                                     transition: 'border-color 0.2s',
+                                    contentVisibility: 'auto',
+                                    containIntrinsicSize: '340px',
                                     '&:hover': {
                                         borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
                                     }
@@ -483,6 +599,27 @@ export default function DownloadsPage({ onOpenDownloader }) {
                         </Grid>
                         )
                     })}
+
+                    {!showSkeletonCards && hasMoreDownloads && (
+                        <Grid item xs={12}>
+                            <Box sx={{ py: 0.75 }}>
+                                <Skeleton
+                                    variant="rounded"
+                                    animation="wave"
+                                    height={34}
+                                    sx={{
+                                        borderRadius: 1.25,
+                                        bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                        '&::after': {
+                                            background: isDark
+                                                ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)'
+                                                : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)',
+                                        },
+                                    }}
+                                />
+                            </Box>
+                        </Grid>
+                    )}
 
                     {!loading && downloads.length === 0 && (
                         <Grid item xs={12}>

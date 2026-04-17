@@ -98,3 +98,34 @@ body,
 .tabs-scrollbar-hidden::-webkit-scrollbar {
   display: none;
 }
+
+/* Native container scrollbar styled with yLoader tokens (used where layout relies on native overflow). */
+.yl-native-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--yl-scroll-thumb) transparent;
+}
+
+.yl-native-scroll::-webkit-scrollbar {
+  width: var(--yl-scroll-size);
+  height: var(--yl-scroll-size);
+}
+
+.yl-native-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.yl-native-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--yl-scroll-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.yl-native-scroll:hover::-webkit-scrollbar-thumb,
+.yl-native-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--yl-scroll-thumb-hover);
+}
+
+.yl-native-scroll::-webkit-scrollbar-thumb:active {
+  background-color: var(--yl-scroll-thumb-active);
+}

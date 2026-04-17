@@ -1,7 +1,7 @@
 import React from 'react'
 import { Box, Button, Collapse, Typography } from '@mui/material'
 import ChevronIcon from './ChevronIcon'
-import { getSectionButtonBg, getSectionButtonHover } from './styleUtils'
+import { getSectionButtonBg, getSectionButtonBorder, getSectionButtonHover, getSectionButtonShadow } from './styleUtils'
 
 export default function CollapsibleSection({
   id,
@@ -34,6 +34,8 @@ export default function CollapsibleSection({
           justifyContent: 'space-between',
           minHeight: 'auto',
           opacity: disabled ? 0.6 : 1,
+          border: getSectionButtonBorder(isDark, isOpen),
+          boxShadow: isOpen ? 'none' : getSectionButtonShadow(isDark),
           '&:hover': {
             bgcolor: getSectionButtonHover(isDark),
           },
@@ -50,6 +52,8 @@ export default function CollapsibleSection({
             padding: 1.5,
             bgcolor: collapseBg,
             borderRadius: '0 0 12px 12px',
+            border: isDark ? 'none' : '1px solid #dcdee2',
+            borderTop: 'none',
           }}
         >
           {children}

@@ -117,12 +117,12 @@ export default function OptionsTabs({
   const isDark = theme.palette.mode === 'dark'
   const tabActiveBg = isDark ? '#272727' : '#ffffff'
   const tabInactiveBg = isDark ? '#1a1a1a' : 'transparent'
-  const tabActiveBorder = isDark ? '#424242' : 'transparent'
+  const tabActiveBorder = isDark ? '#424242' : '#dcdee2'
   const tabInactiveBorder = isDark ? '#1a1a1a' : 'transparent'
-  const tabHoverBorder = isDark ? '#555555' : 'transparent'
-  const tabHoverBg = isDark ? tabActiveBg : 'rgba(0,0,0,0.04)'
+  const tabHoverBorder = isDark ? '#555555' : '#d0d2d6'
+  const tabHoverBg = isDark ? tabActiveBg : 'rgba(255,255,255,0.55)'
   const tabTextColor = isDark ? '#ffffff' : '#111111'
-  const tabActiveShadow = isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)'
+  const tabActiveShadow = isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)'
   const skeletonSx = React.useMemo(() => ({
     bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
     '&::after': {
@@ -183,9 +183,9 @@ export default function OptionsTabs({
           margin: theme.spacing(1.5, 1.5, 0, 1.5),
           padding: theme.spacing(1.5),
           borderRadius: '12px 12px 0 0',
-          bgcolor: isDark ? '#0a0a0a' : '#f4f5f7',
-          boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'inset 0 1px 3px rgba(0,0,0,0.02)',
-          border: isDark ? 'none' : '1px solid #eaeaec',
+          bgcolor: isDark ? '#0a0a0a' : '#eef0f4',
+          boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
+          border: isDark ? 'none' : '1px solid #e2e4e8',
           borderBottom: 'none',
           display: 'flex',
           gap: theme.spacing(1),
@@ -286,9 +286,9 @@ export default function OptionsTabs({
           margin: theme.spacing(0, 1.5, 1.5, 1.5),
           padding: theme.spacing(0.75, 1.5, 1.5, 1.5),
           borderRadius: '0 0 12px 12px',
-          bgcolor: isDark ? '#0a0a0a' : '#f4f5f7',
+          bgcolor: isDark ? '#0a0a0a' : '#eef0f4',
           boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
-          border: isDark ? 'none' : '1px solid #eaeaec',
+          border: isDark ? 'none' : '1px solid #e2e4e8',
           borderTop: 'none',
           minHeight: '120px',
           opacity: interactionsDisabled ? 0.82 : 1,

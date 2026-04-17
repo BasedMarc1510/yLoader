@@ -334,7 +334,10 @@ export default function Downloader({
   const showLoadingShell = !meta && !fetchError && hasValidRouteUrl
 
   return (
-    <Box sx={{ position: 'relative', height: '100%', overflowY: showLanding ? 'hidden' : 'auto' }}>
+    <Box
+      className="yl-native-scroll"
+      sx={{ position: 'relative', height: '100%', overflowX: 'hidden', overflowY: showLanding ? 'hidden' : 'auto' }}
+    >
       <DownloaderLanding
         showLanding={showLanding}
         cfg={cfg}
