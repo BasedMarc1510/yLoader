@@ -47,6 +47,103 @@ const SQUARE_THUMBNAIL_SERVICES = new Set(['spotify', 'soundcloud'])
 const EMBED_PREVIEW_SERVICES = new Set(['youtube', 'soundcloud'])
 const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{6,}$/
 const DIRECT_DOWNLOAD_FORMAT_OPTIONS = Object.freeze(['mp4', 'mp3', 'thumbnail'])
+const SEARCH_RUNTIME_MAX_RESULTS = 120
+const SEARCH_RUNTIME_MAX_SELECTED_ENTRIES = 160
+const SEARCH_RUNTIME_DEFAULT_SERVICE = 'youtube'
+const SEARCH_PROVIDER_VALUES = new Set(SEARCH_SERVICE_OPTIONS.map((option) => option.value))
+
+function sanitizeSearchRuntimeText(value, maxLength = 240) {
+  return String(value || '').trim().slice(0, maxLength)
+}
+
+function normalizeSearchProvider(value) {
+  const normalized = sanitizeSearchRuntimeText(value, 40).toLowerCase()
+  if (SEARCH_PROVIDER_VALUES.has(normalized)) return normalized
+  return SEARCH_RUNTIME_DEFAULT_SERVICE
+}
+
+function normalizeSearchResultService(value) {
+  return normalizeServiceKey(value) || GENERIC_SERVICE_KEY
+}
+
+function sanitizeSearchRuntimeResultEntry(entry) {
+  const url = toHttpUrl(entry?.url)
+  if (!url) return null
+
+  const title = sanitizeSearchRuntimeText(entry?.title, 320)
+
+  return {
+    id: sanitizeSearchRuntimeText(entry?.id, 120),
+    url,
+    title: title || url,
+    uploader: sanitizeSearchRuntimeText(entry?.uploader, 180),
+    thumbnail: sanitizeSearchRuntimeText(entry?.thumbnail, 2048),
+    duration: Number.isFinite(Number(entry?.duration)) ? Number(entry.duration) : 0,
+    durationString: sanitizeSearchRuntimeText(entry?.durationString, 32),
+    service: normalizeSearchResultService(entry?.service),
+  }
+}
+
+function sanitizeSearchRuntimeSelectedEntry(entry) {
+  const identity = sanitizeSearchRuntimeText(entry?.identity, 260)
+  const url = toHttpUrl(entry?.url)
+  if (!identity || !url) return null
+
+  return {
+    identity,
+    url,
+    service: normalizeSearchResultService(entry?.service),
+    title: sanitizeSearchRuntimeText(entry?.title, 240),
+    thumbnail: sanitizeSearchRuntimeText(entry?.thumbnail, 2048),
+  }
+}
+
+function normalizeSearchRuntimeState(rawState) {
+  const state = (rawState && typeof rawState === 'object') ? rawState : {}
+
+  const results = Array.isArray(state.results)
+    ? state.results
+      .map(sanitizeSearchRuntimeResultEntry)
+      .filter(Boolean)
+      .slice(0, SEARCH_RUNTIME_MAX_RESULTS)
+    : []
+
+  const selectedEntries = Array.isArray(state.selectedEntries)
+    ? state.selectedEntries
+      .map(sanitizeSearchRuntimeSelectedEntry)
+      .filter(Boolean)
+      .slice(0, SEARCH_RUNTIME_MAX_SELECTED_ENTRIES)
+    : []
+
+  return {
+    query: sanitizeSearchRuntimeText(state.query, 300),
+    selectedService: normalizeSearchProvider(state.selectedService),
+    results,
+    errorMessage: sanitizeSearchRuntimeText(state.errorMessage, 600),
+    lastQuery: sanitizeSearchRuntimeText(state.lastQuery, 300),
+    lastService: normalizeSearchProvider(state.lastService),
+    nextOffset: Number.isFinite(Number(state.nextOffset)) ? Math.max(0, Number(state.nextOffset)) : 0,
+    hasMore: Boolean(state.hasMore),
+    selectedEntries,
+  }
+}
+
+function toSelectedEntriesMap(entries) {
+  const map = new Map()
+  for (const entry of entries || []) {
+    const identity = sanitizeSearchRuntimeText(entry?.identity, 260)
+    const url = toHttpUrl(entry?.url)
+    if (!identity || !url) continue
+    map.set(identity, {
+      identity,
+      url,
+      service: normalizeSearchResultService(entry?.service),
+      title: sanitizeSearchRuntimeText(entry?.title, 240),
+      thumbnail: sanitizeSearchRuntimeText(entry?.thumbnail, 2048),
+    })
+  }
+  return map
+}
 
 function getSearchEntryIdentity(entry) {
   const id = String(entry?.id || '').trim()
@@ -309,7 +406,11 @@ function resolvePreviewEmbedPayload(entry, fallbackService, getServiceLabel) {
   }
 }
 
-export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMultiInNewTab }) {
+export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMultiInNewTab, tabsReady = true, runtimeState = null, onTabStateChange = null }) {
+  const initialRuntimeRef = React.useRef(normalizeSearchRuntimeState(runtimeState))
+  const lastRuntimeSnapshotRef = React.useRef('')
+  const runtimeHydratedRef = React.useRef(false)
+  const [runtimeHydrationComplete, setRuntimeHydrationComplete] = React.useState(false)
   const { t } = useI18n()
   const { showNotification } = useNotification()
   const scrollRootRef = React.useRef(null)
@@ -318,16 +419,16 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
   const quickDownloadResetTimerRef = React.useRef(null)
   const pendingElectronDownloadRef = React.useRef(null)
 
-  const [query, setQuery] = React.useState('')
-  const [selectedService, setSelectedService] = React.useState('youtube')
-  const [results, setResults] = React.useState([])
+  const [query, setQuery] = React.useState(() => initialRuntimeRef.current.query)
+  const [selectedService, setSelectedService] = React.useState(() => initialRuntimeRef.current.selectedService)
+  const [results, setResults] = React.useState(() => initialRuntimeRef.current.results)
   const [loadingInitial, setLoadingInitial] = React.useState(false)
   const [loadingMore, setLoadingMore] = React.useState(false)
-  const [errorMessage, setErrorMessage] = React.useState('')
-  const [lastQuery, setLastQuery] = React.useState('')
-  const [lastService, setLastService] = React.useState('youtube')
-  const [nextOffset, setNextOffset] = React.useState(0)
-  const [hasMore, setHasMore] = React.useState(false)
+  const [errorMessage, setErrorMessage] = React.useState(() => initialRuntimeRef.current.errorMessage)
+  const [lastQuery, setLastQuery] = React.useState(() => initialRuntimeRef.current.lastQuery)
+  const [lastService, setLastService] = React.useState(() => initialRuntimeRef.current.lastService)
+  const [nextOffset, setNextOffset] = React.useState(() => initialRuntimeRef.current.nextOffset)
+  const [hasMore, setHasMore] = React.useState(() => initialRuntimeRef.current.hasMore)
   const [serviceMenuAnchor, setServiceMenuAnchor] = React.useState(null)
 
   const [hasMeasured, setHasMeasured] = React.useState(false)
@@ -340,7 +441,60 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
   const [actionEntry, setActionEntry] = React.useState(null)
   const [embedPreview, setEmbedPreview] = React.useState(null)
   const [quickDownloadState, setQuickDownloadState] = React.useState(null)
-  const [selectedEntriesMap, setSelectedEntriesMap] = React.useState(() => new Map())
+  const [selectedEntriesMap, setSelectedEntriesMap] = React.useState(() => toSelectedEntriesMap(initialRuntimeRef.current.selectedEntries))
+
+  React.useEffect(() => {
+    if (!tabsReady || runtimeHydratedRef.current) return
+
+    const canHydrate =
+      !query
+      && !results.length
+      && !errorMessage
+      && !lastQuery
+      && nextOffset === 0
+      && !hasMore
+      && selectedEntriesMap.size === 0
+
+    if (!canHydrate) {
+      runtimeHydratedRef.current = true
+      setRuntimeHydrationComplete(true)
+      return
+    }
+
+    const restored = normalizeSearchRuntimeState(runtimeState)
+    const hasRestorableState =
+      Boolean(restored.query)
+      || Boolean(restored.lastQuery)
+      || Boolean(restored.errorMessage)
+      || restored.results.length > 0
+      || restored.selectedEntries.length > 0
+
+    if (hasRestorableState) {
+      requestTokenRef.current += 1
+      setQuery(restored.query)
+      setSelectedService(restored.selectedService)
+      setResults(restored.results)
+      setErrorMessage(restored.errorMessage)
+      setLastQuery(restored.lastQuery)
+      setLastService(restored.lastService)
+      setNextOffset(restored.nextOffset)
+      setHasMore(restored.hasMore)
+      setSelectedEntriesMap(toSelectedEntriesMap(restored.selectedEntries))
+    }
+
+    runtimeHydratedRef.current = true
+    setRuntimeHydrationComplete(true)
+  }, [
+    errorMessage,
+    hasMore,
+    lastQuery,
+    nextOffset,
+    query,
+    results,
+    runtimeState,
+    selectedEntriesMap.size,
+    tabsReady,
+  ])
 
   const selectedServiceOption = React.useMemo(() => {
     return SEARCH_SERVICE_OPTIONS.find((o) => o.value === selectedService) || SEARCH_SERVICE_OPTIONS[0]
@@ -556,6 +710,43 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
 
   const selectedEntries = React.useMemo(() => Array.from(selectedEntriesMap.values()), [selectedEntriesMap])
   const selectedCount = selectedEntries.length
+
+  React.useEffect(() => {
+    if (!tabsReady || !runtimeHydrationComplete) return
+
+    const runtimePayload = normalizeSearchRuntimeState({
+      query,
+      selectedService,
+      results,
+      errorMessage,
+      lastQuery,
+      lastService,
+      nextOffset,
+      hasMore,
+      selectedEntries,
+    })
+
+    const serialized = JSON.stringify(runtimePayload)
+    if (serialized === lastRuntimeSnapshotRef.current) return
+    lastRuntimeSnapshotRef.current = serialized
+
+    onTabStateChange?.({
+      searchCache: runtimePayload,
+    })
+  }, [
+    errorMessage,
+    hasMore,
+    lastQuery,
+    lastService,
+    nextOffset,
+    onTabStateChange,
+    query,
+    results,
+    selectedEntries,
+    selectedService,
+    tabsReady,
+    runtimeHydrationComplete,
+  ])
 
   const handleOpenSelectedList = React.useCallback((event) => {
     setSelectedListAnchorEl(event.currentTarget)

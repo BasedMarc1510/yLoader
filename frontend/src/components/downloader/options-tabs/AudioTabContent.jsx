@@ -16,7 +16,7 @@ import AudioCoverSection from './AudioCoverSection'
 import CollapsibleSection from './CollapsibleSection'
 import { getDownloadProgressLabel } from './downloadProgressLabel'
 import { buildAudioOptions } from './formatOptions'
-import { adjustColorBrightness } from './styleUtils'
+import { adjustColorBrightness, getContrastTextColor } from './styleUtils'
 
 export default function AudioTabContent({
   theme,
@@ -60,6 +60,13 @@ export default function AudioTabContent({
 }) {
   const isDark = theme.palette.mode === 'dark'
   const textColor = isDark ? '#ffffff' : theme.palette.text.primary
+  const downloadButtonTextColor = React.useMemo(
+    () => getContrastTextColor(theme, brandColor),
+    [brandColor, theme]
+  )
+  const progressOverlayColor = downloadButtonTextColor === '#111111'
+    ? 'rgba(0,0,0,0.14)'
+    : 'rgba(255,255,255,0.22)'
 
   return (
     <Box>
@@ -221,7 +228,7 @@ export default function AudioTabContent({
             textTransform: 'none',
             padding: '14px 20px',
             fontWeight: 700,
-            color: '#ffffff',
+            color: downloadButtonTextColor,
             fontSize: '1.125rem',
             border: `2px solid ${adjustColorBrightness(brandColor, -20)}`,
             boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -234,9 +241,9 @@ export default function AudioTabContent({
               bgcolor: adjustColorBrightness(brandColor, -15),
             },
             '&:disabled': {
-              bgcolor: '#444',
-              color: 'rgba(255,255,255,0.9)',
-              borderColor: '#444',
+              bgcolor: isDark ? '#444' : '#c8cad0',
+              color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.5)',
+              borderColor: isDark ? '#444' : '#c8cad0',
               boxShadow: 'none',
             },
           }}
@@ -249,7 +256,7 @@ export default function AudioTabContent({
                 left: '-2px',
                 bottom: '-2px',
                 width: `calc(${downloadProgress}% + 4px)`,
-                bgcolor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
+                bgcolor: progressOverlayColor,
                 transition: 'width 0.2s linear',
                 zIndex: 0,
                 height: 'calc(100% + 4px)',
@@ -260,7 +267,7 @@ export default function AudioTabContent({
           <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
             {downloading ? (
               <>
-                <CircularProgress size={22} sx={{ color: '#ffffff' }} thickness={5} />
+                <CircularProgress size={22} sx={{ color: downloadButtonTextColor }} thickness={5} />
                 <Typography sx={{ fontSize: '1.125rem', fontWeight: 700 }}>
                   {getDownloadProgressLabel(i18nT, downloadStage, downloadProgress)}
                 </Typography>

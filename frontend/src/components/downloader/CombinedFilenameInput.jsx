@@ -19,13 +19,13 @@ export default function CombinedFilenameInput({
     const [showLeftFade, setShowLeftFade] = React.useState(false)
     const [showRightFade, setShowRightFade] = React.useState(false)
 
-    const inputBgColor = isDark ? '#1b1b1b' : '#f5f5f5'
+    const inputBgColor = isDark ? '#1b1b1b' : '#ffffff'
     const leftFadeGradient = isDark
         ? 'linear-gradient(to right, #1b1b1b 36%, rgba(27,27,27,0))'
-        : 'linear-gradient(to right, #f5f5f5 36%, rgba(245,245,245,0))'
+        : 'linear-gradient(to right, #ffffff 36%, rgba(255,255,255,0))'
     const rightFadeGradient = isDark
         ? 'linear-gradient(to left, #1b1b1b 36%, rgba(27,27,27,0))'
-        : 'linear-gradient(to left, #f5f5f5 36%, rgba(245,245,245,0))'
+        : 'linear-gradient(to left, #ffffff 36%, rgba(255,255,255,0))'
 
     const updateFadeState = React.useCallback(() => {
         const node = inputRef.current
@@ -78,18 +78,18 @@ export default function CombinedFilenameInput({
                 display: 'flex',
                 alignItems: 'center',
                 width: '100%',
-                bgcolor: isDark ? '#1b1b1b' : '#f5f5f5',
-                border: `2px solid ${isDark ? '#333333' : '#b0b0b0'}`,
+                bgcolor: isDark ? '#1b1b1b' : '#ffffff',
+                border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
                 borderRadius: '16px',
                 transition: 'border-color 0.2s ease',
                 '&:focus-within': {
-                    borderColor: isDark ? '#555555' : '#888888',
+                    borderColor: isDark ? '#555555' : '#c0c2c6',
                 },
                 overflow: 'hidden',
                 height: '45px',
             }}
         >
-            <Box sx={{ pl: 2, display: 'flex', alignItems: 'center', color: isDark ? '#888888' : '#666666' }}>
+            <Box sx={{ pl: 2, display: 'flex', alignItems: 'center', color: isDark ? '#888888' : '#8e8e93' }}>
                 <Tag size={18} />
             </Box>
 
@@ -125,7 +125,7 @@ export default function CombinedFilenameInput({
                         border: 'none',
                         outline: 'none',
                         bgcolor: 'transparent',
-                        color: isDark ? '#ffffff' : '#000000',
+                        color: isDark ? '#ffffff' : '#1a1a1a',
                         fontSize: '15px',
                         fontWeight: 600,
                         px: 1.5,
@@ -166,7 +166,7 @@ export default function CombinedFilenameInput({
                 )}
             </Box>
 
-            <Box sx={{ width: '1px', height: '60%', bgcolor: isDark ? '#333333' : '#d0d0d0' }} />
+            <Box sx={{ width: '1px', height: '60%', bgcolor: isDark ? '#333333' : '#dfe0e2' }} />
 
             <Select
                 value={extension}
@@ -176,8 +176,8 @@ export default function CombinedFilenameInput({
                 disableUnderline
                 sx={{
                     height: '100%',
-                    bgcolor: isDark ? '#232323' : '#e8e8e8',
-                    color: isDark ? '#bbb' : '#555',
+                    bgcolor: isDark ? '#232323' : '#f4f5f7',
+                    color: isDark ? '#bbb' : '#5e5e63',
                     fontSize: '13px',
                     fontWeight: 700,
                     px: 0,
@@ -195,11 +195,11 @@ export default function CombinedFilenameInput({
                     '& .MuiSvgIcon-root': {
                         right: 4,
                         width: 20,
-                        color: isDark ? '#777' : '#999',
+                        color: isDark ? '#777' : '#8e8e93',
                     },
                     '&:hover': {
-                        bgcolor: isDark ? '#2a2a2a' : '#dfdfdf',
-                        color: isDark ? '#fff' : '#000',
+                        bgcolor: isDark ? '#2a2a2a' : '#ecedf0',
+                        color: isDark ? '#fff' : '#1a1a1a',
                     },
                 }}
             >

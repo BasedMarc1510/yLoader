@@ -30,13 +30,17 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
         gap: 1.5,
         p: 1.25,
         borderRadius: '12px',
-        bgcolor: t.palette.mode === 'dark' ? '#0a0a0a' : '#f3f4f6',
-        boxShadow: t.palette.mode === 'dark' ? '0 2px 4px rgba(0, 0, 0, 0.2)' : '0 2px 4px rgba(0, 0, 0, 0.08)',
+        bgcolor: t.palette.mode === 'dark' ? '#0a0a0a' : '#f9fafc',
+        boxShadow: t.palette.mode === 'dark' ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
+        border: t.palette.mode === 'dark' ? '1px solid transparent' : '1px solid #eaeaec',
         cursor: interactive ? 'pointer' : 'default',
         opacity: loading ? 0.78 : 1,
+        transition: 'all 0.15s ease',
         '&:hover': interactive
           ? {
-              bgcolor: t.palette.mode === 'dark' ? '#0d0d0d' : '#f8f9fb',
+              bgcolor: t.palette.mode === 'dark' ? '#0d0d0d' : '#ffffff',
+              boxShadow: t.palette.mode === 'dark' ? undefined : '0 2px 8px rgba(0, 0, 0, 0.04)',
+              borderColor: t.palette.mode === 'dark' ? undefined : '#e2e2e4',
             }
           : undefined,
       })}>
@@ -55,7 +59,7 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
         ) : thumbnail ? (
           <Box component="img" src={thumbnail} alt={title || t('mediaSummary.thumbnailAlt')} sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: 0.75 }} />
         ) : (
-          <Box sx={{ width: '100%', height: '100%', bgcolor: theme.palette.mode === 'dark' ? 'grey.800' : '#d5dae1' }} />
+          <Box sx={{ width: '100%', height: '100%', bgcolor: theme.palette.mode === 'dark' ? 'grey.800' : '#e4e5e7' }} />
         )}
         {loading ? (
           <Box sx={{

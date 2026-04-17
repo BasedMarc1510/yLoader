@@ -16,7 +16,7 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFe
         border: 'none',
         overflow: 'hidden',
         bgcolor: t.palette.mode === 'dark' ? '#181818' : '#ffffff',
-        boxShadow: t.palette.mode === 'dark' ? '0 8px 16px rgba(0, 0, 0, 0.2)' : '0 4px 24px rgba(0, 0, 0, 0.06)',
+        boxShadow: t.palette.mode === 'dark' ? '0 8px 16px rgba(0, 0, 0, 0.2)' : '0 4px 24px rgba(0, 0, 0, 0.04), 0 1px 6px rgba(0, 0, 0, 0.02)',
         transition: 'opacity 140ms ease',
         opacity: loadingState ? 0.9 : 1,
       })}>
@@ -45,6 +45,8 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFe
               onDownloadStateChange={onDownloadStateChange}
               loadingState={loadingState}
               autostartFormat={autostartFormat}
+              defaultDownloadType={brand.defaultDownloadType}
+              disabledDownloadTypes={brand.disabledDownloadTypes}
             />
           </Box>
         </Box>

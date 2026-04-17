@@ -4,7 +4,7 @@ import { Download } from 'lucide-react'
 import CombinedFilenameInput from '../CombinedFilenameInput'
 import CustomSelect from '../CustomSelect'
 import { getApiBase } from '../../../utils/metadata'
-import { adjustColorBrightness } from './styleUtils'
+import { adjustColorBrightness, getContrastTextColor } from './styleUtils'
 
 export default function ThumbnailTabContent({
   theme,
@@ -23,7 +23,11 @@ export default function ThumbnailTabContent({
 }) {
   const isDark = theme.palette.mode === 'dark'
   const textColor = isDark ? '#ffffff' : theme.palette.text.primary
-  const borderColor = isDark ? '#3a3a3a' : '#d0d0d0'
+  const borderColor = isDark ? '#3a3a3a' : '#dfe0e2'
+  const downloadButtonTextColor = React.useMemo(
+    () => getContrastTextColor(theme, brandColor),
+    [brandColor, theme]
+  )
   const apiBase = getApiBase()
   const selectedThumb = thumbOptions.find((option) => option.value === selectedThumbValue) || null
 
@@ -130,7 +134,7 @@ export default function ThumbnailTabContent({
           textTransform: 'none',
           padding: '14px 20px',
           fontWeight: 700,
-          color: '#ffffff',
+          color: downloadButtonTextColor,
           fontSize: '1.125rem',
           boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
           border: `2px solid ${adjustColorBrightness(brandColor, -20)}`,

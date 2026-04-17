@@ -13,6 +13,7 @@ import {
   hasUrlInSearch,
   normalizeClientTabState,
   normalizeDownloadState,
+  normalizeTabRuntimeState,
   readCurrentTabLocation,
   readLocalTabState,
   serializeTabState,
@@ -584,6 +585,19 @@ export function useTabsController({ t }) {
         const runtime = queued.get(tab.id)
         if (!runtime) return tab
 
+        const hasSearchCacheUpdate = Object.prototype.hasOwnProperty.call(runtime, 'searchCache')
+        const hasDownloaderCacheUpdate = Object.prototype.hasOwnProperty.call(runtime, 'downloaderCache')
+
+        const nextRuntime = (hasSearchCacheUpdate || hasDownloaderCacheUpdate)
+          ? normalizeTabRuntimeState({
+              search: hasSearchCacheUpdate ? runtime.searchCache : tab.runtime?.search,
+              downloader: hasDownloaderCacheUpdate ? runtime.downloaderCache : tab.runtime?.downloader,
+            })
+          : tab.runtime
+
+        const runtimeChanged = (hasSearchCacheUpdate || hasDownloaderCacheUpdate)
+          && JSON.stringify(nextRuntime) !== JSON.stringify(tab.runtime)
+
         const nextPageTitle = typeof runtime?.pageTitle === 'string'
           ? runtime.pageTitle.trim().slice(0, 180)
           : tab.pageTitle
@@ -603,6 +617,7 @@ export function useTabsController({ t }) {
           && nextDownload.progress === tab.download.progress
           && nextDownload.title === tab.download.title
           && nextDownload.stage === tab.download.stage
+          && !runtimeChanged
 
         if (unchanged) return tab
 
@@ -612,6 +627,7 @@ export function useTabsController({ t }) {
           pageTitle: nextPageTitle,
           loading: nextLoading,
           download: nextDownload,
+          runtime: nextRuntime,
         }
       })
 
@@ -634,6 +650,7 @@ export function useTabsController({ t }) {
 
   return {
     tabs,
+    tabsReady,
     activeTab,
     activeTabId,
     closeWarning,

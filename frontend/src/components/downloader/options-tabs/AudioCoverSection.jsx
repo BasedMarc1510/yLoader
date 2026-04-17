@@ -65,8 +65,8 @@ export default function AudioCoverSection({
               flex: 1,
               p: 1.5,
               borderRadius: 2,
-              bgcolor: coverSource === 'video' ? (isDark ? 'rgba(255,255,255,0.05)' : '#e0e0e0') : 'transparent',
-              border: `2px solid ${coverSource === 'video' ? brandColor : (isDark ? '#333' : '#ccc')}`,
+              bgcolor: coverSource === 'video' ? (isDark ? 'rgba(255,255,255,0.05)' : '#f4f5f7') : 'transparent',
+              border: `2px solid ${coverSource === 'video' ? brandColor : (isDark ? '#333' : '#dfe0e2')}`,
               cursor: downloading ? 'default' : 'pointer',
               opacity: downloading ? 0.6 : 1,
               display: 'flex',
@@ -75,8 +75,8 @@ export default function AudioCoverSection({
               gap: 1,
               transition: 'all 0.2s ease',
               '&:hover': {
-                bgcolor: coverSource === 'video' ? undefined : (isDark ? '#222' : '#f0f0f0'),
-                borderColor: coverSource === 'video' ? undefined : (isDark ? '#555' : '#aaa'),
+                bgcolor: coverSource === 'video' ? undefined : (isDark ? '#222' : '#f9fafc'),
+                borderColor: coverSource === 'video' ? undefined : (isDark ? '#555' : '#c0c2c6'),
               },
             }}
           >
@@ -92,8 +92,8 @@ export default function AudioCoverSection({
               flex: 1,
               p: 1.5,
               borderRadius: 2,
-              bgcolor: coverSource === 'upload' ? (isDark ? 'rgba(255,255,255,0.05)' : '#e0e0e0') : 'transparent',
-              border: `2px solid ${coverSource === 'upload' ? brandColor : (isDark ? '#333' : '#ccc')}`,
+              bgcolor: coverSource === 'upload' ? (isDark ? 'rgba(255,255,255,0.05)' : '#f4f5f7') : 'transparent',
+              border: `2px solid ${coverSource === 'upload' ? brandColor : (isDark ? '#333' : '#dfe0e2')}`,
               cursor: downloading ? 'default' : 'pointer',
               opacity: downloading ? 0.6 : 1,
               display: 'flex',
@@ -102,8 +102,8 @@ export default function AudioCoverSection({
               gap: 1,
               transition: 'all 0.2s ease',
               '&:hover': {
-                bgcolor: coverSource === 'upload' ? undefined : (isDark ? '#222' : '#f0f0f0'),
-                borderColor: coverSource === 'upload' ? undefined : (isDark ? '#555' : '#aaa'),
+                bgcolor: coverSource === 'upload' ? undefined : (isDark ? '#222' : '#f9fafc'),
+                borderColor: coverSource === 'upload' ? undefined : (isDark ? '#555' : '#c0c2c6'),
               },
             }}
           >
@@ -122,8 +122,8 @@ export default function AudioCoverSection({
                 width: '100%',
                 minHeight: 140,
                 borderRadius: 2,
-                border: `1px dashed ${isDark ? '#444' : '#bbb'}`,
-                bgcolor: isDark ? '#1a1a1a' : '#f0f0f0',
+                border: `1px dashed ${isDark ? '#444' : '#d0d1d4'}`,
+                bgcolor: isDark ? '#1a1a1a' : '#fafbfc',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -133,8 +133,8 @@ export default function AudioCoverSection({
                 overflow: 'hidden',
                 transition: 'all 0.2s',
                 '&:hover': {
-                  bgcolor: isDark ? '#222' : '#e8e8e8',
-                  borderColor: isDark ? '#666' : '#999',
+                  bgcolor: isDark ? '#222' : '#f4f5f7',
+                  borderColor: isDark ? '#666' : '#b0b2b6',
                 },
               }}
             >

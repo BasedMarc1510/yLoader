@@ -10,10 +10,20 @@ export const adjustColorBrightness = (hex, percent) => {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
 }
 
+export const getContrastTextColor = (theme, backgroundColor, lightText = '#ffffff', darkText = '#111111') => {
+  try {
+    const darkContrast = theme.palette.getContrastRatio(backgroundColor, darkText)
+    const lightContrast = theme.palette.getContrastRatio(backgroundColor, lightText)
+    return darkContrast >= lightContrast ? darkText : lightText
+  } catch {
+    return lightText
+  }
+}
+
 export const getSectionButtonBg = (isDark, isOpen) => {
-  return isDark ? (isOpen ? '#272727' : '#1a1a1a') : (isOpen ? '#e8e8e8' : '#ffffff')
+  return isDark ? (isOpen ? '#272727' : '#1a1a1a') : (isOpen ? '#ffffff' : '#f9fafc')
 }
 
 export const getSectionButtonHover = (isDark) => {
-  return isDark ? '#272727' : '#f0f0f0'
+  return isDark ? '#272727' : '#ffffff'
 }

@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@electron/notarize": "^2.2.1",
+    "baseline-browser-mapping": "^2.10.19",
     "electron": "^35.2.1",
     "electron-builder": "^24.13.3"
   },

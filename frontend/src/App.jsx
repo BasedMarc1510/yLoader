@@ -33,6 +33,7 @@ export default function App() {
 
   const {
     tabs,
+    tabsReady,
     activeTab,
     activeTabId,
     closeWarning,
@@ -88,6 +89,9 @@ export default function App() {
           onOpenDownloader={(serviceKey, rawUrl, options) => openDownloaderInTab(tab.id, serviceKey, rawUrl, options)}
           onOpenInNewTab={(serviceKey, rawUrl) => openDownloaderInNewTab(serviceKey, rawUrl)}
           onOpenMultiInNewTab={(urls) => openHomeMultiInNewTab(urls)}
+          tabsReady={tabsReady}
+          runtimeState={tab.runtime?.search}
+          onTabStateChange={(runtime) => handleTabRuntimeChange(tab.id, runtime)}
         />
       )
     }
@@ -99,7 +103,9 @@ export default function App() {
           serviceKey={serviceKey}
           routeSearch={tab.search}
           routeToken={tab.navToken}
+          tabsReady={tabsReady}
           onNavigate={(nextPath, nextSearch = '') => navigateTab(tab.id, nextPath, nextSearch)}
+          runtimeState={tab.runtime?.downloader}
           onTabStateChange={(runtime) => handleTabRuntimeChange(tab.id, runtime)}
         />
       )
@@ -112,7 +118,14 @@ export default function App() {
         onOpenDownloader={(serviceKey, rawUrl, options) => openDownloaderInTab(tab.id, serviceKey, rawUrl, options)}
       />
     )
-  }, [handleTabRuntimeChange, navigateTab, openDownloaderInTab, openDownloaderInNewTab, openHomeMultiInNewTab])
+  }, [
+    handleTabRuntimeChange,
+    navigateTab,
+    openDownloaderInTab,
+    openDownloaderInNewTab,
+    openHomeMultiInNewTab,
+    tabsReady,
+  ])
 
   return (
     <>

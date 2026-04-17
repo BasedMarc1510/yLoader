@@ -10,6 +10,9 @@ const GENERIC_SERVICE = {
     'https://vimeo.com/123456789',
     'https://www.twitch.tv/videos/1234567890',
   ],
+  // NEUE FLAGS
+  defaultDownloadType: 'video',        // Generic → meistens Video
+  disabledDownloadTypes: [],           // alles erlaubt
 }
 
 function hostPattern(domain) {
@@ -17,7 +20,6 @@ function hostPattern(domain) {
     .trim()
     .toLowerCase()
     .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
   return `(?:^|\\.)${escaped}$`
 }
 
@@ -34,6 +36,9 @@ const SERVICE_DEFINITIONS_RAW = [
       'https://youtu.be/PsO6ZnUZI0g',
       'https://www.youtube.com/shorts/PsO6ZnUZI0g',
     ],
+    // NEUE FLAGS
+    defaultDownloadType: 'audio',        // wie gewünscht
+    disabledDownloadTypes: [],
   },
   {
     key: 'netflix',
@@ -43,6 +48,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('netflix.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.netflix.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'tiktok',
@@ -53,6 +60,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('tiktok.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.tiktok.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'disney-plus',
@@ -62,6 +71,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('disneyplus.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.disneyplus.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'amazon-prime-video',
@@ -71,6 +82,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('primevideo.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.primevideo.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'twitch',
@@ -80,6 +93,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('twitch.tv')],
     pathRegexes: [],
     exampleUrls: ['https://www.twitch.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'pornhub',
@@ -89,6 +104,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('pornhub.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.pornhub.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'instagram',
@@ -98,6 +115,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('instagram.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.instagram.com/'],
+    defaultDownloadType: 'video',        // Reels & Videos sind der Haupt-Download
+    disabledDownloadTypes: [],
   },
   {
     key: 'facebook',
@@ -107,6 +126,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('facebook.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.facebook.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'xvideos',
@@ -116,6 +137,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('xvideos.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.xvideos.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'max',
@@ -125,6 +148,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('max.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.max.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'hulu',
@@ -134,6 +159,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('hulu.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.hulu.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'paramount-plus',
@@ -143,6 +170,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('paramountplus.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.paramountplus.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'peacock',
@@ -153,6 +182,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('peacocktv.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.peacocktv.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'apple-tv-plus',
@@ -162,6 +193,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('tv.apple.com')],
     pathRegexes: [],
     exampleUrls: ['https://tv.apple.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'vimeo',
@@ -171,6 +204,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('vimeo.com')],
     pathRegexes: [],
     exampleUrls: ['https://vimeo.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'dailymotion',
@@ -180,6 +215,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('dailymotion.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.dailymotion.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'bilibili',
@@ -189,6 +226,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('bilibili.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.bilibili.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'iqiyi',
@@ -198,6 +237,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('iq.com'), hostPattern('iqiyi.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.iq.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'tencent-video',
@@ -207,6 +248,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('v.qq.com')],
     pathRegexes: [],
     exampleUrls: ['https://v.qq.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'youku',
@@ -216,6 +259,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('youku.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.youku.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'rumble',
@@ -225,6 +270,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('rumble.com')],
     pathRegexes: [],
     exampleUrls: ['https://rumble.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'odysee',
@@ -234,6 +281,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('odysee.com')],
     pathRegexes: [],
     exampleUrls: ['https://odysee.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'bitchute',
@@ -243,6 +292,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('bitchute.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.bitchute.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'x',
@@ -255,6 +306,8 @@ const SERVICE_DEFINITIONS_RAW = [
       'https://x.com/elonmusk/status/1234567890123456789',
       'https://twitter.com/elonmusk/status/1234567890123456789',
     ],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'reddit',
@@ -267,6 +320,8 @@ const SERVICE_DEFINITIONS_RAW = [
       'https://www.reddit.com/r/aww/comments/abc123/cute_puppy/',
       'https://redd.it/abc123',
     ],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'linkedin',
@@ -276,6 +331,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('linkedin.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.linkedin.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'snapchat',
@@ -285,6 +342,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('snapchat.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.snapchat.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'pinterest',
@@ -294,6 +353,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('pinterest.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.pinterest.com/'],
+    defaultDownloadType: 'thumbnail',     // hauptsächlich Bilder/Pins
+    disabledDownloadTypes: ['video', 'audio'],
   },
   {
     key: 'soundcloud',
@@ -303,6 +364,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('soundcloud.com')],
     pathRegexes: [],
     exampleUrls: ['https://soundcloud.com/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'spotify',
@@ -312,6 +375,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('spotify.com')],
     pathRegexes: [],
     exampleUrls: ['https://open.spotify.com/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'jiocinema-hotstar',
@@ -321,6 +386,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('jiocinema.com'), hostPattern('hotstar.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.jiocinema.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'viu',
@@ -330,6 +397,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('viu.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.viu.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'sonyliv',
@@ -339,6 +408,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('sonyliv.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.sonyliv.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'zee5',
@@ -348,6 +419,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('zee5.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.zee5.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'mxplayer',
@@ -357,6 +430,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('mxplayer.in')],
     pathRegexes: [],
     exampleUrls: ['https://www.mxplayer.in/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'tubi',
@@ -366,6 +441,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('tubitv.com')],
     pathRegexes: [],
     exampleUrls: ['https://tubitv.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'pluto-tv',
@@ -375,6 +452,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('pluto.tv')],
     pathRegexes: [],
     exampleUrls: ['https://pluto.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'roku-channel',
@@ -384,6 +463,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('therokuchannel.com')],
     pathRegexes: [],
     exampleUrls: ['https://therokuchannel.roku.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'crackle',
@@ -393,6 +474,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('crackle.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.crackle.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'discovery-plus',
@@ -402,6 +485,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('discoveryplus.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.discoveryplus.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'espn-plus',
@@ -411,6 +496,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('espn.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.espn.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'nba-league-pass',
@@ -420,6 +507,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('nba.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.nba.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'nfl-plus',
@@ -429,6 +518,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('nfl.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.nfl.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'mlb-tv',
@@ -438,6 +529,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('mlb.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.mlb.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'formula1-tv',
@@ -447,6 +540,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('formula1.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.formula1.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'dazn',
@@ -456,6 +551,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('dazn.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.dazn.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'sky',
@@ -465,6 +562,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('sky.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.sky.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'itv',
@@ -474,6 +573,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('itv.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.itv.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'bbc-iplayer',
@@ -483,6 +584,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('bbc.co.uk')],
     pathRegexes: ['^/iplayer(?:/|$)'],
     exampleUrls: ['https://www.bbc.co.uk/iplayer'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'ard-zdf',
@@ -492,6 +595,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('ardmediathek.de'), hostPattern('zdf.de')],
     pathRegexes: [],
     exampleUrls: ['https://www.ardmediathek.de/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'france-tv',
@@ -501,6 +606,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('france.tv')],
     pathRegexes: [],
     exampleUrls: ['https://www.france.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'raiplay',
@@ -510,6 +617,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('raiplay.it')],
     pathRegexes: [],
     exampleUrls: ['https://www.raiplay.it/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'rtve',
@@ -519,6 +628,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('rtve.es')],
     pathRegexes: [],
     exampleUrls: ['https://www.rtve.es/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'nrk',
@@ -528,6 +639,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('nrk.no')],
     pathRegexes: [],
     exampleUrls: ['https://www.nrk.no/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'svt-play',
@@ -537,6 +650,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('svtplay.se')],
     pathRegexes: [],
     exampleUrls: ['https://www.svtplay.se/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'dr-tv',
@@ -546,6 +661,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('dr.dk')],
     pathRegexes: [],
     exampleUrls: ['https://www.dr.dk/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'yle-areena',
@@ -555,6 +672,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('areena.yle.fi')],
     pathRegexes: [],
     exampleUrls: ['https://areena.yle.fi/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'cbc-gem',
@@ -564,6 +683,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('gem.cbc.ca')],
     pathRegexes: [],
     exampleUrls: ['https://gem.cbc.ca/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'abc-iview',
@@ -573,6 +694,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('iview.abc.net.au')],
     pathRegexes: [],
     exampleUrls: ['https://iview.abc.net.au/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: '9now',
@@ -582,6 +705,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('9now.com.au')],
     pathRegexes: [],
     exampleUrls: ['https://www.9now.com.au/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: '7plus',
@@ -591,6 +716,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('7plus.com.au')],
     pathRegexes: [],
     exampleUrls: ['https://7plus.com.au/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: '10play',
@@ -600,6 +727,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('10play.com.au')],
     pathRegexes: [],
     exampleUrls: ['https://10play.com.au/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'globo',
@@ -609,6 +738,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('globoplay.globo.com')],
     pathRegexes: [],
     exampleUrls: ['https://globoplay.globo.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'caracol-play',
@@ -618,6 +749,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('caracoltv.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.caracoltv.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'telemundo',
@@ -627,6 +760,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('telemundo.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.telemundo.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'univision',
@@ -636,6 +771,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('univision.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.univision.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'teletrece',
@@ -645,6 +782,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('13.cl')],
     pathRegexes: [],
     exampleUrls: ['https://www.13.cl/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'afreecatv-soop',
@@ -654,6 +793,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('afreecatv.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.afreecatv.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'chzzk',
@@ -663,6 +804,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('chzzk.naver.com')],
     pathRegexes: [],
     exampleUrls: ['https://chzzk.naver.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'naver-tv',
@@ -672,6 +815,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('tv.naver.com')],
     pathRegexes: [],
     exampleUrls: ['https://tv.naver.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'kakao-tv',
@@ -681,6 +826,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('tv.kakao.com')],
     pathRegexes: [],
     exampleUrls: ['https://tv.kakao.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'douyu',
@@ -690,6 +837,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('douyu.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.douyu.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'huya',
@@ -699,6 +848,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('huya.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.huya.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: '17live',
@@ -708,6 +859,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('17.live')],
     pathRegexes: [],
     exampleUrls: ['https://17.live/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'bigo-live',
@@ -717,6 +870,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('bigo.tv')],
     pathRegexes: [],
     exampleUrls: ['https://www.bigo.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'liveme',
@@ -726,6 +881,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('liveme.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.liveme.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'nonolive',
@@ -735,6 +892,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('nonolive.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.nonolive.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'onlyfans',
@@ -744,6 +903,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('onlyfans.com')],
     pathRegexes: [],
     exampleUrls: ['https://onlyfans.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'fansly',
@@ -753,6 +914,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('fansly.com')],
     pathRegexes: [],
     exampleUrls: ['https://fansly.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'manyvids',
@@ -762,6 +925,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('manyvids.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.manyvids.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'stripchat',
@@ -771,6 +936,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('stripchat.com')],
     pathRegexes: [],
     exampleUrls: ['https://stripchat.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'chaturbate',
@@ -780,6 +947,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('chaturbate.com')],
     pathRegexes: [],
     exampleUrls: ['https://chaturbate.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'beeg',
@@ -789,6 +958,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('beeg.com')],
     pathRegexes: [],
     exampleUrls: ['https://beeg.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'xhamster',
@@ -798,6 +969,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('xhamster.com')],
     pathRegexes: [],
     exampleUrls: ['https://xhamster.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'xnxx',
@@ -807,6 +980,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('xnxx.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.xnxx.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'youporn',
@@ -816,6 +991,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('youporn.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.youporn.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'redtube',
@@ -825,6 +1002,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('redtube.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.redtube.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'spankbang',
@@ -834,6 +1013,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('spankbang.com')],
     pathRegexes: [],
     exampleUrls: ['https://spankbang.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'eporner',
@@ -843,6 +1024,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('eporner.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.eporner.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'motherless',
@@ -852,6 +1035,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('motherless.com')],
     pathRegexes: [],
     exampleUrls: ['https://motherless.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'thisvid',
@@ -861,6 +1046,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('thisvid.com')],
     pathRegexes: [],
     exampleUrls: ['https://thisvid.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'newgrounds',
@@ -870,6 +1057,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('newgrounds.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.newgrounds.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'gamejolt',
@@ -879,6 +1068,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('gamejolt.com')],
     pathRegexes: [],
     exampleUrls: ['https://gamejolt.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'itch-io',
@@ -888,6 +1079,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('itch.io')],
     pathRegexes: [],
     exampleUrls: ['https://itch.io/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'steam',
@@ -897,6 +1090,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('store.steampowered.com')],
     pathRegexes: [],
     exampleUrls: ['https://store.steampowered.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'kick',
@@ -906,6 +1101,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('kick.com')],
     pathRegexes: [],
     exampleUrls: ['https://kick.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'trovo',
@@ -915,6 +1112,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('trovo.live')],
     pathRegexes: [],
     exampleUrls: ['https://trovo.live/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'dlive',
@@ -924,6 +1123,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('dlive.tv')],
     pathRegexes: [],
     exampleUrls: ['https://dlive.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'sling-tv',
@@ -933,6 +1134,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('sling.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.sling.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'fubotv',
@@ -942,6 +1145,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('fubo.tv')],
     pathRegexes: [],
     exampleUrls: ['https://www.fubo.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'directv-stream',
@@ -951,6 +1156,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('directv.com')],
     pathRegexes: ['^/stream(?:/|$)'],
     exampleUrls: ['https://www.directv.com/stream/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'acfun',
@@ -960,6 +1167,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('acfun.cn')],
     pathRegexes: [],
     exampleUrls: ['https://www.acfun.cn/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'aparat',
@@ -969,6 +1178,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('aparat.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.aparat.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'rutube',
@@ -978,6 +1189,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('rutube.ru')],
     pathRegexes: [],
     exampleUrls: ['https://rutube.ru/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'freevee',
@@ -987,6 +1200,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('amazon.com')],
     pathRegexes: ['^/freevee(?:/|$)'],
     exampleUrls: ['https://www.amazon.com/freevee'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'crunchyroll',
@@ -996,6 +1211,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('crunchyroll.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.crunchyroll.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'funimation',
@@ -1005,6 +1222,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('funimation.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.funimation.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'hidive',
@@ -1014,6 +1233,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('hidive.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.hidive.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'wakanim',
@@ -1023,6 +1244,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('wakanim.tv')],
     pathRegexes: [],
     exampleUrls: ['https://www.wakanim.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'vrv',
@@ -1032,6 +1255,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('vrv.co')],
     pathRegexes: [],
     exampleUrls: ['https://vrv.co/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'imdb',
@@ -1041,6 +1266,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('imdb.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.imdb.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'rotten-tomatoes',
@@ -1050,6 +1277,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('rottentomatoes.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.rottentomatoes.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'metacritic',
@@ -1059,6 +1288,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('metacritic.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.metacritic.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'ign',
@@ -1068,6 +1299,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('ign.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.ign.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'gamespot',
@@ -1077,6 +1310,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('gamespot.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.gamespot.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'giant-bomb',
@@ -1086,6 +1321,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('giantbomb.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.giantbomb.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'vevo',
@@ -1095,6 +1332,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('vevo.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.vevo.com/'],
+    defaultDownloadType: 'video',         // Musikvideos → Video
+    disabledDownloadTypes: [],
   },
   {
     key: 'bandcamp',
@@ -1104,6 +1343,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('bandcamp.com')],
     pathRegexes: [],
     exampleUrls: ['https://bandcamp.com/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'mixcloud',
@@ -1113,6 +1354,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('mixcloud.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.mixcloud.com/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'audius',
@@ -1122,6 +1365,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('audius.co')],
     pathRegexes: [],
     exampleUrls: ['https://audius.co/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'audiomack',
@@ -1131,6 +1376,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('audiomack.com')],
     pathRegexes: [],
     exampleUrls: ['https://audiomack.com/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'last-fm',
@@ -1140,6 +1387,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('last.fm')],
     pathRegexes: [],
     exampleUrls: ['https://www.last.fm/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'reverbnation',
@@ -1149,6 +1398,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('reverbnation.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.reverbnation.com/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'jamendo',
@@ -1158,6 +1409,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('jamendo.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.jamendo.com/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'epidemic-sound',
@@ -1167,6 +1420,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('epidemicsound.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.epidemicsound.com/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'artlist',
@@ -1176,6 +1431,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('artlist.io')],
     pathRegexes: [],
     exampleUrls: ['https://artlist.io/'],
+    defaultDownloadType: 'audio',
+    disabledDownloadTypes: ['video'],
   },
   {
     key: 'storyblocks',
@@ -1185,6 +1442,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('storyblocks.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.storyblocks.com/'],
+    defaultDownloadType: 'video',         // Stock-Video
+    disabledDownloadTypes: [],
   },
   {
     key: 'shutterstock-video',
@@ -1194,6 +1453,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('shutterstock.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.shutterstock.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'getty-images-video',
@@ -1203,6 +1464,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('gettyimages.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.gettyimages.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'pond5',
@@ -1212,6 +1475,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('pond5.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.pond5.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'motion-array',
@@ -1221,6 +1486,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('motionarray.com')],
     pathRegexes: [],
     exampleUrls: ['https://motionarray.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'envato-elements',
@@ -1230,6 +1497,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('elements.envato.com')],
     pathRegexes: [],
     exampleUrls: ['https://elements.envato.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'brightcove',
@@ -1239,6 +1508,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('brightcove.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.brightcove.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'kaltura',
@@ -1248,6 +1519,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('kaltura.com')],
     pathRegexes: [],
     exampleUrls: ['https://corp.kaltura.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'jw-player',
@@ -1257,6 +1530,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('jwplayer.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.jwplayer.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'wistia',
@@ -1266,6 +1541,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('wistia.com')],
     pathRegexes: [],
     exampleUrls: ['https://wistia.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'vidyard',
@@ -1275,6 +1552,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('vidyard.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.vidyard.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'panopto',
@@ -1284,6 +1563,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('panopto.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.panopto.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'mediasite',
@@ -1293,6 +1574,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('mediasite.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.mediasite.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'vimeo-livestream',
@@ -1302,6 +1585,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('vimeo.com')],
     pathRegexes: ['^/live(?:/|$)'],
     exampleUrls: ['https://vimeo.com/live'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'restream',
@@ -1311,6 +1596,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('restream.io')],
     pathRegexes: [],
     exampleUrls: ['https://restream.io/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'streamyard',
@@ -1320,6 +1607,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('streamyard.com')],
     pathRegexes: [],
     exampleUrls: ['https://streamyard.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'castr',
@@ -1329,6 +1618,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('castr.com')],
     pathRegexes: [],
     exampleUrls: ['https://castr.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'dacast',
@@ -1338,6 +1629,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('dacast.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.dacast.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'wowza',
@@ -1347,6 +1640,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('wowza.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.wowza.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'ant-media',
@@ -1356,6 +1651,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('antmedia.io')],
     pathRegexes: [],
     exampleUrls: ['https://antmedia.io/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'mux',
@@ -1365,6 +1662,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('mux.com')],
     pathRegexes: [],
     exampleUrls: ['https://mux.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'cloudflare-stream',
@@ -1374,6 +1673,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('cloudflare.com')],
     pathRegexes: ['^/products/cloudflare-stream(?:/|$)'],
     exampleUrls: ['https://www.cloudflare.com/products/cloudflare-stream/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'aws-elemental',
@@ -1383,6 +1684,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('aws.amazon.com')],
     pathRegexes: ['^/elemental(?:/|$)'],
     exampleUrls: ['https://aws.amazon.com/elemental/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'azure-media-services',
@@ -1392,6 +1695,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('azure.microsoft.com')],
     pathRegexes: [],
     exampleUrls: ['https://azure.microsoft.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'ibm-video-streaming',
@@ -1401,6 +1706,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('ibm.com')],
     pathRegexes: ['^/products/video-streaming(?:/|$)'],
     exampleUrls: ['https://www.ibm.com/products/video-streaming'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'uscreen',
@@ -1410,6 +1717,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('uscreen.tv')],
     pathRegexes: [],
     exampleUrls: ['https://www.uscreen.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'vhx',
@@ -1419,6 +1728,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('vhx.tv')],
     pathRegexes: [],
     exampleUrls: ['https://www.vhx.tv/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'patreon-video',
@@ -1428,6 +1739,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('patreon.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.patreon.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'substack-video',
@@ -1437,6 +1750,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('substack.com')],
     pathRegexes: [],
     exampleUrls: ['https://substack.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'kickstarter-video',
@@ -1446,6 +1761,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('kickstarter.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.kickstarter.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'indiegogo-video',
@@ -1455,6 +1772,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('indiegogo.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.indiegogo.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'gofundme-video',
@@ -1464,6 +1783,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('gofundme.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.gofundme.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'masterclass',
@@ -1473,6 +1794,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('masterclass.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.masterclass.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'skillshare',
@@ -1482,6 +1805,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('skillshare.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.skillshare.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'udemy',
@@ -1491,6 +1816,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('udemy.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.udemy.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'coursera-video',
@@ -1500,6 +1827,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('coursera.org')],
     pathRegexes: [],
     exampleUrls: ['https://www.coursera.org/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'edx',
@@ -1509,6 +1838,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('edx.org')],
     pathRegexes: [],
     exampleUrls: ['https://www.edx.org/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'khan-academy',
@@ -1518,6 +1849,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('khanacademy.org')],
     pathRegexes: [],
     exampleUrls: ['https://www.khanacademy.org/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'brilliant',
@@ -1527,6 +1860,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('brilliant.org')],
     pathRegexes: [],
     exampleUrls: ['https://brilliant.org/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'pluralsight',
@@ -1536,6 +1871,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('pluralsight.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.pluralsight.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'linkedin-learning',
@@ -1545,6 +1882,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('linkedin.com')],
     pathRegexes: ['^/learning(?:/|$)'],
     exampleUrls: ['https://www.linkedin.com/learning/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'frontend-masters',
@@ -1554,6 +1893,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('frontendmasters.com')],
     pathRegexes: [],
     exampleUrls: ['https://frontendmasters.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'egghead',
@@ -1563,6 +1904,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('egghead.io')],
     pathRegexes: [],
     exampleUrls: ['https://egghead.io/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'laracasts',
@@ -1572,6 +1915,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('laracasts.com')],
     pathRegexes: [],
     exampleUrls: ['https://laracasts.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'treehouse',
@@ -1581,6 +1926,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('teamtreehouse.com')],
     pathRegexes: [],
     exampleUrls: ['https://teamtreehouse.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'packt',
@@ -1590,6 +1937,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('packtpub.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.packtpub.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'oreilly',
@@ -1599,6 +1948,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('oreilly.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.oreilly.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'lynda',
@@ -1608,6 +1959,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('lynda.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.lynda.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'curiositystream',
@@ -1617,6 +1970,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('curiositystream.com')],
     pathRegexes: [],
     exampleUrls: ['https://curiositystream.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'magellan-tv',
@@ -1626,6 +1981,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('magellantv.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.magellantv.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'gaia',
@@ -1635,6 +1992,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('gaia.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.gaia.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'the-great-courses',
@@ -1644,6 +2003,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('thegreatcourses.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.thegreatcourses.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'wondrium',
@@ -1653,6 +2014,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('wondrium.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.wondrium.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'documentary-heaven',
@@ -1662,6 +2025,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('documentaryheaven.com')],
     pathRegexes: [],
     exampleUrls: ['https://documentaryheaven.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'filmzie',
@@ -1671,6 +2036,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('filmzie.com')],
     pathRegexes: [],
     exampleUrls: ['https://filmzie.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'kanopy',
@@ -1680,6 +2047,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('kanopy.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.kanopy.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'hoopla',
@@ -1689,6 +2058,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('hoopladigital.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.hoopladigital.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'overdrive-libby',
@@ -1698,6 +2069,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('overdrive.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.overdrive.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'pbs',
@@ -1707,6 +2080,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('pbs.org')],
     pathRegexes: [],
     exampleUrls: ['https://www.pbs.org/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'nfb',
@@ -1716,6 +2091,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('nfb.ca')],
     pathRegexes: [],
     exampleUrls: ['https://www.nfb.ca/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
   {
     key: 'nz-on-screen',
@@ -1725,6 +2102,8 @@ const SERVICE_DEFINITIONS_RAW = [
     hostRegexes: [hostPattern('nzonscreen.com')],
     pathRegexes: [],
     exampleUrls: ['https://www.nzonscreen.com/'],
+    defaultDownloadType: 'video',
+    disabledDownloadTypes: [],
   },
 ]
 
@@ -1736,11 +2115,13 @@ function freezeService(service) {
     hostRegexes: Object.freeze([...(service.hostRegexes || [])]),
     pathRegexes: Object.freeze([...(service.pathRegexes || [])]),
     exampleUrls: Object.freeze([...(service.exampleUrls || [])]),
+    // neue Flags werden automatisch mitkopiert
+    defaultDownloadType: service.defaultDownloadType || 'video',
+    disabledDownloadTypes: Object.freeze([...(service.disabledDownloadTypes || [])]),
   })
 }
 
 export const GENERIC_SERVICE_KEY = GENERIC_SERVICE.key
-
 export const SERVICE_DEFINITIONS = Object.freeze([
   ...SERVICE_DEFINITIONS_RAW.map(freezeService),
   freezeService(GENERIC_SERVICE),

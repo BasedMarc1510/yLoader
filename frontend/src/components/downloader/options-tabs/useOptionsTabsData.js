@@ -14,6 +14,31 @@ import {
 } from '../../../utils/downloadSettings'
 import { formatYtDlpErrorMessage } from '../../../utils/ytDlpErrorPresentation'
 
+const DOWNLOAD_TAB_ORDER = Object.freeze(['audio', 'video', 'thumbnail'])
+
+function normalizeDownloadType(value, fallback = '') {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (DOWNLOAD_TAB_ORDER.includes(normalized)) return normalized
+  return fallback
+}
+
+function normalizeDisabledDownloadTypes(values) {
+  if (!Array.isArray(values)) return []
+
+  const seen = new Set()
+  const result = []
+
+  for (const value of values) {
+    const normalized = normalizeDownloadType(value, '')
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    result.push(normalized)
+  }
+
+  if (result.length >= DOWNLOAD_TAB_ORDER.length) return []
+  return result
+}
+
 export default function useOptionsTabsData({
   i18nT,
   videoTitle,
@@ -21,8 +46,28 @@ export default function useOptionsTabsData({
   videoUrl,
   initialFormats,
   onFetchError,
+  defaultDownloadType = 'video',
+  disabledDownloadTypes = [],
 }) {
-  const [tab, setTab] = React.useState('audio')
+  const normalizedDisabledDownloadTypes = React.useMemo(
+    () => normalizeDisabledDownloadTypes(disabledDownloadTypes),
+    [disabledDownloadTypes]
+  )
+  const disabledDownloadTypeSet = React.useMemo(
+    () => new Set(normalizedDisabledDownloadTypes),
+    [normalizedDisabledDownloadTypes]
+  )
+  const availableDownloadTypes = React.useMemo(() => {
+    const allowed = DOWNLOAD_TAB_ORDER.filter((type) => !disabledDownloadTypeSet.has(type))
+    return allowed.length ? allowed : [...DOWNLOAD_TAB_ORDER]
+  }, [disabledDownloadTypeSet])
+  const resolvedDefaultDownloadType = React.useMemo(() => {
+    const normalizedDefault = normalizeDownloadType(defaultDownloadType, 'video')
+    if (availableDownloadTypes.includes(normalizedDefault)) return normalizedDefault
+    return availableDownloadTypes[0] || 'video'
+  }, [availableDownloadTypes, defaultDownloadType])
+
+  const [tab, setTab] = React.useState(() => resolvedDefaultDownloadType)
   const [activeSections, setActiveSections] = React.useState(() => ({
     audio: null,
     video: null,
@@ -59,7 +104,19 @@ export default function useOptionsTabsData({
   const [downloadSettings, setDownloadSettings] = React.useState(() => ({ ...DOWNLOAD_SETTINGS_DEFAULTS }))
   const [downloadSettingsLoaded, setDownloadSettingsLoaded] = React.useState(false)
   const defaultsAppliedRef = React.useRef(false)
+  const previousVideoUrlRef = React.useRef(videoUrl)
   const activeSection = activeSections[tab] || null
+
+  React.useEffect(() => {
+    if (availableDownloadTypes.includes(tab)) return
+    setTab((prev) => (prev === resolvedDefaultDownloadType ? prev : resolvedDefaultDownloadType))
+  }, [availableDownloadTypes, resolvedDefaultDownloadType, tab])
+
+  React.useEffect(() => {
+    if (previousVideoUrlRef.current === videoUrl) return
+    previousVideoUrlRef.current = videoUrl
+    setTab((prev) => (prev === resolvedDefaultDownloadType ? prev : resolvedDefaultDownloadType))
+  }, [resolvedDefaultDownloadType, videoUrl])
 
   const toggleSection = React.useCallback((section) => {
     setActiveSections((prev) => {
@@ -72,8 +129,10 @@ export default function useOptionsTabsData({
   }, [tab])
 
   const handleTabChange = React.useCallback((newTab) => {
-    setTab(newTab)
-  }, [])
+    const normalized = normalizeDownloadType(newTab, '')
+    if (!normalized || !availableDownloadTypes.includes(normalized)) return
+    setTab(normalized)
+  }, [availableDownloadTypes])
 
   const handleCoverFileChange = React.useCallback((event) => {
     const file = event?.target?.files?.[0]
@@ -237,12 +296,12 @@ export default function useOptionsTabsData({
   React.useEffect(() => {
     const loadFormats = async () => {
       if (!videoUrl) {
-        setAudioFormats([])
-        setVideoFormats([])
-        setSelectedAudioFormat('best')
-        setSelectedVideoFormat('best')
-        setThumbOptions([])
-        setSelectedThumbValue('')
+        setAudioFormats((prev) => (prev.length ? [] : prev))
+        setVideoFormats((prev) => (prev.length ? [] : prev))
+        setSelectedAudioFormat((prev) => (prev === 'best' ? prev : 'best'))
+        setSelectedVideoFormat((prev) => (prev === 'best' ? prev : 'best'))
+        setThumbOptions((prev) => (prev.length ? [] : prev))
+        setSelectedThumbValue((prev) => (prev ? '' : prev))
         return
       }
 

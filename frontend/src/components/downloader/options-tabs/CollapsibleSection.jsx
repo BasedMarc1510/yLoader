@@ -16,7 +16,7 @@ export default function CollapsibleSection({
   theme,
 }) {
   const isOpen = activeSection === id
-  const collapseBg = isDark ? '#272727' : '#f9f9f9'
+  const collapseBg = isDark ? '#272727' : '#ffffff'
 
   return (
     <Box sx={{ mb: 0.75 }}>

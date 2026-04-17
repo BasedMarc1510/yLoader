@@ -49,17 +49,17 @@ export default function MetadataInput({
           padding: '0 1.2rem',
           fontSize: '16px',
           fontFamily: 'inherit',
-          color: isDark ? '#ffffff' : '#000000',
-          backgroundColor: isDark ? '#272727' : '#d0d0d0',
-          border: `2px solid ${isDark ? '#333333' : '#b0b0b0'}`,
+          color: isDark ? '#ffffff' : '#1a1a1a',
+          backgroundColor: isDark ? '#272727' : '#ffffff',
+          border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
           borderRadius: '25px',
           outline: 'none',
           transition: 'border-color 200ms ease',
           '&:focus': {
-            borderColor: isDark ? '#383838' : '#909090',
+            borderColor: isDark ? '#383838' : '#c0c2c6',
           },
           '&::placeholder': {
-            color: isDark ? '#666666' : '#999999',
+            color: isDark ? '#666666' : '#b0b0b4',
             opacity: isFocused || hasValue ? 0 : 1,
           },
           '&:disabled': {
@@ -90,8 +90,8 @@ export default function MetadataInput({
           sx={{
             fontSize: isFocused || hasValue ? '16px' : '16px',
             fontWeight: 'bold',
-            color: isFocused ? (isDark ? '#cacaca' : '#666666') : (isDark ? '#888888' : '#999999'),
-            backgroundColor: isFocused || hasValue ? (isDark ? '#272727' : '#d0d0d0') : 'transparent',
+            color: isFocused ? (isDark ? '#cacaca' : '#5e5e63') : (isDark ? '#888888' : '#8e8e93'),
+            backgroundColor: isFocused || hasValue ? (isDark ? '#272727' : '#ffffff') : 'transparent',
             padding: isFocused || hasValue ? '0 6px' : '0',
             marginLeft: isFocused || hasValue ? '-6px' : '0',
             transform: isFocused || hasValue ? 'translateY(-140%)' : 'translateY(0)',

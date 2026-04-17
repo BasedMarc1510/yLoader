@@ -87,6 +87,11 @@ const DOWNLOAD_SETTINGS_KEY = 'ui.download.settings.v1'
 const TOOL_UPDATER_SETTINGS_KEY = 'tools.updater.settings.v1'
 const YT_DLP_COOKIE_SETTINGS_KEY = 'ytDlp.cookies.settings.v1'
 const MAX_PERSISTED_TABS = 30
+const MAX_TAB_SEARCH_RESULTS = 120
+const MAX_TAB_SEARCH_SELECTED_ENTRIES = 160
+const MAX_TAB_DOWNLOADER_AUDIO_FORMATS = 240
+const MAX_TAB_DOWNLOADER_VIDEO_FORMATS = 240
+const MAX_TAB_DOWNLOADER_THUMBNAILS = 140
 const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
 const DOWNLOAD_CONCURRENT_OPTIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8])
@@ -293,6 +298,238 @@ function createFallbackTab() {
     path: '/',
     search: '',
     pageTitle: '',
+    runtime: normalizeTabRuntimePayload(null),
+  }
+}
+
+function normalizeTabRuntimeText(value, maxLength = 200) {
+  const raw = String(value || '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!raw) return ''
+  return raw.slice(0, maxLength)
+}
+
+function normalizeTabRuntimeUrl(value, maxLength = 2048) {
+  return normalizeTabRuntimeText(value, maxLength)
+}
+
+function normalizeTabRuntimeNumber(value, min = 0, max = Number.MAX_SAFE_INTEGER) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return min
+  return Math.min(max, Math.max(min, numeric))
+}
+
+function normalizeTabRuntimeServiceKey(value) {
+  return normalizeServiceKey(value) || ''
+}
+
+function normalizeTabRuntimeSearchProvider(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (SEARCH_PROVIDER_OPTIONS.has(normalized)) return normalized
+  return 'youtube'
+}
+
+function normalizeTabRuntimeAudioFormat(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const formatId = normalizeTabRuntimeText(value.formatId, 80)
+  if (!formatId) return null
+
+  return {
+    formatId,
+    ext: normalizeTabRuntimeText(value.ext, 12),
+    abr: normalizeTabRuntimeNumber(value.abr, 0, 2000),
+    acodec: normalizeTabRuntimeText(value.acodec, 80),
+    filesize: normalizeTabRuntimeNumber(value.filesize, 0, 500 * 1024 * 1024 * 1024),
+  }
+}
+
+function normalizeTabRuntimeVideoFormat(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const formatId = normalizeTabRuntimeText(value.formatId, 80)
+  if (!formatId) return null
+
+  return {
+    formatId,
+    ext: normalizeTabRuntimeText(value.ext, 12),
+    resolution: normalizeTabRuntimeText(value.resolution, 40),
+    width: normalizeTabRuntimeNumber(value.width, 0, 20000),
+    height: normalizeTabRuntimeNumber(value.height, 0, 20000),
+    vcodec: normalizeTabRuntimeText(value.vcodec, 80),
+    acodec: normalizeTabRuntimeText(value.acodec, 80),
+    filesize: normalizeTabRuntimeNumber(value.filesize, 0, 500 * 1024 * 1024 * 1024),
+    fps: normalizeTabRuntimeNumber(value.fps, 0, 600),
+    requiresMerge: Boolean(value.requiresMerge),
+  }
+}
+
+function normalizeTabRuntimeThumbnail(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const url = normalizeTabRuntimeUrl(value.url)
+  if (!url) return null
+
+  return {
+    url,
+    id: normalizeTabRuntimeText(value.id, 32),
+    width: normalizeTabRuntimeNumber(value.width, 0, 20000),
+    height: normalizeTabRuntimeNumber(value.height, 0, 20000),
+    preference: normalizeTabRuntimeNumber(value.preference, -9999, 9999),
+  }
+}
+
+function normalizeTabRuntimeFormatsCache(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const audioFormats = Array.isArray(value.audioFormats)
+    ? value.audioFormats
+      .map(normalizeTabRuntimeAudioFormat)
+      .filter(Boolean)
+      .slice(0, MAX_TAB_DOWNLOADER_AUDIO_FORMATS)
+    : []
+
+  const videoFormats = Array.isArray(value.videoFormats)
+    ? value.videoFormats
+      .map(normalizeTabRuntimeVideoFormat)
+      .filter(Boolean)
+      .slice(0, MAX_TAB_DOWNLOADER_VIDEO_FORMATS)
+    : []
+
+  const thumbnails = Array.isArray(value.thumbnails)
+    ? value.thumbnails
+      .map(normalizeTabRuntimeThumbnail)
+      .filter(Boolean)
+      .slice(0, MAX_TAB_DOWNLOADER_THUMBNAILS)
+    : []
+
+  return {
+    title: normalizeTabRuntimeText(value.title, 240),
+    author: normalizeTabRuntimeText(value.author, 180),
+    extractor: normalizeTabRuntimeText(value.extractor, 120),
+    thumbnail: normalizeTabRuntimeUrl(value.thumbnail),
+    duration: normalizeTabRuntimeNumber(value.duration, 0, 60 * 60 * 24 * 365),
+    durationString: normalizeTabRuntimeText(value.durationString, 32),
+    audioFormats,
+    videoFormats,
+    thumbnails,
+  }
+}
+
+function normalizeTabRuntimeDownloaderMeta(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const url = normalizeTabRuntimeUrl(value.url)
+  if (!url) return null
+
+  return {
+    service: normalizeTabRuntimeServiceKey(value.service),
+    url,
+    title: normalizeTabRuntimeText(value.title, 240),
+    author: normalizeTabRuntimeText(value.author, 180),
+    provider: normalizeTabRuntimeText(value.provider, 120),
+    thumbnail: normalizeTabRuntimeUrl(value.thumbnail),
+    duration: normalizeTabRuntimeText(value.duration, 32),
+    durationSeconds: normalizeTabRuntimeNumber(value.durationSeconds, 0, 60 * 60 * 24 * 365),
+    preloadedFormats: normalizeTabRuntimeFormatsCache(value.preloadedFormats),
+  }
+}
+
+function normalizeTabRuntimeDownloaderFetchError(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const url = normalizeTabRuntimeUrl(value.url)
+  const message = normalizeTabRuntimeText(value.message, 600)
+  if (!url || !message) return null
+
+  return { url, message }
+}
+
+function normalizeTabRuntimeDownloaderCache(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+
+  return {
+    sourceUrl: normalizeTabRuntimeUrl(input.sourceUrl),
+    sourceServiceKey: normalizeTabRuntimeServiceKey(input.sourceServiceKey),
+    inputValue: normalizeTabRuntimeUrl(input.inputValue),
+    meta: normalizeTabRuntimeDownloaderMeta(input.meta),
+    fetchError: normalizeTabRuntimeDownloaderFetchError(input.fetchError),
+  }
+}
+
+function normalizeTabRuntimeSearchResult(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const url = normalizeTabRuntimeUrl(value.url)
+  if (!url) return null
+
+  const title = normalizeTabRuntimeText(value.title, 320)
+
+  return {
+    id: normalizeTabRuntimeText(value.id, 120),
+    url,
+    title: title || url,
+    uploader: normalizeTabRuntimeText(value.uploader, 180),
+    thumbnail: normalizeTabRuntimeUrl(value.thumbnail),
+    duration: normalizeTabRuntimeNumber(value.duration, 0, 60 * 60 * 24 * 365),
+    durationString: normalizeTabRuntimeText(value.durationString, 32),
+    service: normalizeTabRuntimeServiceKey(value.service),
+  }
+}
+
+function normalizeTabRuntimeSearchSelectedEntry(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const identity = normalizeTabRuntimeText(value.identity, 260)
+  const url = normalizeTabRuntimeUrl(value.url)
+  if (!identity || !url) return null
+
+  return {
+    identity,
+    url,
+    service: normalizeTabRuntimeServiceKey(value.service),
+    title: normalizeTabRuntimeText(value.title, 240),
+    thumbnail: normalizeTabRuntimeUrl(value.thumbnail),
+  }
+}
+
+function normalizeTabRuntimeSearchCache(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+
+  const results = Array.isArray(input.results)
+    ? input.results
+      .map(normalizeTabRuntimeSearchResult)
+      .filter(Boolean)
+      .slice(0, MAX_TAB_SEARCH_RESULTS)
+    : []
+
+  const selectedEntries = Array.isArray(input.selectedEntries)
+    ? input.selectedEntries
+      .map(normalizeTabRuntimeSearchSelectedEntry)
+      .filter(Boolean)
+      .slice(0, MAX_TAB_SEARCH_SELECTED_ENTRIES)
+    : []
+
+  return {
+    query: normalizeTabRuntimeText(input.query, 300),
+    selectedService: normalizeTabRuntimeSearchProvider(input.selectedService),
+    results,
+    errorMessage: normalizeTabRuntimeText(input.errorMessage, 600),
+    lastQuery: normalizeTabRuntimeText(input.lastQuery, 300),
+    lastService: normalizeTabRuntimeSearchProvider(input.lastService),
+    nextOffset: normalizeTabRuntimeNumber(input.nextOffset, 0, 5000),
+    hasMore: Boolean(input.hasMore),
+    selectedEntries,
+  }
+}
+
+function normalizeTabRuntimePayload(value) {
+  const input = (value && typeof value === 'object') ? value : {}
+  return {
+    downloader: normalizeTabRuntimeDownloaderCache(input.downloader),
+    search: normalizeTabRuntimeSearchCache(input.search),
   }
 }
 
@@ -647,6 +884,7 @@ function normalizeTabsStatePayload(value) {
       path: normalizeTabPath(tab.path),
       search: normalizeTabSearch(tab.search),
       pageTitle: normalizeTabTitle(tab.pageTitle),
+      runtime: normalizeTabRuntimePayload(tab.runtime),
     })
   }
 

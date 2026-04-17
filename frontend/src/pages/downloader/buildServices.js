@@ -5,6 +5,30 @@ import {
   getServiceThemeColor,
 } from '../../utils/metadata'
 
+const ALLOWED_DOWNLOAD_TYPES = new Set(['audio', 'video', 'thumbnail'])
+
+function normalizeDownloadType(value, fallback = 'video') {
+  const candidate = String(value || '').trim().toLowerCase()
+  if (ALLOWED_DOWNLOAD_TYPES.has(candidate)) return candidate
+  return fallback
+}
+
+function normalizeDisabledDownloadTypes(values) {
+  if (!Array.isArray(values)) return []
+
+  const next = []
+  const seen = new Set()
+
+  for (const entry of values) {
+    const normalized = normalizeDownloadType(entry, '')
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    next.push(normalized)
+  }
+
+  return next
+}
+
 function buildExamples(placeholder, service) {
   const examples = [placeholder]
   const serviceExamples = Array.isArray(service.exampleUrls) ? service.exampleUrls.slice(0, 3) : []
@@ -32,6 +56,8 @@ export default function buildServices(i18nT, mode) {
       examples: buildExamples(placeholder, service),
       icon: service.key,
       yColor: effectiveColor,
+      defaultDownloadType: normalizeDownloadType(service.defaultDownloadType, 'video'),
+      disabledDownloadTypes: normalizeDisabledDownloadTypes(service.disabledDownloadTypes),
     }
   }
 

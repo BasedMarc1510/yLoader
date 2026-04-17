@@ -107,15 +107,16 @@ export default function CustomSelect({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 1rem',
-          backgroundColor: isDark ? '#1b1b1b' : '#f5f5f5',
-          border: `1px solid ${isDark ? '#333333' : '#c0c0c0'}`, // Thinner border
-          borderRadius: '12px', // Less round, more modern/technical
+          backgroundColor: isDark ? '#1b1b1b' : '#ffffff',
+          border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
+          borderRadius: '12px',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.5 : 1,
           transition: 'all 0.2s ease',
+          boxShadow: isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
           '&:hover': {
-            backgroundColor: isDark ? '#222' : '#eeeeee',
-            borderColor: !disabled && (isDark ? '#555' : '#888'),
+            backgroundColor: isDark ? '#222' : '#fafbfc',
+            borderColor: !disabled && (isDark ? '#555' : '#c0c2c6'),
           },
         }}
       >
@@ -125,19 +126,19 @@ export default function CustomSelect({
               sx={{
                 fontSize: '13px',
                 fontWeight: 600,
-                color: isDark ? '#888' : '#777',
+                color: isDark ? '#888' : '#8e8e93',
                 whiteSpace: 'nowrap',
               }}
             >
               {label}
             </Typography>
           )}
-          {label && <Box sx={{ width: '1px', height: '14px', bgcolor: isDark ? '#333' : '#ccc' }} />} { /* Separator */}
+          {label && <Box sx={{ width: '1px', height: '14px', bgcolor: isDark ? '#333' : '#dfe0e2' }} />} { /* Separator */}
           <Typography
             sx={{
               fontSize: '14px',
               fontWeight: 600,
-              color: isDark ? '#ffffff' : '#000000',
+              color: isDark ? '#ffffff' : '#1a1a1a',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -149,7 +150,7 @@ export default function CustomSelect({
         <ChevronDown
           size={20}
           style={{
-            color: isDark ? '#888888' : '#666666',
+            color: isDark ? '#888888' : '#8e8e93',
             transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
             transition: 'transform 200ms ease',
             flexShrink: 0,
@@ -168,14 +169,14 @@ export default function CustomSelect({
               bottom: menuPos.bottom !== undefined ? `${menuPos.bottom}px` : 'auto',
               left: `${menuPos.left}px`,
               width: `${menuPos.width}px`,
-              backgroundColor: isDark ? '#1b1b1b' : '#f5f5f5',
-              border: `1px solid ${isDark ? '#333333' : '#c0c0c0'}`,
+              backgroundColor: isDark ? '#1b1b1b' : '#ffffff',
+              border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
               borderRadius: '12px',
               zIndex: 1600,
               overflow: 'hidden',
               boxShadow: isDark
                 ? '0 10px 40px -10px rgba(0,0,0,0.6)'
-                : '0 10px 30px -10px rgba(0,0,0,0.2)',
+                : '0 8px 32px -8px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04)',
             }}
           >
             <SimpleBarScrollArea
@@ -199,11 +200,11 @@ export default function CustomSelect({
                       padding: '12px 16px',
                       cursor: 'pointer',
                       backgroundColor: isSelected
-                        ? (isDark ? '#272727' : '#e0e0e0')
+                        ? (isDark ? '#272727' : '#f0f1f3')
                         : 'transparent',
                       transition: 'background-color 150ms ease',
                       '&:hover': {
-                        backgroundColor: isDark ? '#272727' : '#e0e0e0',
+                        backgroundColor: isDark ? '#272727' : '#f0f1f3',
                       },
                       '&:first-of-type': {
                         borderRadius: '14px 14px 0 0',
@@ -221,7 +222,7 @@ export default function CustomSelect({
                         sx={{
                           fontSize: '16px',
                           fontWeight: isSelected ? 700 : 600,
-                          color: isDark ? '#ffffff' : '#000000',
+                          color: isDark ? '#ffffff' : '#1a1a1a',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -233,7 +234,7 @@ export default function CustomSelect({
                         <Typography
                           sx={{
                             fontSize: '13px',
-                            color: isDark ? '#888888' : '#666666',
+                            color: isDark ? '#888888' : '#8e8e93',
                             mt: 0.25,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -248,7 +249,7 @@ export default function CustomSelect({
                       <Check
                         size={20}
                         style={{
-                          color: isDark ? '#ffffff' : '#000000',
+                          color: isDark ? '#ffffff' : '#1a1a1a',
                           marginLeft: '8px',
                           flexShrink: 0,
                         }}

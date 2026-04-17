@@ -15,7 +15,9 @@ export default function Downloader({
   serviceKey = 'generic',
   routeSearch = '',
   routeToken = 0,
+  tabsReady = true,
   onNavigate,
+  runtimeState = null,
   onTabStateChange,
 }) {
   const { t: i18nT } = useI18n()
@@ -36,6 +38,7 @@ export default function Downloader({
   const [loading, setLoading] = React.useState(false)
   const [meta, setMeta] = React.useState(null) // when set -> show downloader UI
   const [fetchError, setFetchError] = React.useState(null) // { url, message } when set -> show error panel
+  const lastRuntimePayloadRef = React.useRef('')
 
   // Placeholder cycling (fade + hold)
   const [idx, setIdx] = React.useState(0)
@@ -50,20 +53,46 @@ export default function Downloader({
 
   // Read ?url= param and prefill
   React.useEffect(() => {
+    if (!tabsReady) return
+
     const urlParam = params.get('url')
     if (urlParam && typeof urlParam === 'string') {
-      setValue(urlParam)
-      setFetchError(null)
-      const effectiveService = detectService(urlParam) || serviceFromQuery || serviceKey || 'generic'
+      const normalizedUrlParam = String(urlParam || '').trim()
+      const cachedSourceUrl = String(runtimeState?.sourceUrl || '').trim()
+      const cachedMeta = runtimeState?.meta
+      const cachedMetaUrl = String(cachedMeta?.url || '').trim()
+      const cachedError = runtimeState?.fetchError
+      const cachedErrorUrl = String(cachedError?.url || '').trim()
+      const hasMatchingCachedMeta = Boolean(cachedMeta && cachedSourceUrl && cachedSourceUrl === normalizedUrlParam && cachedMetaUrl === normalizedUrlParam)
+      const hasMatchingCachedError = Boolean(cachedError && cachedSourceUrl && cachedSourceUrl === normalizedUrlParam && cachedErrorUrl === normalizedUrlParam)
 
-      // If a valid URL is provided via query, auto-fetch meta on mount
-      if (isLikelyValidUrlFor(effectiveService, urlParam)) {
+      setValue(normalizedUrlParam)
+
+      if (hasMatchingCachedMeta) {
+        setMeta(cachedMeta)
+        setFetchError(null)
+        setLoading(false)
+        return
+      }
+
+      if (hasMatchingCachedError) {
+        setMeta(null)
+        setFetchError(cachedError)
+        setLoading(false)
+        return
+      }
+
+      setFetchError(null)
+      const effectiveService = detectService(normalizedUrlParam) || serviceFromQuery || serviceKey || 'generic'
+
+      // If a valid URL is provided via query, auto-fetch meta on mount.
+      if (isLikelyValidUrlFor(effectiveService, normalizedUrlParam)) {
         // delay a tick so input shows value before spinner kicks in
-        setTimeout(() => handleFetch(urlParam), 0)
+        setTimeout(() => handleFetch(normalizedUrlParam), 0)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeSearch, routeToken, serviceFromQuery, serviceKey])
+  }, [routeSearch, routeToken, runtimeState, serviceFromQuery, serviceKey, tabsReady])
 
   // Reset to input bar when navigating to the downloader base route (no ?url)
   // This also covers clicking the same downloader again in the sidebar.
@@ -83,7 +112,7 @@ export default function Downloader({
   // Auto-fetch metadata when a valid URL is entered (like on the start page)
   React.useEffect(() => {
     // Don't auto-fetch if already loading, if meta is already set, or if value is empty
-    if (loading || meta || fetchError || !value.trim()) return
+    if (!tabsReady || loading || meta || fetchError || !value.trim()) return
 
     // Check if the current value is a valid URL for this service
     const trimmedValue = value.trim()
@@ -97,7 +126,7 @@ export default function Downloader({
 
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, resolvedServiceKey])
+  }, [tabsReady, value, resolvedServiceKey])
 
   const loadingShellMeta = React.useMemo(() => ({
     thumbnail: '',
@@ -240,6 +269,32 @@ export default function Downloader({
       loading: Boolean(loading && !fetchError),
     })
   }, [loading, fetchError, onTabStateChange])
+
+  React.useEffect(() => {
+    if (!tabsReady) return
+
+    const runtimePayload = {
+      sourceUrl: String(queryUrl || meta?.url || fetchError?.url || '').trim(),
+      sourceServiceKey: resolvedServiceKey,
+      inputValue: String(value || '').trim(),
+      meta: meta ? {
+        ...meta,
+        preloadedFormats: meta.preloadedFormats || null,
+      } : null,
+      fetchError: fetchError ? {
+        url: String(fetchError.url || '').trim(),
+        message: String(fetchError.message || '').trim(),
+      } : null,
+    }
+
+    const serialized = JSON.stringify(runtimePayload)
+    if (serialized === lastRuntimePayloadRef.current) return
+    lastRuntimePayloadRef.current = serialized
+
+    onTabStateChange?.({
+      downloaderCache: runtimePayload,
+    })
+  }, [fetchError, meta, onTabStateChange, queryUrl, resolvedServiceKey, tabsReady, value])
 
   React.useEffect(() => () => {
     onTabStateChange?.({
