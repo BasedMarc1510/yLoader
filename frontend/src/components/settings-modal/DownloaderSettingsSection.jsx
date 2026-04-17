@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Typography, Switch, Select, MenuItem, TextField, Button } from '@mui/material'
 import SettingRow from './SettingRow'
+import SettingGroup from './SettingGroup'
 import {
   DOWNLOAD_AUDIO_BITRATE_OPTIONS,
   DOWNLOAD_CONCURRENCY_OPTIONS,
@@ -199,7 +200,7 @@ export default function DownloaderSettingsSection({
             event.currentTarget.blur()
           }}
           sx={{
-            width: { xs: 180, sm: 320 },
+            width: { xs: '100%', sm: 200, md: 260 },
             '& .MuiInputBase-input': {
               fontSize: 12.5,
               py: '6px',
@@ -258,7 +259,7 @@ export default function DownloaderSettingsSection({
   }, [activePathKeys, pathValidationByKey, t])
 
   const renderStorageAllMode = () => (
-    <>
+    <SettingGroup>
       <SettingRow
         label={t('settings.downloaderGlobalPath')}
         description={t('settings.downloaderGlobalPathDesc')}
@@ -278,11 +279,11 @@ export default function DownloaderSettingsSection({
           onChange={(event) => updateDownloadSettings({ globalAlwaysAsk: event.target.checked })}
         />
       </SettingRow>
-    </>
+    </SettingGroup>
   )
 
   const renderStorageSeparateMode = () => (
-    <>
+    <SettingGroup>
       <SettingRow
         label={t('settings.downloaderAudioPath')}
         description={t('settings.downloaderAudioPathDesc')}
@@ -340,164 +341,158 @@ export default function DownloaderSettingsSection({
           onChange={(event) => updateDownloadSettings({ thumbnailAlwaysAsk: event.target.checked })}
         />
       </SettingRow>
-    </>
+    </SettingGroup>
   )
 
   return (
-    <Box sx={{ px: 3, pt: 1, pb: 3 }}>
-      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
-        {t('settings.downloaderDescription')}
-      </Typography>
-
-      <SettingRow
-        label={t('settings.downloaderConcurrentDownloads')}
-        description={t('settings.downloaderConcurrentDownloadsDesc')}
-      >
-        <Select
-          size="small"
-          value={Number(downloadSettings.maxConcurrentDownloads) || 1}
-          disabled={disabled}
-          onChange={(event) => updateDownloadSettings({ maxConcurrentDownloads: Number(event.target.value) || 1 })}
-          sx={selectSx}
+    <Box sx={{ px: 4, pt: 4, pb: 4 }}>
+      <SettingGroup title={t('settings.downloaderDescription')}>
+        <SettingRow
+          label={t('settings.downloaderConcurrentDownloads')}
+          description={t('settings.downloaderConcurrentDownloadsDesc')}
         >
-          {DOWNLOAD_CONCURRENCY_OPTIONS.map((value) => (
-            <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
-              {value}
-            </MenuItem>
-          ))}
-        </Select>
-      </SettingRow>
+          <Select
+            size="small"
+            value={Number(downloadSettings.maxConcurrentDownloads) || 1}
+            disabled={disabled}
+            onChange={(event) => updateDownloadSettings({ maxConcurrentDownloads: Number(event.target.value) || 1 })}
+            sx={selectSx}
+          >
+            {DOWNLOAD_CONCURRENCY_OPTIONS.map((value) => (
+              <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
+                {value}
+              </MenuItem>
+            ))}
+          </Select>
+        </SettingRow>
 
-      <SettingRow
-        label={t('settings.downloaderStagger')}
-        description={t('settings.downloaderStaggerDesc')}
-      >
-        <Select
-          size="small"
-          value={Number(downloadSettings.staggerDownloadsMs) || 0}
-          disabled={disabled}
-          onChange={(event) => updateDownloadSettings({ staggerDownloadsMs: Number(event.target.value) || 0 })}
-          sx={selectSx}
+        <SettingRow
+          label={t('settings.downloaderStagger')}
+          description={t('settings.downloaderStaggerDesc')}
+          noDivider
         >
-          {DOWNLOAD_STAGGER_OPTIONS.map((value) => (
-            <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
-              {value === 0 ? t('settings.downloaderStaggerDisabled') : t('settings.downloaderStaggerMs', { value })}
-            </MenuItem>
-          ))}
-        </Select>
-      </SettingRow>
+          <Select
+            size="small"
+            value={Number(downloadSettings.staggerDownloadsMs) || 0}
+            disabled={disabled}
+            onChange={(event) => updateDownloadSettings({ staggerDownloadsMs: Number(event.target.value) || 0 })}
+            sx={selectSx}
+          >
+            {DOWNLOAD_STAGGER_OPTIONS.map((value) => (
+              <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
+                {value === 0 ? t('settings.downloaderStaggerDisabled') : t('settings.downloaderStaggerMs', { value })}
+              </MenuItem>
+            ))}
+          </Select>
+        </SettingRow>
+      </SettingGroup>
 
-      <SettingRow
-        label={t('settings.downloaderDefaultAudioContainer')}
-        description={t('settings.downloaderDefaultAudioContainerDesc')}
-      >
-        <Select
-          size="small"
-          value={String(downloadSettings.defaultAudioContainer || 'mp3')}
-          disabled={disabled}
-          onChange={(event) => updateDownloadSettings({ defaultAudioContainer: String(event.target.value || 'mp3') })}
-          sx={selectSx}
+      <SettingGroup>
+        <SettingRow
+          label={t('settings.downloaderDefaultAudioContainer')}
+          description={t('settings.downloaderDefaultAudioContainerDesc')}
         >
-          <MenuItem value="mp3" sx={{ fontSize: 13 }}>mp3</MenuItem>
-          <MenuItem value="m4a" sx={{ fontSize: 13 }}>m4a</MenuItem>
-          <MenuItem value="wav" sx={{ fontSize: 13 }}>wav</MenuItem>
-          <MenuItem value="ogg" sx={{ fontSize: 13 }}>ogg</MenuItem>
-          <MenuItem value="flac" sx={{ fontSize: 13 }}>flac</MenuItem>
-          <MenuItem value="opus" sx={{ fontSize: 13 }}>opus</MenuItem>
-        </Select>
-      </SettingRow>
+          <Select
+            size="small"
+            value={String(downloadSettings.defaultAudioContainer || 'mp3')}
+            disabled={disabled}
+            onChange={(event) => updateDownloadSettings({ defaultAudioContainer: String(event.target.value || 'mp3') })}
+            sx={selectSx}
+          >
+            <MenuItem value="mp3" sx={{ fontSize: 13 }}>mp3</MenuItem>
+            <MenuItem value="m4a" sx={{ fontSize: 13 }}>m4a</MenuItem>
+            <MenuItem value="wav" sx={{ fontSize: 13 }}>wav</MenuItem>
+            <MenuItem value="ogg" sx={{ fontSize: 13 }}>ogg</MenuItem>
+            <MenuItem value="flac" sx={{ fontSize: 13 }}>flac</MenuItem>
+            <MenuItem value="opus" sx={{ fontSize: 13 }}>opus</MenuItem>
+          </Select>
+        </SettingRow>
 
-      <SettingRow
-        label={t('settings.downloaderDefaultVideoContainer')}
-        description={t('settings.downloaderDefaultVideoContainerDesc')}
-      >
-        <Select
-          size="small"
-          value={String(downloadSettings.defaultVideoContainer || 'mp4')}
-          disabled={disabled}
-          onChange={(event) => updateDownloadSettings({ defaultVideoContainer: String(event.target.value || 'mp4') })}
-          sx={selectSx}
+        <SettingRow
+          label={t('settings.downloaderDefaultVideoContainer')}
+          description={t('settings.downloaderDefaultVideoContainerDesc')}
         >
-          <MenuItem value="mp4" sx={{ fontSize: 13 }}>mp4</MenuItem>
-          <MenuItem value="webm" sx={{ fontSize: 13 }}>webm</MenuItem>
-          <MenuItem value="mkv" sx={{ fontSize: 13 }}>mkv</MenuItem>
-        </Select>
-      </SettingRow>
+          <Select
+            size="small"
+            value={String(downloadSettings.defaultVideoContainer || 'mp4')}
+            disabled={disabled}
+            onChange={(event) => updateDownloadSettings({ defaultVideoContainer: String(event.target.value || 'mp4') })}
+            sx={selectSx}
+          >
+            <MenuItem value="mp4" sx={{ fontSize: 13 }}>mp4</MenuItem>
+            <MenuItem value="webm" sx={{ fontSize: 13 }}>webm</MenuItem>
+            <MenuItem value="mkv" sx={{ fontSize: 13 }}>mkv</MenuItem>
+          </Select>
+        </SettingRow>
 
-      <SettingRow
-        label={t('settings.downloaderMaxAudioBitrate')}
-        description={t('settings.downloaderMaxAudioBitrateDesc')}
-      >
-        <Select
-          size="small"
-          value={Number(downloadSettings.maxAudioBitrateKbps) || 0}
-          disabled={disabled}
-          onChange={(event) => updateDownloadSettings({ maxAudioBitrateKbps: Number(event.target.value) || 0 })}
-          sx={selectSx}
+        <SettingRow
+          label={t('settings.downloaderMaxAudioBitrate')}
+          description={t('settings.downloaderMaxAudioBitrateDesc')}
         >
-          {DOWNLOAD_AUDIO_BITRATE_OPTIONS.map((value) => (
-            <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
-              {value === 0 ? t('settings.downloaderHighestQuality') : `${value} kbps`}
-            </MenuItem>
-          ))}
-        </Select>
-      </SettingRow>
+          <Select
+            size="small"
+            value={Number(downloadSettings.maxAudioBitrateKbps) || 0}
+            disabled={disabled}
+            onChange={(event) => updateDownloadSettings({ maxAudioBitrateKbps: Number(event.target.value) || 0 })}
+            sx={selectSx}
+          >
+            {DOWNLOAD_AUDIO_BITRATE_OPTIONS.map((value) => (
+              <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
+                {value === 0 ? t('settings.downloaderHighestQuality') : `${value} kbps`}
+              </MenuItem>
+            ))}
+          </Select>
+        </SettingRow>
 
-      <SettingRow
-        label={t('settings.downloaderMaxVideoQuality')}
-        description={t('settings.downloaderMaxVideoQualityDesc')}
-      >
-        <Select
-          size="small"
-          value={Number(downloadSettings.maxVideoHeight) || 0}
-          disabled={disabled}
-          onChange={(event) => updateDownloadSettings({ maxVideoHeight: Number(event.target.value) || 0 })}
-          sx={selectSx}
+        <SettingRow
+          label={t('settings.downloaderMaxVideoQuality')}
+          description={t('settings.downloaderMaxVideoQualityDesc')}
         >
-          {DOWNLOAD_VIDEO_QUALITY_OPTIONS.map((value) => (
-            <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
-              {value === 0 ? t('settings.downloaderHighestQuality') : `${value}p`}
-            </MenuItem>
-          ))}
-        </Select>
-      </SettingRow>
+          <Select
+            size="small"
+            value={Number(downloadSettings.maxVideoHeight) || 0}
+            disabled={disabled}
+            onChange={(event) => updateDownloadSettings({ maxVideoHeight: Number(event.target.value) || 0 })}
+            sx={selectSx}
+          >
+            {DOWNLOAD_VIDEO_QUALITY_OPTIONS.map((value) => (
+              <MenuItem key={value} value={value} sx={{ fontSize: 13 }}>
+                {value === 0 ? t('settings.downloaderHighestQuality') : `${value}p`}
+              </MenuItem>
+            ))}
+          </Select>
+        </SettingRow>
 
-      <SettingRow
-        label={t('settings.downloaderDefaultEmbedCoverArt')}
-        description={t('settings.downloaderDefaultEmbedCoverArtDesc')}
-        noDivider={!isElectronRuntime}
-      >
-        <Switch
-          size="small"
-          checked={Boolean(downloadSettings.defaultEmbedCoverArt)}
-          disabled={disabled}
-          onChange={(event) => updateDownloadSettings({ defaultEmbedCoverArt: event.target.checked })}
-        />
-      </SettingRow>
+        <SettingRow
+          label={t('settings.downloaderDefaultEmbedCoverArt')}
+          description={t('settings.downloaderDefaultEmbedCoverArtDesc')}
+          noDivider
+        >
+          <Switch
+            size="small"
+            checked={Boolean(downloadSettings.defaultEmbedCoverArt)}
+            disabled={disabled}
+            onChange={(event) => updateDownloadSettings({ defaultEmbedCoverArt: event.target.checked })}
+          />
+        </SettingRow>
+      </SettingGroup>
 
       {isElectronRuntime && (
-        <Box
-          sx={(theme) => ({
-            mt: 1.5,
-            border: `1px solid ${theme.palette.divider}`,
-            borderRadius: '8px',
-            overflow: 'hidden',
-            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
-          })}
-        >
-          <Box sx={{ px: 2, py: 1.2 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: 13.5 }}>
+        <Box sx={{ mb: 3.5 }}>
+          <Box sx={{ px: 2, pb: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               {t('settings.downloaderStorageTitle')}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.5, lineHeight: 1.4, fontSize: 13 }}>
               {t('settings.downloaderStorageModeDesc')}
             </Typography>
           </Box>
 
-          <Box sx={{ px: 2, pb: 1.5 }}>
+          <SettingGroup sx={{ mb: 0 }}>
             <SettingRow
               label={t('settings.downloaderStorageMode')}
               description={t('settings.downloaderStorageModeRowDesc')}
+              noDivider
             >
               <Select
                 size="small"
@@ -514,7 +509,9 @@ export default function DownloaderSettingsSection({
                 </MenuItem>
               </Select>
             </SettingRow>
+          </SettingGroup>
 
+          <Box sx={{ mt: 3.5 }}>
             {!isSeparateStorageMode && renderStorageAllMode()}
             {isSeparateStorageMode && renderStorageSeparateMode()}
           </Box>

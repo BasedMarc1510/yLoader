@@ -7,6 +7,7 @@ import {
   Typography,
 } from '@mui/material'
 import SettingRow from './SettingRow'
+import SettingGroup from './SettingGroup'
 
 const MB_IN_BYTES = 1024 * 1024
 
@@ -112,13 +113,13 @@ export default function AppVersionUpdateSection({
 
   if (!isElectronUpdaterAvailable) {
     return (
-      <Box sx={{ pt: 1 }}>
+      <SettingGroup>
         <SettingRow label={t('settings.appVersion')} noDivider>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
             {currentVersion}
           </Typography>
         </SettingRow>
-      </Box>
+      </SettingGroup>
     )
   }
 
@@ -136,18 +137,14 @@ export default function AppVersionUpdateSection({
   const speedLabel = formatSpeed(speedBytesPerSecond, t)
 
   return (
-    <Box sx={{ pt: 1 }}>
-      <SettingRow label={t('settings.appVersion')} noDivider>
+    <SettingGroup title={t('settings.appUpdateTitle')}>
+      <SettingRow label={t('settings.appVersion')}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {currentVersion}
         </Typography>
       </SettingRow>
 
-      <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '6px', border: (theme) => `1px solid ${theme.palette.divider}` }}>
-        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-          {t('settings.appUpdateTitle')}
-        </Typography>
-
+      <Box sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 24 }}>
           {isChecking && <CircularProgress size={15} />}
           <Typography variant="body2" sx={{ fontSize: 13.5 }}>
@@ -203,7 +200,7 @@ export default function AppVersionUpdateSection({
               size="small"
               disabled={isActionRunning}
               onClick={() => runAction('check', checkForAppUpdates)}
-              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '4px', transition: 'none' }}
+              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px', transition: 'none' }}
             >
               {t('settings.appUpdateCheckButton')}
             </Button>
@@ -215,7 +212,7 @@ export default function AppVersionUpdateSection({
               size="small"
               disabled={isActionRunning}
               onClick={() => runAction('download', downloadAppUpdate)}
-              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '4px', transition: 'none' }}
+              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px', transition: 'none', boxShadow: 'none' }}
             >
               {manualDownloadOnly ? t('settings.appUpdateOpenReleaseButton') : t('settings.appUpdateDownloadButton')}
             </Button>
@@ -227,13 +224,13 @@ export default function AppVersionUpdateSection({
               size="small"
               disabled={isActionRunning}
               onClick={() => runAction('install', installAppUpdate)}
-              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: '4px', transition: 'none' }}
+              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: '8px', transition: 'none', boxShadow: 'none' }}
             >
               {t('settings.appUpdateInstallButton')}
             </Button>
           )}
         </Box>
       </Box>
-    </Box>
+    </SettingGroup>
   )
 }

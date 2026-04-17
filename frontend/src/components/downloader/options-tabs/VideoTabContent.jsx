@@ -31,6 +31,8 @@ export default function VideoTabContent({
   downloadProgress,
   downloadStage,
   downloadError,
+  showCookieSettingsHint,
+  onOpenCookieSettings,
 }) {
   const isDark = theme.palette.mode === 'dark'
   const textColor = isDark ? '#ffffff' : theme.palette.text.primary
@@ -177,9 +179,28 @@ export default function VideoTabContent({
       </Box>
 
       {downloadError && (
-        <Typography sx={{ color: 'error.main', fontSize: '0.875rem', mt: 1, textAlign: 'center' }}>
-          {downloadError}
-        </Typography>
+        <Box sx={{ mt: 1, textAlign: 'center' }}>
+          <Typography sx={{ color: 'error.main', fontSize: '0.875rem' }}>
+            {downloadError}
+          </Typography>
+
+          {showCookieSettingsHint && (
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => onOpenCookieSettings?.()}
+              sx={{
+                mt: 0.25,
+                textTransform: 'none',
+                fontWeight: 700,
+                minWidth: 0,
+                px: 0.75,
+              }}
+            >
+              {i18nT('downloader.cookieSettingsAction')}
+            </Button>
+          )}
+        </Box>
       )}
     </Box>
   )

@@ -1,19 +1,6 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Box,
-  Dialog,
-  DialogContent,
-  IconButton,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  Typography,
-  Divider,
-  Tooltip,
-  Button,
-} from '@mui/material'
-import { X } from 'lucide-react'
+import { Box, Dialog, DialogContent, IconButton, List, ListItem, ListItemButton, Typography, Tooltip, Button } from '@mui/material'
+import { X, Settings as SettingsIcon, Download as DownloadIcon, Zap as ZapIcon, Video as VideoIcon, Cpu as CpuIcon } from 'lucide-react'
 import { ColorModeContext } from '../providers/ColorModeProvider'
 import { SettingsContext } from '../providers/SettingsProvider'
 import { useI18n } from '../providers/I18nProvider'
@@ -31,11 +18,28 @@ import {
   DOWNLOAD_SETTINGS_DEFAULTS,
   normalizeDownloadSettings,
 } from '../utils/downloadSettings'
+import {
+  YT_DLP_COOKIE_SETTINGS_DEFAULTS,
+  normalizeYtDlpCookieSettings,
+} from '../utils/ytDlpCookieSettings'
+
+async function parseApiError(response) {
+  let message = `HTTP ${response?.status || 500}`
+  try {
+    const payload = await response.json()
+    message = String(payload?.error || payload?.details || message)
+  } catch {
+    // keep default fallback message
+  }
+  return message
+}
 
 export default function SettingsModal({
   open,
   onClose,
   requestedSection = 'general',
+  requestedFocusTarget = '',
+  requestedFocusRequestId = '',
   onToolUpdateSummaryChange,
   appUpdateState,
   isElectronUpdaterAvailable = false,
@@ -47,6 +51,8 @@ export default function SettingsModal({
   const { mode, setPreference } = useContext(ColorModeContext)
   const { language, setLanguage } = useContext(SettingsContext)
   const [section, setSection] = useState(() => String(requestedSection || 'general'))
+  const [sectionFocusTarget, setSectionFocusTarget] = useState(() => String(requestedFocusTarget || '').trim())
+  const [sectionFocusRequestId, setSectionFocusRequestId] = useState(() => String(requestedFocusRequestId || '').trim())
   const API_BASE = getApiBase()
 
   const [ytInfo, setYtInfo] = useState({
@@ -121,6 +127,11 @@ export default function SettingsModal({
   const [downloadSettingsLoading, setDownloadSettingsLoading] = useState(false)
   const [downloadSettingsSaving, setDownloadSettingsSaving] = useState(false)
   const [downloadSettingsError, setDownloadSettingsError] = useState('')
+  const [ytCookieSettings, setYtCookieSettings] = useState(() => ({ ...YT_DLP_COOKIE_SETTINGS_DEFAULTS }))
+  const ytCookieSettingsRef = useRef(ytCookieSettings)
+  const [ytCookieSettingsLoading, setYtCookieSettingsLoading] = useState(false)
+  const [ytCookieSettingsSaving, setYtCookieSettingsSaving] = useState(false)
+  const [ytCookieSettingsError, setYtCookieSettingsError] = useState('')
 
   const isAppUpdateDownloading = appUpdateState?.phase === 'downloading'
 
@@ -386,9 +397,69 @@ export default function SettingsModal({
   }
 
   useEffect(() => {
+    ytCookieSettingsRef.current = ytCookieSettings
+  }, [ytCookieSettings])
+
+  const fetchYtCookieSettings = React.useCallback(async () => {
+    setYtCookieSettingsLoading(true)
+    setYtCookieSettingsError('')
+
+    try {
+      const response = await fetch(`${API_BASE}/api/yt-dlp/cookies/settings`)
+      if (!response.ok) throw new Error(await parseApiError(response))
+      const payload = await response.json()
+      setYtCookieSettings(normalizeYtDlpCookieSettings(payload))
+    } catch (error) {
+      setYtCookieSettingsError(t('settings.cookieSettingsLoadFailed', { message: error?.message || error }))
+    } finally {
+      setYtCookieSettingsLoading(false)
+    }
+  }, [API_BASE, t])
+
+  const saveYtCookieSettings = React.useCallback(async (nextSettings) => {
+    setYtCookieSettingsSaving(true)
+    setYtCookieSettingsError('')
+
+    try {
+      const response = await fetch(`${API_BASE}/api/yt-dlp/cookies/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextSettings),
+      })
+      if (!response.ok) throw new Error(await parseApiError(response))
+
+      const payload = await response.json()
+      const normalized = normalizeYtDlpCookieSettings(payload)
+      setYtCookieSettings(normalized)
+      return normalized
+    } catch (error) {
+      setYtCookieSettingsError(t('settings.cookieSettingsSaveFailed', { message: error?.message || error }))
+      throw error
+    } finally {
+      setYtCookieSettingsSaving(false)
+    }
+  }, [API_BASE, t])
+
+  const updateYtCookieSettings = React.useCallback((changes) => {
+    const current = ytCookieSettingsRef.current || YT_DLP_COOKIE_SETTINGS_DEFAULTS
+    const patch = typeof changes === 'function' ? changes(current) : changes
+    const next = normalizeYtDlpCookieSettings({
+      ...current,
+      ...(patch && typeof patch === 'object' ? patch : {}),
+    })
+
+    setYtCookieSettings(next)
+    saveYtCookieSettings(next).catch(() => {
+      // error state is handled in saveYtCookieSettings
+    })
+  }, [saveYtCookieSettings])
+
+  useEffect(() => {
     if (!open) return
     setSection(String(requestedSection || 'general'))
-  }, [open, requestedSection])
+    setSectionFocusTarget(String(requestedFocusTarget || '').trim())
+    setSectionFocusRequestId(String(requestedFocusRequestId || `${Date.now()}`).trim())
+  }, [open, requestedSection, requestedFocusRequestId, requestedFocusTarget])
 
   useEffect(() => {
     if (!open) return undefined
@@ -409,6 +480,7 @@ export default function SettingsModal({
     if (!open) return
     if (open && section === 'auto-download') fetchAutoDownloadSettings()
     if (open && section === 'downloader') fetchDownloadSettings()
+    if (open && section === 'yt-dlp') fetchYtCookieSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, section])
 
@@ -526,11 +598,11 @@ export default function SettingsModal({
   }
 
   const sections = useMemo(() => ([
-    { key: 'general', label: t('settings.general'), hasUpdate: false },
-    { key: 'downloader', label: t('settings.sectionDownloader'), hasUpdate: false },
-    { key: 'auto-download', label: t('settings.sectionAutoDownload'), hasUpdate: false },
-    { key: 'yt-dlp', label: t('settings.sectionYtDlp'), hasUpdate: Boolean(ytInfo.outdated) },
-    { key: 'ffmpeg', label: t('settings.sectionFfmpeg'), hasUpdate: Boolean(ffmpegInfo.outdated) },
+    { key: 'general', label: t('settings.general'), icon: SettingsIcon, hasUpdate: false },
+    { key: 'downloader', label: t('settings.sectionDownloader'), icon: DownloadIcon, hasUpdate: false },
+    { key: 'auto-download', label: t('settings.sectionAutoDownload'), icon: ZapIcon, hasUpdate: false },
+    { key: 'yt-dlp', label: t('settings.sectionYtDlp'), icon: VideoIcon, hasUpdate: Boolean(ytInfo.outdated) },
+    { key: 'ffmpeg', label: t('settings.sectionFfmpeg'), icon: CpuIcon, hasUpdate: Boolean(ffmpegInfo.outdated) },
   ]), [ffmpegInfo.outdated, t, ytInfo.outdated])
 
   let sectionTitle = t('settings.general')
@@ -566,10 +638,12 @@ export default function SettingsModal({
     }
   }, [section, saveAutoDownloadSettings, saveDownloadSettings, setLanguage, setPreference])
 
+  const isAnyUpdateRunning = isAppUpdateDownloading || updating || ffmpegUpdating || ytInfo.updateInProgress || ffmpegInfo.updateInProgress
+
   const handleDialogClose = React.useCallback(() => {
-    if (isAppUpdateDownloading) return
+    if (isAnyUpdateRunning) return
     onClose?.()
-  }, [isAppUpdateDownloading, onClose])
+  }, [isAnyUpdateRunning, onClose])
 
   const selectSx = {
     fontSize: 13,
@@ -588,15 +662,16 @@ export default function SettingsModal({
     <Dialog
       open={open}
       onClose={handleDialogClose}
-      disableEscapeKeyDown={isAppUpdateDownloading}
+      disableEscapeKeyDown={isAnyUpdateRunning}
       fullWidth
       maxWidth="md"
       PaperProps={{
         sx: (theme) => ({
-          borderRadius: '6px',
+          borderRadius: '12px',
           overflow: 'hidden',
-          bgcolor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#f5f5f5',
+          bgcolor: theme.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
           backgroundImage: 'none',
+          boxShadow: theme.palette.mode === 'dark' ? '0 0 0 1px rgba(255,255,255,0.1), 0 24px 48px rgba(0,0,0,0.5)' : '0 24px 48px rgba(0,0,0,0.15)',
           '& .MuiButton-root': { transition: 'none' },
           '& .MuiIconButton-root': { transition: 'none' },
           '& .MuiListItemButton-root': { transition: 'none' },
@@ -607,12 +682,12 @@ export default function SettingsModal({
       }}
     >
       <DialogContent sx={{ p: 0, '&:first-of-type': { pt: 0 } }}>
-        <Box sx={{ display: 'flex', height: 520 }}>
+        <Box sx={{ display: 'flex', height: 640 }}>
           <Box sx={(theme) => ({
-            width: 200,
+            width: 240,
             flexShrink: 0,
             borderRight: `1px solid ${theme.palette.divider}`,
-            bgcolor: theme.palette.mode === 'dark' ? '#161616' : '#ececec',
+            bgcolor: theme.palette.mode === 'dark' ? '#1c1c1e' : '#fbfbfb',
             display: 'flex',
             flexDirection: 'column',
           })}>
@@ -622,87 +697,81 @@ export default function SettingsModal({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 px: 2,
-                height: 52,
+                pt: 3,
+                pb: 2,
                 flexShrink: 0,
               }}
             >
-              <Typography sx={{ fontWeight: 700, fontSize: 15 }}>{t('settings.title')}</Typography>
+              <Typography sx={{ fontWeight: 600, fontSize: 13, color: 'text.secondary' }}>{t('settings.title')}</Typography>
               <Tooltip title={t('settings.close')}>
                 <IconButton
                   onClick={handleDialogClose}
-                  disabled={isAppUpdateDownloading}
+                  disabled={isAnyUpdateRunning}
                   size="small"
                   aria-label={t('settings.closeAria')}
                   sx={{
-                    borderRadius: '4px',
-                    p: '4px',
+                    borderRadius: '8px',
+                    p: '6px',
                     color: 'text.secondary',
-                    transition: 'none',
                     '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
                   }}
                 >
-                  <X size={15} />
+                  <X size={16} />
                 </IconButton>
               </Tooltip>
             </Box>
 
-            <Divider />
-
-            <List disablePadding sx={{ pt: 0.5 }}>
+            <List disablePadding sx={{ px: 2, pt: 1, pb: 4, overflowY: 'auto' }}>
               {sections.map((entry) => (
-                <ListItem key={entry.key} disablePadding sx={{ px: 1, mb: 0.25 }}>
+                <ListItem key={entry.key} disablePadding sx={{ mb: 0.5 }}>
                   <ListItemButton
                     selected={section === entry.key}
-                    onClick={() => setSection(entry.key)}
+                    onClick={() => {
+                      setSection(entry.key)
+                      setSectionFocusTarget('')
+                      setSectionFocusRequestId(String(Date.now()))
+                    }}
                     sx={(theme) => ({
-                      borderRadius: '4px',
-                      py: '7px',
-                      px: 1.5,
-                      transition: 'none',
+                      borderRadius: '8px',
+                      py: '6px',
+                      px: 1,
                       '&.Mui-selected': {
-                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-                        '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)' },
+                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                        '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' },
                       },
                       '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
                     })}
                   >
-                    <ListItemText
-                      primary={(
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                          <Typography sx={{ fontSize: 13.5, fontWeight: section === entry.key ? 600 : 400 }}>
-                            {entry.label}
-                          </Typography>
-                          {entry.hasUpdate ? (
-                            <Box
-                              sx={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                bgcolor: '#f59e0b',
-                                flexShrink: 0,
-                              }}
-                            />
-                          ) : null}
-                        </Box>
-                      )}
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, flexShrink: 0 }}>
+                        <entry.icon size={18} strokeWidth={2.5} color={section === entry.key ? 'currentColor' : '#8e8e93'} />
+                      </Box>
+                      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Typography sx={{ fontSize: 13.5, fontWeight: section === entry.key ? 600 : 500, color: section === entry.key ? 'text.primary' : 'text.secondary' }}>
+                          {entry.label}
+                        </Typography>
+                        {entry.hasUpdate ? (
+                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ff3b30', flexShrink: 0 }} />
+                        ) : null}
+                      </Box>
+                    </Box>
                   </ListItemButton>
                 </ListItem>
               ))}
             </List>
           </Box>
 
-          <Box sx={(theme) => ({
+          <Box sx={{
             flex: 1,
             overflow: 'hidden',
-            bgcolor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#ffffff',
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
-          })}>
+          }}>
             <Box sx={(theme) => ({
-              px: 3,
-              height: 52,
+              px: 4,
+              pt: 3,
+              pb: 2,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -710,9 +779,9 @@ export default function SettingsModal({
               position: 'sticky',
               top: 0,
               zIndex: 1,
-              bgcolor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#ffffff',
+              bgcolor: theme.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
             })}>
-              <Typography sx={{ fontWeight: 700, fontSize: 18 }}>{sectionTitle}</Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: 24, letterSpacing: '-0.5px' }}>{sectionTitle}</Typography>
               {canResetSection && (
                 <Button
                   variant="text"
@@ -722,16 +791,14 @@ export default function SettingsModal({
                   sx={{
                     textTransform: 'none',
                     fontWeight: 600,
-                    borderRadius: '4px',
-                    transition: 'none',
+                    borderRadius: '8px',
+                    color: '#007aff',
                   }}
                 >
                   {t('settings.resetToDefaults')}
                 </Button>
               )}
             </Box>
-
-            <Divider />
 
             <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
               {section === 'general' && (
@@ -787,6 +854,14 @@ export default function SettingsModal({
                   onCheckForUpdates={() => fetchStatus({ forceLatest: true })}
                   logRef={logRef}
                   logLines={logLines}
+                  cookieSettings={ytCookieSettings}
+                  cookieSettingsLoading={ytCookieSettingsLoading}
+                  cookieSettingsSaving={ytCookieSettingsSaving}
+                  cookieSettingsError={ytCookieSettingsError}
+                  onUpdateCookieSettings={updateYtCookieSettings}
+                  onRefreshCookieSettings={fetchYtCookieSettings}
+                  requestedFocusTarget={sectionFocusTarget}
+                  requestedFocusRequestId={sectionFocusRequestId}
                   t={t}
                 />
               )}

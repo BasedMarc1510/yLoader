@@ -573,6 +573,15 @@ async function main() {
     DOWNLOAD_DIR: DOWNLOADS_DIR,
   })
 
+  const runtimeTarget = String(sharedEnv.YLOADER_RUNTIME_TARGET || '').trim().toLowerCase()
+  if (runtimeTarget === 'electron') {
+    sharedEnv.YLOADER_RUNTIME_TARGET = 'electron'
+    sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '1'
+  } else {
+    sharedEnv.YLOADER_RUNTIME_TARGET = 'server'
+    sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '0'
+  }
+
   sharedEnv.YT_DLP_PATH = ytDlpPath
   sharedEnv.YT_DLP_UPDATE_METHOD = suggestedUpdateMethod || 'self'
   sharedEnv.YT_DLP_MANAGED_BY_YLOADER = '1'

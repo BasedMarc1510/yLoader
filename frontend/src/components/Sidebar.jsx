@@ -50,6 +50,8 @@ export default function Sidebar({
   const MAC_TRAFFIC_LIGHTS_TOP_OFFSET = 8
   const [openSettings, setOpenSettings] = React.useState(false)
   const [settingsSection, setSettingsSection] = React.useState('general')
+  const [settingsFocusTarget, setSettingsFocusTarget] = React.useState('')
+  const [settingsFocusRequestId, setSettingsFocusRequestId] = React.useState('')
   const {
     state: appUpdateState,
     isElectronUpdaterAvailable,
@@ -87,7 +89,11 @@ export default function Sidebar({
 
     const onOpenSettings = (event) => {
       const requestedSection = String(event?.detail?.section || 'general').trim() || 'general'
+      const requestedTarget = String(event?.detail?.target || '').trim()
+      const requestId = String(event?.detail?.requestId || `${Date.now()}`).trim()
       setSettingsSection(requestedSection)
+      setSettingsFocusTarget(requestedTarget)
+      setSettingsFocusRequestId(requestId)
       setOpenSettings(true)
     }
 
@@ -411,6 +417,8 @@ export default function Sidebar({
               <ListItemButton
                 onClick={() => {
                   setSettingsSection('general')
+                  setSettingsFocusTarget('')
+                  setSettingsFocusRequestId(String(Date.now()))
                   setOpenSettings(true)
                 }}
                 sx={{
@@ -522,6 +530,8 @@ export default function Sidebar({
         open={openSettings}
         onClose={() => setOpenSettings(false)}
         requestedSection={settingsSection}
+        requestedFocusTarget={settingsFocusTarget}
+        requestedFocusRequestId={settingsFocusRequestId}
         onToolUpdateSummaryChange={setToolUpdateSummary}
         appUpdateState={appUpdateState}
         isElectronUpdaterAvailable={isElectronUpdaterAvailable}

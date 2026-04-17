@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Typography, Switch, Select, MenuItem } from '@mui/material'
 import SettingRow from './SettingRow'
+import SettingGroup from './SettingGroup'
 
 export default function AutoDownloadSettingsSection({
   autoDownloadSettings,
@@ -12,70 +13,68 @@ export default function AutoDownloadSettingsSection({
   t,
 }) {
   return (
-    <Box sx={{ px: 3, pt: 1, pb: 3 }}>
-      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
-        {t('settings.autoDownloadDescription')}
-      </Typography>
-
-      <SettingRow
-        label={t('settings.autoDownloadUseMetadata')}
-        description={t('settings.autoDownloadUseMetadataDesc')}
-      >
-        <Switch
-          size="small"
-          checked={Boolean(autoDownloadSettings.useMetadata)}
-          disabled={autoDownloadLoading || autoDownloadSaving}
-          onChange={(event) => updateAutoDownloadSettings({ useMetadata: event.target.checked })}
-        />
-      </SettingRow>
-
-      <SettingRow
-        label={t('settings.autoDownloadEmbedCover')}
-        description={t('settings.autoDownloadEmbedCoverDesc')}
-      >
-        <Switch
-          size="small"
-          checked={Boolean(autoDownloadSettings.embedCoverArt)}
-          disabled={autoDownloadLoading || autoDownloadSaving}
-          onChange={(event) => updateAutoDownloadSettings({ embedCoverArt: event.target.checked })}
-        />
-      </SettingRow>
-
-      <SettingRow label={t('settings.autoDownloadMaxAudioBitrate')}>
-        <Select
-          size="small"
-          value={Number(autoDownloadSettings.maxAudioBitrateKbps) || 0}
-          disabled={autoDownloadLoading || autoDownloadSaving}
-          onChange={(event) => updateAutoDownloadSettings({ maxAudioBitrateKbps: Number(event.target.value) || 0 })}
-          sx={selectSx}
+    <Box sx={{ px: 4, pt: 4, pb: 4 }}>
+      <SettingGroup title={t('settings.autoDownloadDescription')}>
+        <SettingRow
+          label={t('settings.autoDownloadUseMetadata')}
+          description={t('settings.autoDownloadUseMetadataDesc')}
         >
-          <MenuItem value={0} sx={{ fontSize: 13 }}>{t('settings.autoDownloadBest')}</MenuItem>
-          <MenuItem value={320} sx={{ fontSize: 13 }}>320 kbps</MenuItem>
-          <MenuItem value={256} sx={{ fontSize: 13 }}>256 kbps</MenuItem>
-          <MenuItem value={192} sx={{ fontSize: 13 }}>192 kbps</MenuItem>
-          <MenuItem value={160} sx={{ fontSize: 13 }}>160 kbps</MenuItem>
-          <MenuItem value={128} sx={{ fontSize: 13 }}>128 kbps</MenuItem>
-          <MenuItem value={96} sx={{ fontSize: 13 }}>96 kbps</MenuItem>
-        </Select>
-      </SettingRow>
+          <Switch
+            size="small"
+            checked={Boolean(autoDownloadSettings.useMetadata)}
+            disabled={autoDownloadLoading || autoDownloadSaving}
+            onChange={(event) => updateAutoDownloadSettings({ useMetadata: event.target.checked })}
+          />
+        </SettingRow>
 
-      <SettingRow label={t('settings.autoDownloadMaxVideoQuality')} noDivider>
-        <Select
-          size="small"
-          value={Number(autoDownloadSettings.maxVideoHeight) || 0}
-          disabled={autoDownloadLoading || autoDownloadSaving}
-          onChange={(event) => updateAutoDownloadSettings({ maxVideoHeight: Number(event.target.value) || 0 })}
-          sx={selectSx}
+        <SettingRow
+          label={t('settings.autoDownloadEmbedCover')}
+          description={t('settings.autoDownloadEmbedCoverDesc')}
         >
-          <MenuItem value={0} sx={{ fontSize: 13 }}>{t('settings.autoDownloadBest')}</MenuItem>
-          <MenuItem value={2160} sx={{ fontSize: 13 }}>2160p</MenuItem>
-          <MenuItem value={1440} sx={{ fontSize: 13 }}>1440p</MenuItem>
-          <MenuItem value={1080} sx={{ fontSize: 13 }}>1080p</MenuItem>
-          <MenuItem value={720} sx={{ fontSize: 13 }}>720p</MenuItem>
-          <MenuItem value={480} sx={{ fontSize: 13 }}>480p</MenuItem>
-          <MenuItem value={360} sx={{ fontSize: 13 }}>360p</MenuItem>
-        </Select>
-      </SettingRow>
+          <Switch
+            size="small"
+            checked={Boolean(autoDownloadSettings.embedCoverArt)}
+            disabled={autoDownloadLoading || autoDownloadSaving}
+            onChange={(event) => updateAutoDownloadSettings({ embedCoverArt: event.target.checked })}
+          />
+        </SettingRow>
+
+        <SettingRow label={t('settings.autoDownloadMaxAudioBitrate')}>
+          <Select
+            size="small"
+            value={Number(autoDownloadSettings.maxAudioBitrateKbps) || 0}
+            disabled={autoDownloadLoading || autoDownloadSaving}
+            onChange={(event) => updateAutoDownloadSettings({ maxAudioBitrateKbps: Number(event.target.value) || 0 })}
+            sx={selectSx}
+          >
+            <MenuItem value={0} sx={{ fontSize: 13 }}>{t('settings.autoDownloadBest')}</MenuItem>
+            <MenuItem value={320} sx={{ fontSize: 13 }}>320 kbps</MenuItem>
+            <MenuItem value={256} sx={{ fontSize: 13 }}>256 kbps</MenuItem>
+            <MenuItem value={192} sx={{ fontSize: 13 }}>192 kbps</MenuItem>
+            <MenuItem value={160} sx={{ fontSize: 13 }}>160 kbps</MenuItem>
+            <MenuItem value={128} sx={{ fontSize: 13 }}>128 kbps</MenuItem>
+            <MenuItem value={96} sx={{ fontSize: 13 }}>96 kbps</MenuItem>
+          </Select>
+        </SettingRow>
+
+        <SettingRow label={t('settings.autoDownloadMaxVideoQuality')} noDivider>
+          <Select
+            size="small"
+            value={Number(autoDownloadSettings.maxVideoHeight) || 0}
+            disabled={autoDownloadLoading || autoDownloadSaving}
+            onChange={(event) => updateAutoDownloadSettings({ maxVideoHeight: Number(event.target.value) || 0 })}
+            sx={selectSx}
+          >
+            <MenuItem value={0} sx={{ fontSize: 13 }}>{t('settings.autoDownloadBest')}</MenuItem>
+            <MenuItem value={2160} sx={{ fontSize: 13 }}>2160p</MenuItem>
+            <MenuItem value={1440} sx={{ fontSize: 13 }}>1440p</MenuItem>
+            <MenuItem value={1080} sx={{ fontSize: 13 }}>1080p</MenuItem>
+            <MenuItem value={720} sx={{ fontSize: 13 }}>720p</MenuItem>
+            <MenuItem value={480} sx={{ fontSize: 13 }}>480p</MenuItem>
+            <MenuItem value={360} sx={{ fontSize: 13 }}>360p</MenuItem>
+          </Select>
+        </SettingRow>
+      </SettingGroup>
 
       {(autoDownloadLoading || autoDownloadSaving) && (
         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1 }}>

@@ -7,27 +7,30 @@ export default function SettingRow({ label, description, children, noDivider }) 
       <Box
         sx={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: { xs: 'flex-start', sm: 'center' },
+          flexDirection: { xs: 'column', sm: 'row' },
           justifyContent: 'space-between',
-          minHeight: 52,
-          px: 0,
-          py: 0.5,
-          gap: 3,
+          minHeight: 44,
+          px: 2,
+          py: 1.25,
+          gap: { xs: 1.5, sm: 3 },
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body2" sx={{ fontWeight: 500, fontSize: 14, lineHeight: 1.3 }}>
+          <Typography variant="body2" sx={{ fontWeight: 400, fontSize: 15, color: 'text.primary', lineHeight: 1.3 }}>
             {label}
           </Typography>
           {description && (
-            <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mt: 0.25, lineHeight: 1.4 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25, lineHeight: 1.4, fontSize: 13 }}>
               {description}
             </Typography>
           )}
         </Box>
-        <Box sx={{ flexShrink: 0 }}>{children}</Box>
+        <Box sx={{ flexShrink: 0, width: { xs: '100%', sm: 'auto' }, display: 'flex', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
+          {children}
+        </Box>
       </Box>
-      {!noDivider && <Divider />}
+      {!noDivider && <Divider sx={{ ml: 2 }} />}
     </>
   )
 }

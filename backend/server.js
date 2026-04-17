@@ -85,6 +85,7 @@ const TAB_STATE_SETTINGS_KEY = 'ui.tabs.state.v1'
 const AUTO_DOWNLOAD_SETTINGS_KEY = 'ui.autoDownload.settings.v1'
 const DOWNLOAD_SETTINGS_KEY = 'ui.download.settings.v1'
 const TOOL_UPDATER_SETTINGS_KEY = 'tools.updater.settings.v1'
+const YT_DLP_COOKIE_SETTINGS_KEY = 'ytDlp.cookies.settings.v1'
 const MAX_PERSISTED_TABS = 30
 const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
@@ -99,6 +100,10 @@ const SEARCH_PROVIDER_OPTIONS = new Set(['youtube', 'youtubemusic', 'spotify', '
 const SEARCH_QUERY_MAX_LENGTH = 300
 const SEARCH_PAGE_SIZE = 10
 const SEARCH_OFFSET_MAX = 500
+const YT_DLP_COOKIE_SUPPORTED_BROWSERS = Object.freeze(['brave', 'chrome', 'chromium', 'edge', 'firefox', 'opera', 'safari', 'vivaldi', 'whale'])
+const YT_DLP_COOKIE_CHROMIUM_BROWSERS = new Set(['brave', 'chrome', 'chromium', 'edge', 'opera', 'vivaldi', 'whale'])
+const YT_DLP_COOKIE_SUPPORTED_KEYRINGS = Object.freeze(['basictext', 'gnomekeyring', 'kwallet', 'kwallet5', 'kwallet6'])
+const YT_DLP_COOKIE_SPEC_REGEX = /^(?<name>[^+:]+)(?:\s*\+\s*(?<keyring>[^:]+))?(?:\s*:\s*(?!:)(?<profile>.+?))?(?:\s*::\s*(?<container>.+))?$/
 const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
   useMetadata: true,
   embedCoverArt: true,
@@ -142,9 +147,16 @@ const ALLOWED_TAB_PATHS = new Set([
 ])
 const YT_DLP_JS_RUNTIMES = String(process.env.YT_DLP_JS_RUNTIMES || 'node').trim() || 'node'
 const YT_DLP_JS_RUNTIME_ARGS = ['--js-runtimes', YT_DLP_JS_RUNTIMES]
-const YT_DLP_COOKIES_FILE = String(process.env.YT_DLP_COOKIES_FILE || '').trim()
-const YT_DLP_COOKIES_FROM_BROWSER = String(process.env.YT_DLP_COOKIES_FROM_BROWSER || '').trim()
+const YT_DLP_COOKIES_FILE_ENV = String(process.env.YT_DLP_COOKIES_FILE || '').trim()
+const YT_DLP_COOKIES_FROM_BROWSER_ENV = String(process.env.YT_DLP_COOKIES_FROM_BROWSER || '').trim()
 const YT_DLP_EXTRACTOR_ARGS = String(process.env.YT_DLP_EXTRACTOR_ARGS || '').trim()
+const YLOADER_RUNTIME_TARGET = String(process.env.YLOADER_RUNTIME_TARGET || 'server').trim().toLowerCase() || 'server'
+const YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = (() => {
+  const flag = String(process.env.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT || '').trim().toLowerCase()
+  if (flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on') return true
+  if (flag === '0' || flag === 'false' || flag === 'no' || flag === 'off') return false
+  return YLOADER_RUNTIME_TARGET === 'electron'
+})()
 const YT_DLP_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
 const FFMPEG_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
 let FFMPEG_BIN = String(process.env.FFMPEG_PATH || '').trim()
@@ -381,6 +393,243 @@ function normalizeDownloadSettingsPayload(value) {
   }
 }
 
+function normalizeCookieSettingText(value, maxLength = 2048) {
+  const raw = String(value || '')
+    .replace(/\u0000/g, '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .trim()
+  if (!raw) return ''
+  return raw.slice(0, maxLength)
+}
+
+function normalizeCookieBrowser(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  return YT_DLP_COOKIE_SUPPORTED_BROWSERS.includes(normalized) ? normalized : ''
+}
+
+function normalizeCookieKeyring(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  return YT_DLP_COOKIE_SUPPORTED_KEYRINGS.includes(normalized) ? normalized : ''
+}
+
+function parseCookiesFromBrowserSpec(rawSpec) {
+  const spec = normalizeCookieSettingText(rawSpec, 4096)
+  if (!spec) {
+    return {
+      valid: true,
+      browserName: '',
+      browserKeyring: '',
+      browserProfile: '',
+      browserContainer: '',
+    }
+  }
+
+  const match = spec.match(YT_DLP_COOKIE_SPEC_REGEX)
+  if (!match || !match.groups) {
+    return {
+      valid: false,
+      browserName: '',
+      browserKeyring: '',
+      browserProfile: '',
+      browserContainer: '',
+    }
+  }
+
+  const browserName = normalizeCookieBrowser(match.groups.name)
+  const browserKeyringRaw = normalizeCookieSettingText(match.groups.keyring || '', 128)
+  const browserKeyring = normalizeCookieKeyring(browserKeyringRaw)
+  const browserProfile = normalizeCookieSettingText(match.groups.profile || '', 1024)
+  const browserContainer = normalizeCookieSettingText(match.groups.container || '', 256)
+
+  if (!browserName) {
+    return {
+      valid: false,
+      browserName: '',
+      browserKeyring: '',
+      browserProfile: '',
+      browserContainer: '',
+    }
+  }
+
+  if (browserKeyringRaw && !browserKeyring) {
+    return {
+      valid: false,
+      browserName: '',
+      browserKeyring: '',
+      browserProfile: '',
+      browserContainer: '',
+    }
+  }
+
+  return {
+    valid: true,
+    browserName,
+    browserKeyring,
+    browserProfile,
+    browserContainer,
+  }
+}
+
+function getSupportedCookieBrowsersForCurrentPlatform() {
+  if (process.platform === 'darwin') {
+    return [...YT_DLP_COOKIE_SUPPORTED_BROWSERS]
+  }
+  return YT_DLP_COOKIE_SUPPORTED_BROWSERS.filter((browser) => browser !== 'safari')
+}
+
+function getYtDlpCookieCapabilities() {
+  return {
+    runtimeTarget: YLOADER_RUNTIME_TARGET,
+    browserImportSupported: Boolean(YLOADER_ALLOW_BROWSER_COOKIE_IMPORT),
+    supportedBrowsers: YLOADER_ALLOW_BROWSER_COOKIE_IMPORT
+      ? getSupportedCookieBrowsersForCurrentPlatform()
+      : [],
+    supportedKeyrings: [...YT_DLP_COOKIE_SUPPORTED_KEYRINGS],
+  }
+}
+
+function createDefaultYtDlpCookieSettings() {
+  const parsed = parseCookiesFromBrowserSpec(YT_DLP_COOKIES_FROM_BROWSER_ENV)
+  const browserEnabled = parsed.valid && Boolean(parsed.browserName)
+
+  return {
+    cookiesFileEnabled: Boolean(normalizeCookieSettingText(YT_DLP_COOKIES_FILE_ENV)),
+    cookiesFilePath: normalizeCookieSettingText(YT_DLP_COOKIES_FILE_ENV),
+    cookiesFromBrowserEnabled: browserEnabled,
+    browserName: browserEnabled ? parsed.browserName : '',
+    browserKeyring: browserEnabled ? parsed.browserKeyring : '',
+    browserProfile: browserEnabled ? parsed.browserProfile : '',
+    browserContainer: browserEnabled ? parsed.browserContainer : '',
+  }
+}
+
+function normalizeYtDlpCookieSettingsPayload(value, { browserImportSupported = YLOADER_ALLOW_BROWSER_COOKIE_IMPORT } = {}) {
+  const defaults = createDefaultYtDlpCookieSettings()
+  const input = (value && typeof value === 'object') ? value : {}
+
+  const cookiesFileEnabled = input.cookiesFileEnabled !== undefined
+    ? Boolean(input.cookiesFileEnabled)
+    : defaults.cookiesFileEnabled
+
+  const cookiesFilePath = normalizeCookieSettingText(
+    input.cookiesFilePath !== undefined ? input.cookiesFilePath : defaults.cookiesFilePath,
+    4096,
+  )
+
+  let browserName = normalizeCookieBrowser(
+    input.browserName !== undefined ? input.browserName : defaults.browserName
+  )
+  let browserKeyring = normalizeCookieKeyring(
+    input.browserKeyring !== undefined ? input.browserKeyring : defaults.browserKeyring
+  )
+  let browserProfile = normalizeCookieSettingText(
+    input.browserProfile !== undefined ? input.browserProfile : defaults.browserProfile,
+    1024,
+  )
+  let browserContainer = normalizeCookieSettingText(
+    input.browserContainer !== undefined ? input.browserContainer : defaults.browserContainer,
+    256,
+  )
+
+  const browserEnabledFromInput = input.cookiesFromBrowserEnabled !== undefined
+    ? Boolean(input.cookiesFromBrowserEnabled)
+    : defaults.cookiesFromBrowserEnabled
+
+  const supportedBrowsers = new Set(getSupportedCookieBrowsersForCurrentPlatform())
+  if (!supportedBrowsers.has(browserName)) {
+    browserName = ''
+    browserKeyring = ''
+    browserProfile = ''
+    browserContainer = ''
+  }
+
+  if (!YT_DLP_COOKIE_CHROMIUM_BROWSERS.has(browserName)) {
+    browserKeyring = ''
+  }
+
+  if (browserName !== 'firefox') {
+    browserContainer = ''
+  }
+
+  const cookiesFromBrowserEnabled = Boolean(
+    browserImportSupported
+    && browserEnabledFromInput
+    && browserName
+  )
+
+  return {
+    cookiesFileEnabled,
+    cookiesFilePath,
+    cookiesFromBrowserEnabled,
+    browserName,
+    browserKeyring,
+    browserProfile,
+    browserContainer,
+  }
+}
+
+function composeCookiesFromBrowserSpec(settings) {
+  const browserName = normalizeCookieBrowser(settings?.browserName)
+  if (!browserName) return ''
+
+  let spec = browserName
+
+  const keyring = normalizeCookieKeyring(settings?.browserKeyring)
+  if (keyring && YT_DLP_COOKIE_CHROMIUM_BROWSERS.has(browserName)) {
+    spec += `+${keyring}`
+  }
+
+  const profile = normalizeCookieSettingText(settings?.browserProfile, 1024)
+  if (profile) {
+    spec += `:${profile}`
+  }
+
+  const container = normalizeCookieSettingText(settings?.browserContainer, 256)
+  if (browserName === 'firefox' && container) {
+    spec += `::${container}`
+  }
+
+  return spec
+}
+
+function toPersistedYtDlpCookieSettings(settings) {
+  return {
+    cookiesFileEnabled: Boolean(settings?.cookiesFileEnabled),
+    cookiesFilePath: normalizeCookieSettingText(settings?.cookiesFilePath, 4096),
+    cookiesFromBrowserEnabled: Boolean(settings?.cookiesFromBrowserEnabled),
+    browserName: normalizeCookieBrowser(settings?.browserName),
+    browserKeyring: normalizeCookieKeyring(settings?.browserKeyring),
+    browserProfile: normalizeCookieSettingText(settings?.browserProfile, 1024),
+    browserContainer: normalizeCookieSettingText(settings?.browserContainer, 256),
+  }
+}
+
+function validateYtDlpCookieSettings(settings, { browserImportSupported = YLOADER_ALLOW_BROWSER_COOKIE_IMPORT } = {}) {
+  const normalized = normalizeYtDlpCookieSettingsPayload(settings, { browserImportSupported })
+  if (normalized.cookiesFileEnabled && !normalizeCookieSettingText(normalized.cookiesFilePath, 4096)) {
+    return 'Cookie file path is required when cookie file import is enabled'
+  }
+
+  if (normalized.cookiesFromBrowserEnabled) {
+    if (!browserImportSupported) {
+      return 'Browser cookie import is not supported in this runtime mode'
+    }
+    if (!normalized.browserName) {
+      return 'Browser selection is required when browser cookie import is enabled'
+    }
+  }
+
+  return ''
+}
+
+function attachYtDlpCookieCapabilities(settings) {
+  const normalized = normalizeYtDlpCookieSettingsPayload(settings)
+  return {
+    ...normalized,
+    ...getYtDlpCookieCapabilities(),
+  }
+}
+
 function normalizeTabsStatePayload(value) {
   const inputTabs = Array.isArray(value?.tabs) ? value.tabs : []
   const normalizedTabs = []
@@ -482,6 +731,33 @@ async function readDownloadSettings() {
   return normalizeDownloadSettingsPayload(parsed)
 }
 
+async function readYtDlpCookieSettingsCore() {
+  const defaults = createDefaultYtDlpCookieSettings()
+  const raw = await readSettingValue(YT_DLP_COOKIE_SETTINGS_KEY)
+  if (!raw) {
+    return normalizeYtDlpCookieSettingsPayload(defaults)
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    return normalizeYtDlpCookieSettingsPayload({ ...defaults, ...(parsed || {}) })
+  } catch {
+    return normalizeYtDlpCookieSettingsPayload(defaults)
+  }
+}
+
+async function readYtDlpCookieSettings() {
+  const normalized = await readYtDlpCookieSettingsCore()
+  return attachYtDlpCookieCapabilities(normalized)
+}
+
+async function writeYtDlpCookieSettings(nextValue) {
+  const normalized = normalizeYtDlpCookieSettingsPayload(nextValue)
+  const persisted = toPersistedYtDlpCookieSettings(normalized)
+  await writeSettingValue(YT_DLP_COOKIE_SETTINGS_KEY, JSON.stringify(persisted))
+  return attachYtDlpCookieCapabilities(normalized)
+}
+
 app.get('/api/tabs/state', async (_req, res) => {
   try {
     const raw = await readSettingValue(TAB_STATE_SETTINGS_KEY)
@@ -569,6 +845,33 @@ app.put('/api/download/settings', async (req, res) => {
   }
 })
 
+app.get('/api/yt-dlp/cookies/settings', async (_req, res) => {
+  try {
+    const settings = await readYtDlpCookieSettings()
+    return res.json(settings)
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to read yt-dlp cookie settings', details: String(err?.message || err) })
+  }
+})
+
+app.put('/api/yt-dlp/cookies/settings', async (req, res) => {
+  try {
+    const existing = await readYtDlpCookieSettingsCore()
+    const incoming = (req.body && typeof req.body === 'object') ? req.body : {}
+    const normalized = normalizeYtDlpCookieSettingsPayload({ ...existing, ...incoming })
+
+    const validationError = validateYtDlpCookieSettings(normalized)
+    if (validationError) {
+      return res.status(400).json({ error: validationError })
+    }
+
+    const saved = await writeYtDlpCookieSettings(normalized)
+    return res.json(saved)
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to save yt-dlp cookie settings', details: String(err?.message || err) })
+  }
+})
+
 // GET /api/search?q=...&from=youtube|youtubemusic|spotify|soundcloud&offset=0
 app.get('/api/search', async (req, res) => {
   const query = String(req.query.q || req.query.query || '').trim()
@@ -588,7 +891,7 @@ app.get('/api/search', async (req, res) => {
   const searchTarget = buildYtDlpSearchTarget(provider, query, offset + limit)
 
   try {
-    const args = buildYtDlpNetworkArgs([
+    const args = await buildYtDlpNetworkArgs([
       '--dump-single-json',
       '--no-warnings',
       '--flat-playlist',
@@ -1092,15 +1395,35 @@ function buildVideoCutFfmpegArgs(inputPath, outputPath, keepSegments, ext, hasAu
 
 // ── End media cut helpers ─────────────────────────────────────────────────
 
-function buildYtDlpNetworkArgs(baseArgs = []) {
+function buildYtDlpCookieArgs(cookieSettings) {
+  const settings = normalizeYtDlpCookieSettingsPayload(cookieSettings)
+  const args = []
+
+  const cookieFilePath = normalizeCookieSettingText(settings.cookiesFilePath, 4096)
+  if (settings.cookiesFileEnabled && cookieFilePath) {
+    args.push('--cookies', cookieFilePath)
+  }
+
+  if (settings.cookiesFromBrowserEnabled && YLOADER_ALLOW_BROWSER_COOKIE_IMPORT) {
+    const browserSpec = composeCookiesFromBrowserSpec(settings)
+    if (browserSpec) {
+      args.push('--cookies-from-browser', browserSpec)
+    }
+  }
+
+  return args
+}
+
+async function buildYtDlpNetworkArgs(baseArgs = []) {
   const args = [...YT_DLP_JS_RUNTIME_ARGS]
 
-  if (YT_DLP_COOKIES_FILE) {
-    args.push('--cookies', YT_DLP_COOKIES_FILE)
+  try {
+    const cookieSettings = await readYtDlpCookieSettingsCore()
+    args.push(...buildYtDlpCookieArgs(cookieSettings))
+  } catch {
+    args.push(...buildYtDlpCookieArgs(createDefaultYtDlpCookieSettings()))
   }
-  if (YT_DLP_COOKIES_FROM_BROWSER) {
-    args.push('--cookies-from-browser', YT_DLP_COOKIES_FROM_BROWSER)
-  }
+
   if (YT_DLP_EXTRACTOR_ARGS) {
     args.push('--extractor-args', YT_DLP_EXTRACTOR_ARGS)
   }
@@ -1522,13 +1845,15 @@ console.log(`Using ffmpeg: ${FFMPEG_BIN || '(not configured)'}`)
 if (FFPROBE_BIN) {
   console.log(`Using ffprobe: ${FFPROBE_BIN}`)
 }
+console.log(`Runtime target: ${YLOADER_RUNTIME_TARGET}`)
+console.log(`yt-dlp browser cookie import support: ${YLOADER_ALLOW_BROWSER_COOKIE_IMPORT ? 'enabled' : 'disabled'}`)
 console.log(`yt-dlp JS runtimes: ${YT_DLP_JS_RUNTIMES}`)
 console.log(`yt-dlp update method: ${getEffectiveYtDlpUpdateMethod()}${getEffectiveYtDlpUpdateMethod() !== YT_DLP_UPDATE_METHOD ? ` (configured: ${YT_DLP_UPDATE_METHOD})` : ''}`)
-if (YT_DLP_COOKIES_FILE) {
-  console.log(`yt-dlp cookies file: ${YT_DLP_COOKIES_FILE}`)
+if (YT_DLP_COOKIES_FILE_ENV) {
+  console.log(`yt-dlp cookies file default from env: ${YT_DLP_COOKIES_FILE_ENV}`)
 }
-if (YT_DLP_COOKIES_FROM_BROWSER) {
-  console.log(`yt-dlp cookies from browser: ${YT_DLP_COOKIES_FROM_BROWSER}`)
+if (YT_DLP_COOKIES_FROM_BROWSER_ENV) {
+  console.log(`yt-dlp browser cookies default from env: ${YT_DLP_COOKIES_FROM_BROWSER_ENV}`)
 }
 
 // Downloads directory and cache settings
@@ -3033,10 +3358,11 @@ app.get('/api/meta/duration', async (req, res) => {
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
 
   try {
+    const durationArgs = await buildYtDlpNetworkArgs(['--no-warnings', '--no-playlist', '--skip-download', '-O', '%(duration)s|%(duration_string)s', url])
     // Print seconds and formatted string separated by pipe to avoid JSON parsing overhead
     const out = await runCmd(
       YT_DLP,
-      buildYtDlpNetworkArgs(['--no-warnings', '--no-playlist', '--skip-download', '-O', '%(duration)s|%(duration_string)s', url]),
+      durationArgs,
       { timeout: 45000 }
     )
     const parts = (out || '').trim().split('|')
@@ -3074,11 +3400,12 @@ app.get('/api/meta/formats', async (req, res) => {
   }
 
   try {
+    const formatArgs = await buildYtDlpNetworkArgs(['--no-warnings', '--no-playlist', '--skip-download', '--dump-json', url])
     // Get format list as JSON
     // Using --dump-json (same as -J) to retrieve full metadata including thumbnails
     const out = await runCmd(
       YT_DLP,
-      buildYtDlpNetworkArgs(['--no-warnings', '--no-playlist', '--skip-download', '--dump-json', url]),
+      formatArgs,
       { maxBuffer: 50 * 1024 * 1024, timeout: 60000 }
     )
     const data = parseYtDlpJson(out)
@@ -3753,7 +4080,7 @@ app.post('/api/download/stream', async (req, res) => {
     const tempOutputTemplate = path.join(tempDir, 'content.%(ext)s')
 
     // Build yt-dlp command
-    const args = buildYtDlpNetworkArgs([
+    const args = await buildYtDlpNetworkArgs([
       ...formatArgs,
       '--no-playlist',
       '--progress',

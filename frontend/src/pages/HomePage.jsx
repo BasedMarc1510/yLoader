@@ -19,6 +19,7 @@ import HomeErrorOverlay from './home/HomeErrorOverlay'
 import { HOME_AUTO_PREFS_KEY } from './home/constants'
 import { readHomeAutoDownloadPrefs, persistHomeAutoDownloadPrefs } from './home/prefs'
 import { useAutoDownload } from './home/useAutoDownload'
+import { openSettingsModal } from './home/settingsBridge'
 
 const INPUT_BORDER_RUNNER_ANIMATION = 'input-border-runner 3.4s ease-in-out infinite'
 
@@ -267,6 +268,10 @@ export default function HomePage({ onOpenDownloader }) {
     resolveAndOpenDownloader(url)
   }, [autoDownloadEnabled, fetchError?.url, interactionLocked, resolveAndOpenDownloader, startAutoDownload])
 
+  const openCookieSettings = React.useCallback(() => {
+    openSettingsModal('yt-dlp', 'cookies')
+  }, [])
+
   const quickActionsTrigger = (
     <HomeQuickActions
       multiModeEnabled={multiModeEnabled}
@@ -350,6 +355,7 @@ export default function HomePage({ onOpenDownloader }) {
         isResolving={interactionLocked}
         onClose={closeFetchError}
         onRetry={retryFetchError}
+        onOpenCookieSettings={openCookieSettings}
         t={t}
       />
     </Box>

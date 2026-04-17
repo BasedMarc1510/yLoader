@@ -20,6 +20,12 @@ const TRANSLATION_KEY_BY_CODE = Object.freeze({
   [YT_DLP_ERROR_CODES.FFMPEG_REQUIRED]: 'downloader.errorFfmpegRequired',
 })
 
+const COOKIE_SETTINGS_HINT_CODES = new Set([
+  YT_DLP_ERROR_CODES.COOKIE_ERROR,
+  YT_DLP_ERROR_CODES.AUTH_REQUIRED,
+  YT_DLP_ERROR_CODES.AGE_RESTRICTED,
+])
+
 function parseStructuredValue(value) {
   if (!value) return null
   if (typeof value === 'object') return value
@@ -88,4 +94,33 @@ export function formatYtDlpErrorMessage(i18nT, value, options = {}) {
   }
 
   return fallbackText
+}
+
+export function shouldSuggestCookieSettings(value, options = {}) {
+  const { i18nT } = options
+  const { code, rawMessage } = resolveYtDlpErrorInfo(value)
+
+  if (COOKIE_SETTINGS_HINT_CODES.has(code)) return true
+
+  const sourceText = String(rawMessage || value || '').trim()
+  if (!sourceText) return false
+
+  const normalizedText = sourceText.toLowerCase()
+  if (/(cookie|login required|sign in|log in|authentication|age[-\s]?restrict)/i.test(normalizedText)) {
+    return true
+  }
+
+  if (typeof i18nT === 'function') {
+    const knownLocalizedMessages = [
+      i18nT('downloader.errorCookieError'),
+      i18nT('downloader.errorAuthRequired'),
+      i18nT('downloader.errorAgeRestricted'),
+    ]
+      .map((entry) => String(entry || '').trim().toLowerCase())
+      .filter(Boolean)
+
+    return knownLocalizedMessages.includes(normalizedText)
+  }
+
+  return false
 }

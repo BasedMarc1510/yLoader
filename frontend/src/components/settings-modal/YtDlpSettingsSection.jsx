@@ -2,6 +2,8 @@ import React from 'react'
 import { Box, Typography, Button, Switch } from '@mui/material'
 import { RefreshCw } from 'lucide-react'
 import SettingRow from './SettingRow'
+import SettingGroup from './SettingGroup'
+import YtDlpCookieSettingsSection from './YtDlpCookieSettingsSection'
 
 export default function YtDlpSettingsSection({
   ytInfo,
@@ -15,6 +17,14 @@ export default function YtDlpSettingsSection({
   onCheckForUpdates,
   logRef,
   logLines,
+  cookieSettings,
+  cookieSettingsLoading,
+  cookieSettingsSaving,
+  cookieSettingsError,
+  onUpdateCookieSettings,
+  onRefreshCookieSettings,
+  requestedFocusTarget,
+  requestedFocusRequestId,
   t,
 }) {
   const localLoading = Boolean(ytInfo?.localLoading)
@@ -37,88 +47,143 @@ export default function YtDlpSettingsSection({
     : (latestLoading ? t('settings.checking') : t('settings.checkForUpdates'))
 
   return (
-    <Box sx={{ px: 3, pt: 1, pb: 3 }}>
-      <SettingRow
-        label={t('settings.autoUpdateEnabled')}
-        description={t('settings.autoUpdateEnabledDesc')}
-      >
-        <Switch
-          checked={ytInfo?.autoUpdateEnabled !== false}
-          onChange={(event) => onToggleAutoUpdate?.(event.target.checked)}
-          disabled={autoUpdateBusy}
-        />
-      </SettingRow>
-
-      <SettingRow label={t('settings.currentVersion')}>
-        <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
-          {(localLoading && !hasLocalCurrent) ? '…' : ytInfo.currentVersion}
-        </Typography>
-      </SettingRow>
-
-      <SettingRow label={t('settings.latestVersion')}>
-        <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
-          {(latestLoading && !latestKnown) ? '…' : ytInfo.latestVersion}
-        </Typography>
-      </SettingRow>
-
-      <SettingRow label={t('settings.ytDlpPath')}>
-        <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', maxWidth: 380, textAlign: 'right', wordBreak: 'break-all' }}>
-          {(localLoading && !hasLocalPath) ? '…' : ytInfo.binaryPath}
-        </Typography>
-      </SettingRow>
-
-      <SettingRow label={t('settings.ytDlpBinarySize')}>
-        <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
-          {(localLoading && !hasLocalSize) ? '…' : ytInfo.binarySize}
-        </Typography>
-      </SettingRow>
-
-      <SettingRow label={t('settings.checkForUpdates')}>
-        <Button
-          onClick={handlePrimaryAction}
-          disabled={primaryActionDisabled}
-          variant="outlined"
-          size="small"
-          startIcon={<RefreshCw size={13} />}
-          sx={{
-            textTransform: 'none',
-            fontSize: 13,
-            borderRadius: '4px',
-            height: 32,
-            borderColor: 'divider',
-            color: 'text.primary',
-            transition: 'none',
-            '&:hover': { borderColor: 'text.disabled', bgcolor: 'action.hover' },
-          }}
-        >
-          {primaryActionLabel}
-        </Button>
-      </SettingRow>
-
-      <SettingRow label={t('settings.updateNow')}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+    <Box sx={{ px: 4, pt: 4, pb: 4, opacity: updateInProgress || autoUpdateBusy ? 0.6 : 1, pointerEvents: updateInProgress || autoUpdateBusy ? 'none' : 'auto' }}>
+      
+      {updateInProgress && (
+        <SettingGroup title={t('settings.updateLogs')} sx={{ mb: 4 }}>
           <Box
-            sx={{
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              bgcolor: !ytInfo.updateSupported ? '#9ca3af' : updateInProgress ? '#60a5fa' : ytInfo.outdated ? '#f59e0b' : '#22c55e',
-              flexShrink: 0,
-            }}
+            ref={logRef}
+            sx={(th) => ({
+              fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
+              fontSize: 12,
+              p: 1.5,
+              color: '#d4d4d4',
+              bgcolor: 'transparent',
+              height: 240,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.6,
+              '&::-webkit-scrollbar': { width: 5 },
+              '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
+              '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(150,150,150,0.3)', borderRadius: '3px' },
+            })}
+          >
+            {logLines.length === 0 ? (
+              <span style={{ color: 'text.disabled', fontStyle: 'italic' }}>
+                {t('settings.readyToUpdate')}
+              </span>
+            ) : (
+              logLines.map((line, index) => (
+                <div
+                  key={index}
+                  style={{
+                    marginBottom: 2,
+                    color: line.includes('ERROR') ? '#f87171' : undefined,
+                  }}
+                >
+                  {line}
+                </div>
+              ))
+            )}
+          </Box>
+        </SettingGroup>
+      )}
+
+      <SettingGroup>
+        <SettingRow
+          label={t('settings.autoUpdateEnabled')}
+          description={t('settings.autoUpdateEnabledDesc')}
+        >
+          <Switch
+            checked={ytInfo?.autoUpdateEnabled !== false}
+            onChange={(event) => onToggleAutoUpdate?.(event.target.checked)}
+            disabled={autoUpdateBusy}
           />
-          <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>
-            {!ytInfo.updateSupported
-              ? t('settings.updateManagedExternally')
-              : updateInProgress
-                ? t('settings.updating')
-              : (!latestKnown || latestLoading)
-                ? t('settings.checking')
-              : ytInfo.outdated
-                  ? t('settings.updateAvailable')
-                  : t('settings.upToDate')}
+        </SettingRow>
+
+        <SettingRow label={t('settings.currentVersion')}>
+          <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
+            {(localLoading && !hasLocalCurrent) ? '...' : ytInfo.currentVersion}
           </Typography>
-        </Box>
-      </SettingRow>
+        </SettingRow>
+
+        <SettingRow label={t('settings.latestVersion')}>
+          <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
+            {(latestLoading && !latestKnown) ? '...' : ytInfo.latestVersion}
+          </Typography>
+        </SettingRow>
+
+        <SettingRow label={t('settings.ytDlpPath')}>
+          <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', maxWidth: 380, textAlign: 'right', wordBreak: 'break-all' }}>
+            {(localLoading && !hasLocalPath) ? '...' : ytInfo.binaryPath}
+          </Typography>
+        </SettingRow>
+
+        <SettingRow label={t('settings.ytDlpBinarySize')}>
+          <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'text.secondary' }}>
+            {(localLoading && !hasLocalSize) ? '...' : ytInfo.binarySize}
+          </Typography>
+        </SettingRow>
+
+        <SettingRow label={t('settings.checkForUpdates')}>
+          <Button
+            onClick={handlePrimaryAction}
+            disabled={primaryActionDisabled}
+            variant="outlined"
+            size="small"
+            startIcon={<RefreshCw size={13} />}
+            sx={{
+              textTransform: 'none',
+              fontSize: 13,
+              borderRadius: '8px',
+              height: 32,
+              borderColor: 'divider',
+              color: 'text.primary',
+              transition: 'none',
+              '&:hover': { borderColor: 'text.disabled', bgcolor: 'action.hover' },
+            }}
+          >
+            {primaryActionLabel}
+          </Button>
+        </SettingRow>
+
+        <SettingRow label={t('settings.updateNow')} noDivider>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box
+              sx={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                bgcolor: !ytInfo.updateSupported ? '#9ca3af' : updateInProgress ? '#60a5fa' : ytInfo.outdated ? '#f59e0b' : '#22c55e',
+                flexShrink: 0,
+              }}
+            />
+            <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>
+              {!ytInfo.updateSupported
+                ? t('settings.updateManagedExternally')
+                : updateInProgress
+                  ? t('settings.updating')
+                  : (!latestKnown || latestLoading)
+                    ? t('settings.checking')
+                    : ytInfo.outdated
+                      ? t('settings.updateAvailable')
+                      : t('settings.upToDate')}
+            </Typography>
+          </Box>
+        </SettingRow>
+      </SettingGroup>
+
+      <YtDlpCookieSettingsSection
+        cookieSettings={cookieSettings}
+        cookieSettingsLoading={cookieSettingsLoading}
+        cookieSettingsSaving={cookieSettingsSaving}
+        cookieSettingsError={cookieSettingsError}
+        onUpdateCookieSettings={onUpdateCookieSettings}
+        onRefreshCookieSettings={onRefreshCookieSettings}
+        requestedFocusTarget={requestedFocusTarget}
+        requestedFocusRequestId={requestedFocusRequestId}
+        t={t}
+      />
 
       {toolUpdateSettingsError && (
         <Box sx={(th) => ({
@@ -148,48 +213,6 @@ export default function YtDlpSettingsSection({
         </Box>
       )}
 
-      <Box sx={{ mt: 2 }}>
-        <Typography sx={{ fontSize: 11, fontWeight: 600, color: 'text.disabled', letterSpacing: '0.08em', mb: 1, textTransform: 'uppercase' }}>
-          {t('settings.updateLogs')}
-        </Typography>
-        <Box
-          ref={logRef}
-          sx={(th) => ({
-            fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
-            fontSize: 12,
-            p: 1.5,
-            bgcolor: th.palette.mode === 'dark' ? '#111111' : '#1e1e1e',
-            color: '#d4d4d4',
-            borderRadius: '4px',
-            border: `1px solid ${th.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
-            height: 180,
-            overflow: 'auto',
-            whiteSpace: 'pre-wrap',
-            lineHeight: 1.6,
-            '&::-webkit-scrollbar': { width: 5 },
-            '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
-            '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.15)', borderRadius: '3px' },
-          })}
-        >
-          {logLines.length === 0 ? (
-            <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
-              {t('settings.readyToUpdate')}
-            </span>
-          ) : (
-            logLines.map((line, index) => (
-              <div
-                key={index}
-                style={{
-                  marginBottom: 2,
-                  color: line.includes('ERROR') ? '#f87171' : undefined,
-                }}
-              >
-                {line}
-              </div>
-            ))
-          )}
-        </Box>
-      </Box>
     </Box>
   )
 }

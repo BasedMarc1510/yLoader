@@ -9,6 +9,7 @@ import FetchErrorPanel from './downloader/FetchErrorPanel'
 import buildServices from './downloader/buildServices'
 import { FADE_MS, HOLD_MS } from './downloader/constants'
 import { formatYtDlpErrorMessage } from '../utils/ytDlpErrorPresentation'
+import { openSettingsModal } from './home/settingsBridge'
 
 export default function Downloader({
   serviceKey = 'generic',
@@ -205,6 +206,10 @@ export default function Downloader({
     onNavigate?.(basePath, `?service=${encodeURIComponent(retryService)}&url=${encodeURIComponent(url)}`)
   }
 
+  const openCookieSettings = React.useCallback(() => {
+    openSettingsModal('yt-dlp', 'cookies')
+  }, [])
+
   const handleDownloadStateChange = React.useCallback((state) => {
     const fallbackTitle = String(meta?.title || '').trim().slice(0, 180)
     const progressRaw = Number(state?.progress)
@@ -318,6 +323,7 @@ export default function Downloader({
           fetchError={fetchError}
           closeError={closeError}
           retryError={retryError}
+          onOpenCookieSettings={openCookieSettings}
           i18nT={i18nT}
         />
       )}

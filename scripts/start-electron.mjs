@@ -81,6 +81,8 @@ function buildSharedServiceEnv() {
   env.FFMPEG_PATH = ffmpegPath
   env.FFPROBE_PATH = ffprobePath
   env.FFMPEG_MANAGED_BY_YLOADER = '1'
+  env.YLOADER_RUNTIME_TARGET = 'electron'
+  env.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '1'
   prependToPath(env, ffmpegBinDir)
 
   return env
@@ -255,7 +257,11 @@ async function main() {
     info('Starting shared web stack (backend + frontend)...')
     const stack = spawn(process.execPath, ['scripts/start.mjs'], {
       cwd: ROOT_DIR,
-      env: process.env,
+      env: {
+        ...process.env,
+        YLOADER_RUNTIME_TARGET: 'electron',
+        YLOADER_ALLOW_BROWSER_COOKIE_IMPORT: '1',
+      },
       stdio: 'inherit',
     })
     registerManagedChild(stack, 'Web stack')
@@ -263,7 +269,11 @@ async function main() {
     info('Detected existing local services. Preparing environment and starting only missing services...')
     await runCommand(process.execPath, ['scripts/start.mjs', '--prepare-only'], {
       cwd: ROOT_DIR,
-      env: process.env,
+      env: {
+        ...process.env,
+        YLOADER_RUNTIME_TARGET: 'electron',
+        YLOADER_ALLOW_BROWSER_COOKIE_IMPORT: '1',
+      },
       stdoutPrefix: 'prepare',
       stderrPrefix: 'prepare',
     })

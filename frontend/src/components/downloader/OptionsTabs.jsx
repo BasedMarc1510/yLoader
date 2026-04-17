@@ -3,6 +3,8 @@ import { Box, Button, Skeleton, useTheme } from '@mui/material'
 import { Image as ImageIcon, Music2, Video } from 'lucide-react'
 import { useNotification } from '../../providers/NotificationProvider'
 import { useI18n } from '../../providers/I18nProvider'
+import { shouldSuggestCookieSettings } from '../../utils/ytDlpErrorPresentation'
+import { openSettingsModal } from '../../pages/home/settingsBridge'
 import AudioTabContent from './options-tabs/AudioTabContent'
 import ThumbnailTabContent from './options-tabs/ThumbnailTabContent'
 import useOptionsTabsData from './options-tabs/useOptionsTabsData'
@@ -81,6 +83,14 @@ export default function OptionsTabs({
         : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent)',
     },
   }), [isDark])
+  const showCookieSettingsHint = React.useMemo(
+    () => shouldSuggestCookieSettings(download.downloadError, { i18nT }),
+    [download.downloadError, i18nT]
+  )
+
+  const openCookieSettings = React.useCallback(() => {
+    openSettingsModal('yt-dlp', 'cookies')
+  }, [])
 
   return (
     <Box>
@@ -240,6 +250,8 @@ export default function OptionsTabs({
             downloadProgress={download.downloadProgress}
             downloadStage={download.downloadStage}
             downloadError={download.downloadError}
+            showCookieSettingsHint={showCookieSettingsHint}
+            onOpenCookieSettings={openCookieSettings}
           />
         )}
 
@@ -266,6 +278,8 @@ export default function OptionsTabs({
             downloadProgress={download.downloadProgress}
             downloadStage={download.downloadStage}
             downloadError={download.downloadError}
+            showCookieSettingsHint={showCookieSettingsHint}
+            onOpenCookieSettings={openCookieSettings}
           />
         )}
 

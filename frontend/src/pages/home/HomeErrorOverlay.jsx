@@ -7,13 +7,14 @@ import {
   Button,
 } from '@mui/material'
 import { AlertTriangle, X } from 'lucide-react'
-import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
+import { formatYtDlpErrorMessage, shouldSuggestCookieSettings } from '../../utils/ytDlpErrorPresentation'
 
 export default function HomeErrorOverlay({
   fetchError,
   isResolving,
   onClose,
   onRetry,
+  onOpenCookieSettings,
   t,
 }) {
   if (!fetchError) return null
@@ -22,6 +23,7 @@ export default function HomeErrorOverlay({
     fallbackKey: 'downloader.errorDownloadFailed',
     includeRawForUnknown: true,
   })
+  const showCookieSettingsHint = shouldSuggestCookieSettings(fetchError?.message, { i18nT: t })
 
   return (
     <Box
@@ -90,6 +92,28 @@ export default function HomeErrorOverlay({
           </Box>
 
           <Box sx={{ px: 2, py: 2 }}>
+            {showCookieSettingsHint && (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25, gap: 1 }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  {t('fetchError.cookieSettingsHint')}
+                </Typography>
+                <Button
+                  variant="text"
+                  size="small"
+                  onClick={() => onOpenCookieSettings?.()}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    minWidth: 0,
+                    px: 0.75,
+                    borderRadius: 1,
+                  }}
+                >
+                  {t('fetchError.cookieSettingsAction')}
+                </Button>
+              </Box>
+            )}
+
             <Button
               fullWidth
               variant="contained"

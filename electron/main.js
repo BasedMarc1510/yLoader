@@ -267,6 +267,67 @@ function inspectDownloadDirectory(directoryPath, { createIfMissing = false } = {
   }
 }
 
+function inspectFilePath(filePath) {
+  const resolvedPath = normalizeDownloadDirectoryPath(filePath, '')
+  if (!resolvedPath) {
+    return {
+      path: '',
+      exists: false,
+      isFile: false,
+      readable: false,
+      valid: false,
+    }
+  }
+
+  let stat
+  try {
+    stat = fs.statSync(resolvedPath)
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return {
+        path: resolvedPath,
+        exists: false,
+        isFile: false,
+        readable: false,
+        valid: false,
+      }
+    }
+    return {
+      path: resolvedPath,
+      exists: false,
+      isFile: false,
+      readable: false,
+      valid: false,
+    }
+  }
+
+  if (!stat.isFile()) {
+    return {
+      path: resolvedPath,
+      exists: true,
+      isFile: false,
+      readable: false,
+      valid: false,
+    }
+  }
+
+  let readable = false
+  try {
+    fs.accessSync(resolvedPath, fs.constants.R_OK)
+    readable = true
+  } catch {
+    readable = false
+  }
+
+  return {
+    path: resolvedPath,
+    exists: true,
+    isFile: true,
+    readable,
+    valid: readable,
+  }
+}
+
 function resolvePreferredDownloadDirectory(preferredDirectoryPath) {
   const preferred = inspectDownloadDirectory(preferredDirectoryPath, { createIfMissing: true })
   if (preferred.valid && preferred.path) return preferred.path
@@ -1025,6 +1086,30 @@ function registerDownloadsIpcHandlers() {
     }
   })
 
+  ipcMain.handle('downloads:pick-file', async (_event, payload = {}) => {
+    const initialPath = String(payload?.initialPath || '').trim()
+    const defaultPath = normalizeDownloadDirectoryPath(initialPath, getSystemDownloadsDir())
+    const ownerWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+
+    const result = await dialog.showOpenDialog(ownerWindow, {
+      properties: ['openFile'],
+      defaultPath,
+      filters: [
+        { name: 'Cookie Files', extensions: ['txt', 'cookies'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    })
+
+    if (result.canceled || !Array.isArray(result.filePaths) || !result.filePaths[0]) {
+      return { canceled: true, path: '' }
+    }
+
+    return {
+      canceled: false,
+      path: String(result.filePaths[0] || ''),
+    }
+  })
+
   ipcMain.handle('downloads:settings-updated', async () => {
     await syncDownloadSettingsFromBackend({ force: true })
     return true
@@ -1039,6 +1124,19 @@ function registerDownloadsIpcHandlers() {
       exists: Boolean(inspection.exists),
       isDirectory: Boolean(inspection.isDirectory),
       writable: Boolean(inspection.writable),
+      valid: Boolean(inspection.valid),
+    }
+  })
+
+  ipcMain.handle('downloads:validate-file', async (_event, payload = {}) => {
+    const inputPath = String(payload?.path || '').trim()
+    const inspection = inspectFilePath(inputPath)
+
+    return {
+      path: inspection.path,
+      exists: Boolean(inspection.exists),
+      isFile: Boolean(inspection.isFile),
+      readable: Boolean(inspection.readable),
       valid: Boolean(inspection.valid),
     }
   })
@@ -1206,6 +1304,8 @@ function buildBackendEnv() {
     DB_PATH: path.join(backendDataDir, 'metadata.db'),
     DOWNLOAD_DIR: downloadsDir,
     SYSTEM_DOWNLOADS_DIR: getSystemDownloadsDir(),
+    YLOADER_RUNTIME_TARGET: 'electron',
+    YLOADER_ALLOW_BROWSER_COOKIE_IMPORT: '1',
   }
 
   // Prevent stale externally configured tool paths from overriding bundled binaries.

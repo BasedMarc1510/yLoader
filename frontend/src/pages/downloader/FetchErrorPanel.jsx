@@ -1,13 +1,14 @@
 import React from 'react'
 import { Box, Typography, IconButton, Paper, Button } from '@mui/material'
 import { AlertTriangle, X } from 'lucide-react'
-import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
+import { formatYtDlpErrorMessage, shouldSuggestCookieSettings } from '../../utils/ytDlpErrorPresentation'
 
-export default function FetchErrorPanel({ fetchError, closeError, retryError, i18nT }) {
+export default function FetchErrorPanel({ fetchError, closeError, retryError, onOpenCookieSettings, i18nT }) {
   const message = formatYtDlpErrorMessage(i18nT, fetchError?.message, {
     fallbackKey: 'downloader.errorDownloadFailed',
     includeRawForUnknown: true,
   })
+  const showCookieSettingsHint = shouldSuggestCookieSettings(fetchError?.message, { i18nT })
 
   return (
     <Box
@@ -84,6 +85,28 @@ export default function FetchErrorPanel({ fetchError, closeError, retryError, i1
           </Box>
 
           <Box sx={{ px: 2, py: 2 }}>
+            {showCookieSettingsHint && (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25, gap: 1 }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  {i18nT('fetchError.cookieSettingsHint')}
+                </Typography>
+                <Button
+                  variant="text"
+                  size="small"
+                  onClick={() => onOpenCookieSettings?.()}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    minWidth: 0,
+                    px: 0.75,
+                    borderRadius: 1,
+                  }}
+                >
+                  {i18nT('fetchError.cookieSettingsAction')}
+                </Button>
+              </Box>
+            )}
+
             <Button
               fullWidth
               variant="contained"

@@ -14,7 +14,7 @@ Run all commands from the repository root.
 npm run start
 ```
 
-Local starts read optional overrides from the repository root `.env` file, for example `YT_DLP_COOKIES_FROM_BROWSER=firefox`.
+Local starts read optional overrides from the repository root `.env` file. Cookie-related values are used as defaults for the Settings UI.
 
 ### Local (Electron)
 
@@ -96,11 +96,16 @@ Use `.env.example` as a reference.
 
 | Variable | Purpose |
 | --- | --- |
-| `YT_DLP_COOKIES_FROM_BROWSER` | Read cookies from local browser (`chrome`, `firefox`, `edge`, etc.) |
-| `YT_DLP_COOKIES_FILE` | Use exported Netscape cookies file |
+| `YT_DLP_COOKIES_FROM_BROWSER` | Default `--cookies-from-browser` value used to prefill Settings (Electron runtime only) |
+| `YT_DLP_COOKIES_FILE` | Default `--cookies` file path used to prefill Settings |
 | `YT_DLP_EXTRACTOR_ARGS` | Advanced `yt-dlp` extractor tuning |
 
-If you hit bot-check/login restrictions, configure one of the cookie options.
+Cookie import is configured in **Settings -> yt-dlp -> Cookie import**:
+
+- Web/server runtime: cookie file import (`--cookies`) only.
+- Electron runtime: cookie file import and browser cookie import (`--cookies-from-browser`).
+
+If you hit bot-check/login restrictions, configure one of these cookie options in Settings.
 
 ## Tool Updates (yt-dlp + ffmpeg)
 
