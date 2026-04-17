@@ -14,7 +14,6 @@ const sidebarHeaderHeight = 49
 export default function AppLayout({
   children,
   activePath = '/',
-  activeSearch = '',
   tabs = [],
   closingTabIds = [],
   activeTabId = '',
@@ -107,15 +106,6 @@ export default function AppLayout({
   const handleToggleCollapsed = () => setCollapsed((v) => !v)
 
   const sidebarWidth = collapsed ? drawerWidthCollapsed : drawerWidthExpanded
-  const hasHomeQuery = React.useMemo(() => {
-    if (activePath !== '/') return false
-    const rawSearch = String(activeSearch || '').trim()
-    if (!rawSearch) return false
-
-    const normalizedSearch = rawSearch.startsWith('?') ? rawSearch.slice(1) : rawSearch
-    const params = new URLSearchParams(normalizedSearch)
-    return Boolean(String(params.get('url') || '').trim())
-  }, [activePath, activeSearch])
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -148,7 +138,7 @@ export default function AppLayout({
         component="main"
         sx={(muiTheme) => ({
           flexGrow: 1,
-          p: hasHomeQuery ? 0 : 3,
+          p: 0,
           width: { sm: `calc(100% - ${sidebarWidth}px)` },
           height: '100dvh',
           boxSizing: 'border-box',

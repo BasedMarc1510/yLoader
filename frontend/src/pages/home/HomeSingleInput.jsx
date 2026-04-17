@@ -30,7 +30,11 @@ export default function HomeSingleInput({
       onChange={(event) => onChange(event.target.value)}
       onFocus={(event) => event.target.select()}
       onClick={(event) => event.target.select()}
-      onMouseUp={(event) => event.preventDefault()}
+      onMouseUp={(event) => {
+        if (event.button === 0) {
+          event.preventDefault()
+        }
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
           event.preventDefault()

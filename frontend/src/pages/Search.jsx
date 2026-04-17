@@ -7,15 +7,16 @@ import {
   CardContent,
   CircularProgress,
   Container,
-  Grid,
+  IconButton,
   InputAdornment,
+  Menu,
   MenuItem,
-  Select,
+  Skeleton,
   Stack,
   TextField,
   Typography,
 } from '@mui/material'
-import { ArrowRight, Search as SearchIcon } from 'lucide-react'
+import { ArrowRight, Search as SearchIcon, X, ChevronDown } from 'lucide-react'
 import ServiceIcon from '../components/ServiceIcon'
 import { useI18n } from '../providers/I18nProvider'
 import {
@@ -93,6 +94,16 @@ export default function SearchPage({ onOpenDownloader }) {
   const [lastService, setLastService] = React.useState('youtube')
   const [nextOffset, setNextOffset] = React.useState(0)
   const [hasMore, setHasMore] = React.useState(false)
+  const [serviceMenuAnchor, setServiceMenuAnchor] = React.useState(null)
+
+  const handleClearSearch = React.useCallback(() => {
+    setQuery('')
+    setLastQuery('')
+    setResults([])
+    setErrorMessage('')
+    setHasMore(false)
+    setNextOffset(0)
+  }, [])
 
   const getServiceLabel = React.useCallback((rawService) => {
     const normalized = normalizeServiceKey(rawService)
@@ -240,135 +251,227 @@ export default function SearchPage({ onOpenDownloader }) {
   const showInitialLoading = loadingInitial && results.length === 0
   const showEmptyState = !showInitialLoading && !errorMessage && Boolean(lastQuery) && results.length === 0
 
+  const isSearched = loadingInitial || loadingMore || results.length > 0 || errorMessage || Boolean(lastQuery)
+  const selectedServiceOption = SEARCH_SERVICE_OPTIONS.find((o) => o.value === selectedService) || SEARCH_SERVICE_OPTIONS[0]
+
   return (
     <Box ref={scrollRootRef} sx={{ height: '100%', overflowY: 'auto' }}>
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" component="h1" fontWeight={800} gutterBottom>
-            {t('search.title')}
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            {t('search.subtitle')}
-          </Typography>
-        </Box>
+      <Container maxWidth="xl" sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', px: { xs: 2, sm: 3 } }}>
+        <Box sx={{
+          transition: 'height 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+          height: isSearched ? 0 : { xs: '30vh', md: '35vh' },
+          flexShrink: 0
+        }} />
 
-        <Stack spacing={2} sx={{ mb: 3 }}>
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5}>
-            <TextField
-              value={query}
-              fullWidth
-              placeholder={t('search.queryPlaceholder')}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handleSubmit()
-                }
-              }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon size={18} />
-                  </InputAdornment>
-                ),
-              }}
-              inputProps={{
-                'aria-label': t('search.queryAria'),
-              }}
-            />
+        <Box sx={{
+          width: '100%',
+          maxWidth: isSearched ? 1000 : 780,
+          mx: 'auto',
+          transition: 'max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+          pb: 8
+        }}>
+          <Box sx={{
+            position: isSearched ? 'sticky' : 'relative',
+            top: 0,
+            zIndex: 10,
+            pt: isSearched ? { xs: 2, md: 3 } : 0,
+            pb: isSearched ? 2 : 2,
+            bgcolor: isSearched ? (theme) => theme.palette.mode === 'dark' ? '#212121' : '#ffffff' : 'transparent',
+            transition: 'background-color 0.3s, padding 0.3s',
+            mb: isSearched ? 2 : 2
+          }}>
+             <Menu
+               anchorEl={serviceMenuAnchor}
+               open={Boolean(serviceMenuAnchor)}
+               onClose={() => setServiceMenuAnchor(null)}
+               transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+               anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+               slotProps={{ paper: { sx: { width: 220, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
+             >
+               {SEARCH_SERVICE_OPTIONS.map((option) => (
+                 <MenuItem
+                   key={option.value}
+                   selected={selectedService === option.value}
+                   onClick={() => {
+                     setSelectedService(option.value)
+                     setServiceMenuAnchor(null)
+                   }}
+                   sx={{ py: 1.5, borderRadius: 2, mx: 1 }}
+                 >
+                   <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.5 }}>
+                     <ServiceIcon serviceKey={option.iconKey} size={20} />
+                     <Typography variant="body2" fontWeight={selectedService === option.value ? 800 : 500}>
+                       {t(option.labelKey)}
+                     </Typography>
+                   </Box>
+                 </MenuItem>
+               ))}
+             </Menu>
 
-            <Select
-              size="small"
-              value={selectedService}
-              onChange={(event) => setSelectedService(String(event.target.value || 'youtube'))}
-              sx={{ minWidth: { xs: '100%', lg: 220 } }}
-              inputProps={{ 'aria-label': t('search.serviceAria') }}
-              renderValue={(value) => {
-                const selected = SEARCH_SERVICE_OPTIONS.find((option) => option.value === value) || SEARCH_SERVICE_OPTIONS[0]
-                return (
-                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
-                    <ServiceIcon serviceKey={selected.iconKey} size={16} title={t(selected.labelKey)} />
-                    <Typography variant="body2" fontWeight={700}>{t(selected.labelKey)}</Typography>
-                  </Box>
-                )
-              }}
-            >
-              {SEARCH_SERVICE_OPTIONS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
-                    <ServiceIcon serviceKey={option.iconKey} size={18} title={t(option.labelKey)} />
-                    <Typography variant="body2">{t(option.labelKey)}</Typography>
-                  </Box>
-                </MenuItem>
+             <TextField
+               value={query}
+               fullWidth
+               placeholder={t('search.queryPlaceholder')}
+               onChange={(event) => setQuery(event.target.value)}
+               onKeyDown={(event) => {
+                 if (event.key === 'Enter') {
+                   event.preventDefault()
+                   handleSubmit()
+                 }
+               }}
+               sx={(muiTheme) => ({
+                 '& .MuiOutlinedInput-root': {
+                   position: 'relative',
+                   borderRadius: 9999,
+                   backgroundColor: muiTheme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
+                   outline: 'none',
+                   '&:focus-within': {
+                     outline: 'none',
+                     boxShadow: 'none',
+                   },
+                   '& fieldset': {
+                     borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                     borderWidth: '1px !important',
+                   },
+                   '&:hover fieldset': {
+                     borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                   },
+                   '&.Mui-focused fieldset': {
+                     borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+                     borderWidth: '1px !important',
+                   },
+                   boxShadow: muiTheme.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
+                   transition: 'box-shadow 0.3s, border-color 0.3s'
+                 },
+                 '& .MuiOutlinedInput-input': {
+                   paddingLeft: '4px',
+                   paddingRight: '16px',
+                   color: muiTheme.palette.text.primary,
+                   fontWeight: 700,
+                   outline: 'none',
+                   py: 1.75,
+                   fontSize: '1rem',
+                 },
+                 '& .MuiOutlinedInput-input::placeholder': {
+                   color: muiTheme.palette.text.secondary,
+                   fontWeight: 700,
+                 },
+               })}
+               InputProps={{
+                 startAdornment: (
+                   <InputAdornment position="start" sx={{ ml: 0.5, mr: 0.5 }}>
+                     <Button
+                       size="small"
+                       onClick={(e) => setServiceMenuAnchor(e.currentTarget)}
+                       startIcon={<ServiceIcon serviceKey={selectedServiceOption.iconKey} size={18} />}
+                       endIcon={<ChevronDown size={14} />}
+                       sx={{
+                         borderRadius: 9999,
+                         textTransform: 'none',
+                         fontWeight: 700,
+                         px: 1.5,
+                         py: 0.5,
+                         color: 'text.primary',
+                         bgcolor: 'transparent',
+                         '&:hover': { bgcolor: 'action.hover' }
+                       }}
+                     >
+                       {t(selectedServiceOption.labelKey)}
+                     </Button>
+                   </InputAdornment>
+                 ),
+                 endAdornment: (
+                   <InputAdornment position="end" sx={{ mr: '-8px' }}>
+                     {isSearched && (
+                       <IconButton size="small" onClick={handleClearSearch} title={t('search.clear')} sx={{ mr: 0.5, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                         <X size={18} />
+                       </IconButton>
+                     )}
+                     <Box sx={{
+                       bgcolor: (muiTheme) => muiTheme.palette.mode === 'dark' ? '#e2e2e2' : '#222222',
+                       color: (muiTheme) => muiTheme.palette.mode === 'dark' ? '#111' : '#fff',
+                       borderRadius: 9999,
+                       width: 38,
+                       height: 38,
+                       display: 'flex',
+                       alignItems: 'center',
+                       justifyContent: 'center',
+                       cursor: (loadingInitial || !String(query || '').trim()) ? 'default' : 'pointer',
+                       opacity: (loadingInitial || !String(query || '').trim()) ? 0.5 : 1,
+                       transition: 'opacity 0.2s, background-color 0.2s',
+                       '&:hover': {
+                         bgcolor: (muiTheme) => (loadingInitial || !String(query || '').trim()) 
+                           ? (muiTheme.palette.mode === 'dark' ? '#e2e2e2' : '#222222') 
+                           : (muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000')
+                       }
+                     }}
+                     onClick={() => {
+                        if (loadingInitial || !String(query || '').trim()) return;
+                        handleSubmit();
+                     }}>
+                       <SearchIcon size={18} />
+                     </Box>
+                   </InputAdornment>
+                 ),
+               }}
+               inputProps={{
+                 'aria-label': t('search.queryAria'),
+               }}
+             />
+          </Box>
+
+          {Boolean(lastQuery) && !loadingInitial && !errorMessage && results.length > 0 && (
+            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2, px: 0.5 }}>
+              {t('search.resultsFor', { query: lastQuery })}
+            </Typography>
+          )}
+
+          {errorMessage && (
+            <Typography sx={{ color: 'error.main', mb: 2, fontWeight: 700, px: 0.5 }}>
+              {errorMessage}
+            </Typography>
+          )}
+
+          {showInitialLoading && (
+            <Stack spacing={2} sx={{ mt: 2 }}>
+              {[1, 2, 3, 4, 5].map(i => (
+                <Card elevation={0} key={i} sx={{ borderRadius: 1.5, border: '1px solid', borderColor: 'divider', display: 'flex', overflow: 'hidden', height: { xs: 100, sm: 120 } }}>
+                  <Skeleton variant="rectangular" width={{ xs: 140, sm: 200 }} height="100%" sx={{ flexShrink: 0 }} />
+                  <CardContent sx={{ flex: 1, p: { xs: 1.5, sm: 2 }, display: 'flex', flexDirection: 'column', gap: 1, justifyContent: 'center' }}>
+                    <Skeleton variant="text" width="70%" height={24} />
+                    <Skeleton variant="text" width="40%" height={20} />
+                  </CardContent>
+                </Card>
               ))}
-            </Select>
+            </Stack>
+          )}
 
-            <Button
-              variant="contained"
-              onClick={handleSubmit}
-              disabled={loadingInitial || !String(query || '').trim()}
-              sx={{ minWidth: { xs: '100%', lg: 132 }, fontWeight: 700 }}
-            >
-              {loadingInitial ? (
-                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
-                  <CircularProgress size={16} color="inherit" />
-                  <span>{t('search.searching')}</span>
-                </Box>
-              ) : t('search.searchButton')}
-            </Button>
-          </Stack>
+          {showEmptyState && (
+            <Stack spacing={0.5} sx={{ py: 8, textAlign: 'center' }}>
+              <Typography variant="h6" fontWeight={800}>{t('search.noResultsTitle')}</Typography>
+              <Typography variant="body2" color="text.secondary">{t('search.noResultsSubtitle')}</Typography>
+            </Stack>
+          )}
 
-          <Typography variant="body2" color="text.secondary">
-            {t('search.hintDirectUrl')}
-          </Typography>
-        </Stack>
+          {results.length > 0 && !loadingInitial && (
+            <Stack spacing={2}>
+              {results.map((entry) => {
+                const rawService = normalizeServiceKey(entry?.service)
+                const serviceKey = rawService || GENERIC_SERVICE_KEY
+                const serviceLabel = getServiceLabel(serviceKey)
+                const duration = entry?.durationString || formatDuration(entry?.duration)
+                const title = String(entry?.title || '').trim() || String(entry?.url || '').trim()
+                const uploader = String(entry?.uploader || '').trim()
+                const thumbnail = String(entry?.thumbnail || '').trim()
+                const itemId = String(entry?.id || entry?.url || `${serviceKey}-${title}`).trim()
 
-        {Boolean(lastQuery) && !loadingInitial && !errorMessage && results.length > 0 && (
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            {t('search.resultsFor', { query: lastQuery })}
-          </Typography>
-        )}
-
-        {errorMessage && (
-          <Typography sx={{ color: 'error.main', mb: 2, fontWeight: 700 }}>
-            {errorMessage}
-          </Typography>
-        )}
-
-        {showInitialLoading && (
-          <Stack spacing={1} alignItems="center" justifyContent="center" sx={{ py: 8 }}>
-            <CircularProgress size={28} />
-            <Typography variant="body2" color="text.secondary">{t('search.searching')}</Typography>
-          </Stack>
-        )}
-
-        {showEmptyState && (
-          <Stack spacing={0.5} sx={{ py: 5 }}>
-            <Typography variant="h6" fontWeight={800}>{t('search.noResultsTitle')}</Typography>
-            <Typography variant="body2" color="text.secondary">{t('search.noResultsSubtitle')}</Typography>
-          </Stack>
-        )}
-
-        {results.length > 0 && !loadingInitial && (
-          <Grid container spacing={2}>
-            {results.map((entry) => {
-              const rawService = normalizeServiceKey(entry?.service)
-              const serviceKey = rawService || GENERIC_SERVICE_KEY
-              const serviceLabel = getServiceLabel(serviceKey)
-              const duration = entry?.durationString || formatDuration(entry?.duration)
-              const title = String(entry?.title || '').trim() || String(entry?.url || '').trim()
-              const uploader = String(entry?.uploader || '').trim()
-              const thumbnail = String(entry?.thumbnail || '').trim()
-              const itemId = String(entry?.id || entry?.url || `${serviceKey}-${title}`).trim()
-
-              return (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={itemId}>
-                  <Card elevation={0} sx={{ height: '100%', borderRadius: 1.5, border: '1px solid', borderColor: 'divider' }}>
-                    <CardActionArea
+                return (
+                  <Card elevation={0} key={itemId} sx={{ borderRadius: 1.5, border: '1px solid', borderColor: 'divider', display: 'flex', overflow: 'hidden', height: { xs: 110, sm: 130 } }}>
+                    <Box
                       onClick={() => handleOpenResult(entry)}
-                      sx={{ height: '100%', alignItems: 'stretch', cursor: 'pointer' }}
+                      sx={{ display: 'flex', alignItems: 'stretch', width: '100%', justifyContent: 'flex-start', cursor: 'pointer' }}
                     >
-                      <Box sx={{ position: 'relative', pt: '56.25%', bgcolor: 'action.hover' }}>
+                      <Box sx={{ width: { xs: 140, sm: 230 }, minWidth: { xs: 140, sm: 230 }, position: 'relative', bgcolor: 'action.hover', flexShrink: 0 }}>
                         {thumbnail ? (
                           <Box
                             component="img"
@@ -406,42 +509,37 @@ export default function SearchPage({ onOpenDownloader }) {
                         ) : null}
                       </Box>
 
-                      <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 0.9 }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: { xs: 1.5, sm: 2 }, overflow: 'hidden', justifyContent: 'center' }}>
                         <Typography variant="body1" fontWeight={800} noWrap>
                           {title}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" noWrap>
+                        <Typography variant="body2" color="text.secondary" noWrap sx={{ mt: 0.5 }}>
                           {uploader || t('search.unknownUploader')}
                         </Typography>
 
-                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
+                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mt: 1 }}>
                           <ServiceIcon serviceKey={serviceKey} size={14} title={serviceLabel} />
                           <Typography variant="caption" fontWeight={700}>{serviceLabel}</Typography>
                         </Box>
-
-                        <Box sx={{ mt: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.6, color: 'primary.main' }}>
-                          <Typography variant="caption" fontWeight={800}>{t('search.openResult')}</Typography>
-                          <ArrowRight size={14} />
-                        </Box>
-                      </CardContent>
-                    </CardActionArea>
+                      </Box>
+                    </Box>
                   </Card>
-                </Grid>
-              )
-            })}
-          </Grid>
-        )}
+                )
+              })}
+            </Stack>
+          )}
 
-        {results.length > 0 && (
-          <Box ref={loadMoreSentinelRef} sx={{ width: '100%', height: 1 }} />
-        )}
+          {results.length > 0 && (
+            <Box ref={loadMoreSentinelRef} sx={{ width: '100%', height: 1 }} />
+          )}
 
-        {loadingMore && results.length > 0 && (
-          <Stack spacing={1} alignItems="center" justifyContent="center" sx={{ py: 3 }}>
-            <CircularProgress size={22} />
-            <Typography variant="body2" color="text.secondary">{t('search.loadingMore')}</Typography>
-          </Stack>
-        )}
+          {loadingMore && results.length > 0 && (
+            <Stack spacing={1} alignItems="center" justifyContent="center" sx={{ py: 3 }}>
+              <CircularProgress size={22} />
+              <Typography variant="body2" color="text.secondary">{t('search.loadingMore')}</Typography>
+            </Stack>
+          )}
+        </Box>
       </Container>
     </Box>
   )

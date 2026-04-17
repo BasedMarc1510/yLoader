@@ -176,20 +176,6 @@ export default function CustomSelect({
               boxShadow: isDark
                 ? '0 10px 40px -10px rgba(0,0,0,0.6)'
                 : '0 10px 30px -10px rgba(0,0,0,0.2)',
-              // Custom scrollbar
-              '&::-webkit-scrollbar': {
-                width: '6px',
-              },
-              '&::-webkit-scrollbar-track': {
-                background: 'transparent',
-              },
-              '&::-webkit-scrollbar-thumb': {
-                background: isDark ? '#444' : '#ccc',
-                borderRadius: '6px',
-                '&:hover': {
-                  background: isDark ? '#555' : '#bbb',
-                },
-              },
             }}
           >
             {options.map((option) => {

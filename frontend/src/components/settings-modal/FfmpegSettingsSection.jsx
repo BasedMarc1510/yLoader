@@ -47,9 +47,6 @@ export default function FfmpegSettingsSection({
               overflow: 'auto',
               whiteSpace: 'pre-wrap',
               lineHeight: 1.6,
-              '&::-webkit-scrollbar': { width: 5 },
-              '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
-              '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(150,150,150,0.3)', borderRadius: '3px' },
             })}
           >
             {!Array.isArray(logLines) || logLines.length === 0 ? (

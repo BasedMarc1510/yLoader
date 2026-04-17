@@ -51,7 +51,11 @@ export default function DownloaderLanding({
           onChange={(e) => setValue(e.target.value)}
           onFocus={(e) => e.target.select()}
           onClick={(e) => e.target.select()}
-          onMouseUp={(e) => e.preventDefault()}
+          onMouseUp={(e) => {
+            if (e.button === 0) {
+              e.preventDefault()
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') onFetch()
           }}

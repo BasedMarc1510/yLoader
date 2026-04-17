@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, screen, session, dialog } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, screen, session, dialog, Menu } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const { spawn } = require('child_process')
 const fs = require('fs')
@@ -27,6 +27,23 @@ const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
 const AUDIO_FILE_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.opus'])
 const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv'])
 const THUMBNAIL_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
+
+function appendDisabledChromiumFeatures(featureNames = []) {
+  const existing = String(app.commandLine.getSwitchValue('disable-features') || '')
+  const merged = new Set(existing.split(',').map((entry) => entry.trim()).filter(Boolean))
+
+  for (const featureName of featureNames) {
+    const normalized = String(featureName || '').trim()
+    if (!normalized) continue
+    merged.add(normalized)
+  }
+
+  if (merged.size === 0) return
+  app.commandLine.appendSwitch('disable-features', Array.from(merged).join(','))
+}
+
+// Prevent Chromium overlay scrollbars from forcing native thin bars in Electron.
+appendDisabledChromiumFeatures(['OverlayScrollbar', 'OverlayScrollbars'])
 
 let ELECTRON_API_ORIGIN = ''
 try {
@@ -1013,6 +1030,50 @@ function emitWindowState() {
   }
 }
 
+function buildEditableFieldContextMenu(editFlags = {}) {
+  const flags = (editFlags && typeof editFlags === 'object') ? editFlags : {}
+  const canUse = (key) => Boolean(flags[key])
+
+  const historyItems = []
+  if (canUse('canUndo')) historyItems.push({ role: 'undo' })
+  if (canUse('canRedo')) historyItems.push({ role: 'redo' })
+
+  const clipboardItems = []
+  if (canUse('canCut')) clipboardItems.push({ role: 'cut' })
+  if (canUse('canCopy')) clipboardItems.push({ role: 'copy' })
+  if (canUse('canPaste')) clipboardItems.push({ role: 'paste' })
+  if (canUse('canDelete')) clipboardItems.push({ role: 'delete' })
+
+  const selectionItems = []
+  if (canUse('canSelectAll')) selectionItems.push({ role: 'selectAll' })
+
+  const template = []
+  if (historyItems.length > 0) template.push(...historyItems)
+  if (historyItems.length > 0 && clipboardItems.length > 0) template.push({ type: 'separator' })
+  if (clipboardItems.length > 0) template.push(...clipboardItems)
+  if ((historyItems.length > 0 || clipboardItems.length > 0) && selectionItems.length > 0) {
+    template.push({ type: 'separator' })
+  }
+  if (selectionItems.length > 0) template.push(...selectionItems)
+
+  if (template.length === 0) return null
+  return Menu.buildFromTemplate(template)
+}
+
+function registerEditableFieldContextMenu(windowInstance) {
+  if (!windowInstance || windowInstance.isDestroyed()) return
+
+  windowInstance.webContents.on('context-menu', (event, params) => {
+    if (!params?.isEditable) return
+
+    const menu = buildEditableFieldContextMenu(params.editFlags)
+    if (!menu) return
+
+    event.preventDefault()
+    menu.popup({ window: windowInstance })
+  })
+}
+
 function registerWindowIpcHandlers() {
   if (windowIpcRegistered) return
   windowIpcRegistered = true
@@ -1398,6 +1459,8 @@ function createMainWindow() {
       sandbox: false,
     },
   })
+
+  registerEditableFieldContextMenu(mainWindow)
 
   mainWindow.on('move', () => {
     scheduleWindowStateSave()

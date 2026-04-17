@@ -80,7 +80,6 @@ export default function HomeMultiInput({
               padding: 0,
               resize: 'none',
               overflowY: 'auto !important',
-              scrollbarWidth: 'thin',
             },
             '& textarea::placeholder': {
               color: muiTheme.palette.text.secondary,
