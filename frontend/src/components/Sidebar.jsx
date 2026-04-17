@@ -20,6 +20,7 @@ import useElectronAppUpdater from '../hooks/useElectronAppUpdater'
 import { getApiBase } from '../utils/metadata'
 
 const drawerWidth = 240
+const sidebarWidthTransition = '260ms cubic-bezier(0.22, 1, 0.36, 1)'
 
 export default function Sidebar({
   mobileOpen,
@@ -308,7 +309,7 @@ export default function Sidebar({
                   px: 1,
                   justifyContent: 'center',
                   color: sidebarNav.fgInactive,
-                  transition: 'none',
+                  transition: 'background-color 180ms ease, color 180ms ease',
                   '@media (hover: hover) and (pointer: fine)': {
                     '&:hover': {
                       bgcolor: isDarkMode ? '#303030' : '#f0f0f0',
@@ -352,7 +353,7 @@ export default function Sidebar({
                     py: collapsed ? undefined : 0.75,
                     justifyContent: collapsed ? 'center' : 'flex-start',
                     color: rowColor,
-                    transition: 'none',
+                    transition: 'background-color 180ms ease, color 180ms ease',
                     '@media (hover: hover) and (pointer: fine)': {
                       '&:hover': {
                         bgcolor: isDarkMode ? '#303030' : '#f0f0f0',
@@ -384,6 +385,7 @@ export default function Sidebar({
                       display: 'flex',
                       alignItems: 'center',
                       height: '100%',
+                      transition: 'color 180ms ease',
                     }}
                   >
                     {item.icon}
@@ -428,7 +430,7 @@ export default function Sidebar({
                   py: collapsed ? undefined : 0.75,
                   justifyContent: collapsed ? 'center' : 'flex-start',
                   color: sidebarNav.fgInactive,
-                  transition: 'none',
+                  transition: 'background-color 180ms ease, color 180ms ease',
                   '@media (hover: hover) and (pointer: fine)': {
                     '&:hover': {
                       bgcolor: isDarkMode ? '#303030' : '#f0f0f0',
@@ -448,7 +450,7 @@ export default function Sidebar({
                     display: 'flex',
                     alignItems: 'center',
                     height: '100%',
-                    transition: 'none',
+                    transition: 'color 180ms ease',
                   }}
                 >
                   <Badge
@@ -470,7 +472,7 @@ export default function Sidebar({
                         fontWeight: sidebarNavTextWeight,
                         lineHeight: 1.2,
                         color: 'inherit',
-                        transition: 'none',
+                        transition: 'color 180ms ease',
                       },
                     }}
                   />
@@ -485,7 +487,15 @@ export default function Sidebar({
   )
 
   return (
-    <Box component="nav" sx={{ width: { sm: collapsed ? collapsedWidth : drawerWidth }, flexShrink: { sm: 0 } }} aria-label={i18nT('sidebar.navigationAria')}>
+    <Box
+      component="nav"
+      sx={{
+        width: { sm: collapsed ? collapsedWidth : drawerWidth },
+        flexShrink: { sm: 0 },
+        transition: { sm: `width ${sidebarWidthTransition}` },
+      }}
+      aria-label={i18nT('sidebar.navigationAria')}
+    >
       <Drawer
         variant="temporary"
         open={mobileOpen}
@@ -514,6 +524,7 @@ export default function Sidebar({
           '& .MuiDrawer-paper': {
             boxSizing: 'border-box',
             width: collapsed ? collapsedWidth : drawerWidth,
+            transition: `width ${sidebarWidthTransition}`,
             bgcolor: sidebarBg,
             borderRight: '0 !important',
             overflow: 'visible',

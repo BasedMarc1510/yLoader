@@ -7,6 +7,7 @@ import SimpleBarScrollArea from '../SimpleBarScrollArea'
 
 export default function FfmpegSettingsSection({
   ffmpegInfo,
+  autoUpdateEnabled,
   updating,
   startUpdate,
   onToggleAutoUpdate,
@@ -30,9 +31,12 @@ export default function FfmpegSettingsSection({
   const primaryActionLabel = primaryActionIsUpdate
     ? (updateInProgress ? t('settings.updating') : t('settings.updateNow'))
     : (ffmpegInfo.loading ? t('settings.checking') : t('settings.checkForUpdates'))
+  const switchChecked = typeof autoUpdateEnabled === 'boolean'
+    ? autoUpdateEnabled
+    : ffmpegInfo?.autoUpdateEnabled !== false
 
   return (
-    <Box sx={{ px: 4, pt: 4, pb: 4, opacity: updateInProgress || autoUpdateBusy ? 0.6 : 1, pointerEvents: updateInProgress || autoUpdateBusy ? 'none' : 'auto' }}>
+    <Box sx={{ px: 4, pt: 4, pb: 4, opacity: updateInProgress ? 0.6 : 1, pointerEvents: updateInProgress ? 'none' : 'auto' }}>
       
       {updateInProgress && (
         <SettingGroup title={t('settings.updateLogs')} sx={{ mb: 4 }}>
@@ -78,7 +82,7 @@ export default function FfmpegSettingsSection({
           description={t('settings.autoUpdateEnabledDesc')}
         >
           <Switch
-            checked={ffmpegInfo?.autoUpdateEnabled !== false}
+            checked={switchChecked}
             onChange={(event) => onToggleAutoUpdate?.(event.target.checked)}
             disabled={autoUpdateBusy}
           />

@@ -9,6 +9,7 @@ export default function GeneralSettingsSection({
   setLanguage,
   mode,
   setPreference,
+  showAppUpdateSection,
   selectSx,
   t,
   appUpdateState,
@@ -45,14 +46,16 @@ export default function GeneralSettingsSection({
         </SettingRow>
       </SettingGroup>
 
-      <AppVersionUpdateSection
-        t={t}
-        appUpdateState={appUpdateState}
-        isElectronUpdaterAvailable={isElectronUpdaterAvailable}
-        checkForAppUpdates={checkForAppUpdates}
-        downloadAppUpdate={downloadAppUpdate}
-        installAppUpdate={installAppUpdate}
-      />
+      {showAppUpdateSection && (
+        <AppVersionUpdateSection
+          t={t}
+          appUpdateState={appUpdateState}
+          isElectronUpdaterAvailable={isElectronUpdaterAvailable}
+          checkForAppUpdates={checkForAppUpdates}
+          downloadAppUpdate={downloadAppUpdate}
+          installAppUpdate={installAppUpdate}
+        />
+      )}
     </Box>
   )
 }

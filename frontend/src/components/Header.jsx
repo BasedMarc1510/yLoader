@@ -29,6 +29,7 @@ export default function Header({
   const theme = useTheme()
   const sidebarBg = theme.palette.mode === 'dark' ? '#181818' : '#f9f9f9'
   const mainBg = theme.palette.mode === 'dark' ? '#212121' : '#ffffff'
+  const sidebarTransition = '260ms cubic-bezier(0.22, 1, 0.36, 1)'
 
   return (
     <AppBar
@@ -39,6 +40,7 @@ export default function Header({
         zIndex: muiTheme.zIndex.drawer + 1,
         left: { sm: `${sidebarWidth}px` },
         width: { sm: `calc(100% - ${sidebarWidth}px)` },
+        transition: { sm: `left ${sidebarTransition}, width ${sidebarTransition}` },
         bgcolor: sidebarBg,
         borderBottom: 'none',
         borderLeft: '0 !important',

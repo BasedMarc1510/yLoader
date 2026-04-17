@@ -23,15 +23,17 @@ body,
 /* SimpleBar scrollbar tokens */
 :root {
   --yl-scroll-size: 11px;
-  --yl-scroll-thumb: rgba(0, 0, 0, 0.38);
-  --yl-scroll-thumb-hover: rgba(0, 0, 0, 0.54);
-  --yl-scroll-thumb-active: rgba(0, 0, 0, 0.68);
+  --yl-scroll-thumb: rgba(0, 0, 0, 0.3);
+  --yl-scroll-thumb-hover: rgba(0, 0, 0, 0.42);
+  --yl-scroll-thumb-active: rgba(0, 0, 0, 0.54);
+  --yl-scroll-track-hover: rgba(0, 0, 0, 0.06);
 }
 
 :root[data-theme-mode='dark'] {
-  --yl-scroll-thumb: rgba(255, 255, 255, 0.38);
-  --yl-scroll-thumb-hover: rgba(255, 255, 255, 0.54);
-  --yl-scroll-thumb-active: rgba(255, 255, 255, 0.68);
+  --yl-scroll-thumb: rgba(255, 255, 255, 0.34);
+  --yl-scroll-thumb-hover: rgba(255, 255, 255, 0.46);
+  --yl-scroll-thumb-active: rgba(255, 255, 255, 0.6);
+  --yl-scroll-track-hover: rgba(255, 255, 255, 0.08);
 }
 
 /* Native Scrollbars auf der Dokumentebene neutral halten. */
@@ -45,6 +47,7 @@ body,
 /* SimpleBar: only the handle is visible, no track background. */
 .yl-simplebar .simplebar-track {
   background: transparent !important;
+  transition: background-color 0.16s ease;
 }
 
 .yl-simplebar .simplebar-track.simplebar-vertical {
@@ -65,11 +68,16 @@ body,
   border-radius: 999px;
   opacity: 1;
   background-color: var(--yl-scroll-thumb);
-  transition: background-color 0.14s ease;
+  transition: background-color 0.14s ease, box-shadow 0.16s ease;
+}
+
+.yl-simplebar .simplebar-track:hover {
+  background-color: var(--yl-scroll-track-hover) !important;
 }
 
 .yl-simplebar .simplebar-scrollbar.simplebar-visible::before,
-.yl-simplebar .simplebar-scrollbar:hover::before {
+.yl-simplebar .simplebar-scrollbar:hover::before,
+.yl-simplebar .simplebar-track:hover .simplebar-scrollbar::before {
   background-color: var(--yl-scroll-thumb-hover);
 }
 

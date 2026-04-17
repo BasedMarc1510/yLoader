@@ -12,8 +12,10 @@ export default function AutoDownloadSettingsSection({
   selectSx,
   t,
 }) {
+  const controlsDisabled = autoDownloadLoading
+
   return (
-    <Box sx={{ px: 4, pt: 4, pb: 4 }}>
+    <Box sx={{ px: 4, pt: 4, pb: 4 }} aria-busy={autoDownloadLoading || autoDownloadSaving}>
       <SettingGroup title={t('settings.autoDownloadDescription')}>
         <SettingRow
           label={t('settings.autoDownloadUseMetadata')}
@@ -22,7 +24,7 @@ export default function AutoDownloadSettingsSection({
           <Switch
             size="small"
             checked={Boolean(autoDownloadSettings.useMetadata)}
-            disabled={autoDownloadLoading || autoDownloadSaving}
+            disabled={controlsDisabled}
             onChange={(event) => updateAutoDownloadSettings({ useMetadata: event.target.checked })}
           />
         </SettingRow>
@@ -34,7 +36,7 @@ export default function AutoDownloadSettingsSection({
           <Switch
             size="small"
             checked={Boolean(autoDownloadSettings.embedCoverArt)}
-            disabled={autoDownloadLoading || autoDownloadSaving}
+            disabled={controlsDisabled}
             onChange={(event) => updateAutoDownloadSettings({ embedCoverArt: event.target.checked })}
           />
         </SettingRow>
@@ -43,7 +45,7 @@ export default function AutoDownloadSettingsSection({
           <Select
             size="small"
             value={Number(autoDownloadSettings.maxAudioBitrateKbps) || 0}
-            disabled={autoDownloadLoading || autoDownloadSaving}
+            disabled={controlsDisabled}
             onChange={(event) => updateAutoDownloadSettings({ maxAudioBitrateKbps: Number(event.target.value) || 0 })}
             sx={selectSx}
           >
@@ -61,7 +63,7 @@ export default function AutoDownloadSettingsSection({
           <Select
             size="small"
             value={Number(autoDownloadSettings.maxVideoHeight) || 0}
-            disabled={autoDownloadLoading || autoDownloadSaving}
+            disabled={controlsDisabled}
             onChange={(event) => updateAutoDownloadSettings({ maxVideoHeight: Number(event.target.value) || 0 })}
             sx={selectSx}
           >
@@ -76,7 +78,7 @@ export default function AutoDownloadSettingsSection({
         </SettingRow>
       </SettingGroup>
 
-      {(autoDownloadLoading || autoDownloadSaving) && (
+      {autoDownloadLoading && (
         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1 }}>
           {t('settings.checking')}
         </Typography>

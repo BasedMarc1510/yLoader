@@ -10,6 +10,7 @@ import { useI18n } from '../providers/I18nProvider'
 const drawerWidthCollapsed = 56
 const headerHeight = 49
 const sidebarHeaderHeight = 49
+const SIDEBAR_TRANSITION = '260ms cubic-bezier(0.22, 1, 0.36, 1)'
 
 export default function AppLayout({
   children,
@@ -140,6 +141,7 @@ export default function AppLayout({
           flexGrow: 1,
           p: 0,
           width: { sm: `calc(100% - ${sidebarWidth}px)` },
+          transition: { sm: `width ${SIDEBAR_TRANSITION}` },
           height: '100dvh',
           boxSizing: 'border-box',
           overflow: 'hidden',

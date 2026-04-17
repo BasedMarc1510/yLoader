@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box, Button, Switch, TextField, Select, MenuItem } from '@mui/material'
+import { Button, Switch, TextField, Select, MenuItem } from '@mui/material'
 import SettingRow from './SettingRow'
 import {
   CHROMIUM_COOKIE_BROWSERS,
@@ -18,6 +18,10 @@ export default function YtDlpCookieBrowserSettingsGroup({
   const browserEnabled = Boolean(cookieState.cookiesFromBrowserEnabled)
   const browserHasChromiumKeyring = CHROMIUM_COOKIE_BROWSERS.has(selectedBrowser)
   const browserHasFirefoxContainer = selectedBrowser === 'firefox'
+
+  if (!browserImportSupported) {
+    return null
+  }
 
   const [browserProfileDraft, setBrowserProfileDraft] = React.useState(String(cookieState.browserProfile || ''))
   const [browserContainerDraft, setBrowserContainerDraft] = React.useState(String(cookieState.browserContainer || ''))
@@ -232,8 +236,6 @@ export default function YtDlpCookieBrowserSettingsGroup({
           </SettingRow>
         </>
       )}
-
-      {!browserImportSupported && <Box sx={{ mb: 1 }} />}
     </>
   )
 }

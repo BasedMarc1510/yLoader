@@ -7,6 +7,7 @@ export default function TabScrollControls({
   canScrollLeft,
   canScrollRight,
   onScroll,
+  disableRipple = false,
   t,
 }) {
   return (
@@ -14,6 +15,7 @@ export default function TabScrollControls({
       <IconButton
         size="small"
         className="yl-scroll-btn"
+        disableRipple={disableRipple}
         onClick={() => onScroll('left')}
         disabled={!canScrollLeft}
         aria-label={t('tabs.scrollLeftAria')}
@@ -23,6 +25,7 @@ export default function TabScrollControls({
       <IconButton
         size="small"
         className="yl-scroll-btn"
+        disableRipple={disableRipple}
         onClick={() => onScroll('right')}
         disabled={!canScrollRight}
         aria-label={t('tabs.scrollRightAria')}

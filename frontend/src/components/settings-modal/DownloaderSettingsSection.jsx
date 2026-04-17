@@ -46,7 +46,7 @@ export default function DownloaderSettingsSection({
   selectSx,
   t,
 }) {
-  const disabled = downloadSettingsLoading || downloadSettingsSaving
+  const disabled = downloadSettingsLoading
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const isElectronRuntime = Boolean(runtime?.isElectron)
   const canPickDirectory = Boolean(runtime?.downloads?.pickDirectory)
@@ -345,7 +345,7 @@ export default function DownloaderSettingsSection({
   )
 
   return (
-    <Box sx={{ px: 4, pt: 4, pb: 4 }}>
+    <Box sx={{ px: 4, pt: 4, pb: 4 }} aria-busy={downloadSettingsLoading || downloadSettingsSaving}>
       <SettingGroup title={t('settings.downloaderDescription')}>
         <SettingRow
           label={t('settings.downloaderConcurrentDownloads')}

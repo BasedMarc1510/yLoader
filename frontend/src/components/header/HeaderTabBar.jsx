@@ -472,6 +472,7 @@ export default function HeaderTabBar({
                   <IconButton
                     size="small"
                     className="yl-tab-close"
+                    disableRipple={isElectron}
                     aria-label={closeTooltipLabel}
                     title={closeTooltipLabel}
                     disabled={isClosing}
@@ -488,6 +489,7 @@ export default function HeaderTabBar({
                     <IconButton
                       size="small"
                       className="yl-add-btn yl-add-btn-drag-proxy"
+                      disableRipple={isElectron}
                       aria-label={t('tabs.newTabAria')}
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
@@ -505,6 +507,7 @@ export default function HeaderTabBar({
             <IconButton
               size="small"
               className={`yl-add-btn ${showDragAddProxy ? 'is-hidden-while-drag' : ''}`}
+              disableRipple={isElectron}
               onClick={onAddTab}
               aria-label={t('tabs.newTabAria')}
             >
@@ -520,6 +523,7 @@ export default function HeaderTabBar({
           canScrollLeft={canScrollLeft}
           canScrollRight={canScrollRight}
           onScroll={scroll}
+          disableRipple={isElectron}
           t={t}
         />
       </Box>

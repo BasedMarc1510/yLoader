@@ -51,9 +51,12 @@ export default function SettingsModal({
   const { t } = useI18n()
   const { mode, setPreference } = useContext(ColorModeContext)
   const { language, setLanguage } = useContext(SettingsContext)
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+  const isElectronRuntime = Boolean(runtime?.isElectron)
   const [section, setSection] = useState(() => String(requestedSection || 'general'))
   const [sectionFocusTarget, setSectionFocusTarget] = useState(() => String(requestedFocusTarget || '').trim())
   const [sectionFocusRequestId, setSectionFocusRequestId] = useState(() => String(requestedFocusRequestId || '').trim())
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const API_BASE = getApiBase()
 
   const [ytInfo, setYtInfo] = useState({
@@ -115,16 +118,22 @@ export default function SettingsModal({
     ytDlpAutoUpdate: true,
     ffmpegAutoUpdate: true,
   })
+  const toolUpdateSettingsRef = useRef(toolUpdateSettings)
+  const toolUpdateSettingsRequestIdRef = useRef(0)
   const [toolUpdateSettingsLoading, setToolUpdateSettingsLoading] = useState(false)
   const [toolUpdateSettingsSaving, setToolUpdateSettingsSaving] = useState(false)
   const [toolUpdateSettingsError, setToolUpdateSettingsError] = useState('')
 
   const [autoDownloadSettings, setAutoDownloadSettings] = useState(() => ({ ...AUTO_DOWNLOAD_DEFAULTS }))
+  const autoDownloadSettingsRef = useRef(autoDownloadSettings)
+  const autoDownloadSaveRequestIdRef = useRef(0)
   const [autoDownloadLoading, setAutoDownloadLoading] = useState(false)
   const [autoDownloadSaving, setAutoDownloadSaving] = useState(false)
   const [autoDownloadError, setAutoDownloadError] = useState('')
 
   const [downloadSettings, setDownloadSettings] = useState(() => ({ ...DOWNLOAD_SETTINGS_DEFAULTS }))
+  const downloadSettingsRef = useRef(downloadSettings)
+  const downloadSaveRequestIdRef = useRef(0)
   const [downloadSettingsLoading, setDownloadSettingsLoading] = useState(false)
   const [downloadSettingsSaving, setDownloadSettingsSaving] = useState(false)
   const [downloadSettingsError, setDownloadSettingsError] = useState('')
@@ -135,6 +144,18 @@ export default function SettingsModal({
   const [ytCookieSettingsError, setYtCookieSettingsError] = useState('')
 
   const isAppUpdateDownloading = appUpdateState?.phase === 'downloading'
+
+  useEffect(() => {
+    toolUpdateSettingsRef.current = toolUpdateSettings
+  }, [toolUpdateSettings])
+
+  useEffect(() => {
+    autoDownloadSettingsRef.current = autoDownloadSettings
+  }, [autoDownloadSettings])
+
+  useEffect(() => {
+    downloadSettingsRef.current = downloadSettings
+  }, [downloadSettings])
 
   const fetchToolUpdateSettings = React.useCallback(async () => {
     setToolUpdateSettingsLoading(true)
@@ -156,6 +177,7 @@ export default function SettingsModal({
   }, [API_BASE, t])
 
   const saveToolUpdateSettings = React.useCallback(async (nextSettings) => {
+    const requestId = ++toolUpdateSettingsRequestIdRef.current
     setToolUpdateSettingsSaving(true)
     setToolUpdateSettingsError('')
 
@@ -167,30 +189,57 @@ export default function SettingsModal({
       })
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data = await resp.json()
-      setToolUpdateSettings({
+      const normalized = {
         ytDlpAutoUpdate: data?.ytDlpAutoUpdate !== false,
         ffmpegAutoUpdate: data?.ffmpegAutoUpdate !== false,
-      })
+      }
+
+      if (requestId === toolUpdateSettingsRequestIdRef.current) {
+        setToolUpdateSettings(normalized)
+      }
+
+      return normalized
     } catch (error) {
-      setToolUpdateSettingsError(t('settings.failedLoadStatus', { message: error?.message || error }))
+      if (requestId === toolUpdateSettingsRequestIdRef.current) {
+        setToolUpdateSettingsError(t('settings.failedLoadStatus', { message: error?.message || error }))
+      }
       throw error
     } finally {
-      setToolUpdateSettingsSaving(false)
+      if (requestId === toolUpdateSettingsRequestIdRef.current) {
+        setToolUpdateSettingsSaving(false)
+      }
     }
   }, [API_BASE, t])
 
   const setToolAutoUpdateEnabled = React.useCallback((tool, enabled) => {
+    const current = toolUpdateSettingsRef.current
     const next = {
-      ...toolUpdateSettings,
+      ...current,
       ...(tool === 'ytDlp'
         ? { ytDlpAutoUpdate: Boolean(enabled) }
         : { ffmpegAutoUpdate: Boolean(enabled) }),
     }
+
     setToolUpdateSettings(next)
+
+    if (tool === 'ytDlp') {
+      setYtInfo((state) => ({
+        ...state,
+        autoUpdateEnabled: next.ytDlpAutoUpdate,
+      }))
+    }
+
+    if (tool === 'ffmpeg') {
+      setFfmpegInfo((state) => ({
+        ...state,
+        autoUpdateEnabled: next.ffmpegAutoUpdate,
+      }))
+    }
+
     saveToolUpdateSettings(next).catch(() => {
       // error state is handled in saveToolUpdateSettings
     })
-  }, [saveToolUpdateSettings, toolUpdateSettings])
+  }, [saveToolUpdateSettings])
 
   const fetchStatus = React.useCallback(async ({ forceLatest = false } = {}) => {
     setYtInfo((state) => ({
@@ -320,7 +369,8 @@ export default function SettingsModal({
     }
   }
 
-  const saveAutoDownloadSettings = async (nextSettings) => {
+  const saveAutoDownloadSettings = React.useCallback(async (nextSettings) => {
+    const requestId = ++autoDownloadSaveRequestIdRef.current
     setAutoDownloadSaving(true)
     setAutoDownloadError('')
 
@@ -332,19 +382,36 @@ export default function SettingsModal({
       })
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data = await resp.json()
-      setAutoDownloadSettings(normalizeAutoDownloadSettings(data))
+      const normalized = normalizeAutoDownloadSettings(data)
+      if (requestId === autoDownloadSaveRequestIdRef.current) {
+        setAutoDownloadSettings(normalized)
+      }
+      return normalized
     } catch (error) {
-      setAutoDownloadError(t('settings.autoDownloadSaveFailed', { message: error?.message || error }))
+      if (requestId === autoDownloadSaveRequestIdRef.current) {
+        setAutoDownloadError(t('settings.autoDownloadSaveFailed', { message: error?.message || error }))
+      }
+      throw error
     } finally {
-      setAutoDownloadSaving(false)
+      if (requestId === autoDownloadSaveRequestIdRef.current) {
+        setAutoDownloadSaving(false)
+      }
     }
-  }
+  }, [API_BASE, t])
 
-  const updateAutoDownloadSettings = (changes) => {
-    const next = normalizeAutoDownloadSettings({ ...autoDownloadSettings, ...changes })
+  const updateAutoDownloadSettings = React.useCallback((changes) => {
+    const current = autoDownloadSettingsRef.current || AUTO_DOWNLOAD_DEFAULTS
+    const patch = typeof changes === 'function' ? changes(current) : changes
+    const next = normalizeAutoDownloadSettings({
+      ...current,
+      ...(patch && typeof patch === 'object' ? patch : {}),
+    })
+
     setAutoDownloadSettings(next)
-    saveAutoDownloadSettings(next)
-  }
+    saveAutoDownloadSettings(next).catch(() => {
+      // error state is handled in saveAutoDownloadSettings
+    })
+  }, [saveAutoDownloadSettings])
 
   const fetchDownloadSettings = async () => {
     setDownloadSettingsLoading(true)
@@ -362,7 +429,8 @@ export default function SettingsModal({
     }
   }
 
-  const saveDownloadSettings = async (nextSettings) => {
+  const saveDownloadSettings = React.useCallback(async (nextSettings) => {
+    const requestId = ++downloadSaveRequestIdRef.current
     setDownloadSettingsSaving(true)
     setDownloadSettingsError('')
 
@@ -374,7 +442,11 @@ export default function SettingsModal({
       })
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data = await resp.json()
-      setDownloadSettings(normalizeDownloadSettings(data))
+      const normalized = normalizeDownloadSettings(data)
+
+      if (requestId === downloadSaveRequestIdRef.current) {
+        setDownloadSettings(normalized)
+      }
 
       try {
         const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
@@ -384,18 +456,33 @@ export default function SettingsModal({
       } catch {
         // keep UI flow resilient even when runtime bridge is temporarily unavailable
       }
-    } catch (error) {
-      setDownloadSettingsError(t('settings.downloadSettingsSaveFailed', { message: error?.message || error }))
-    } finally {
-      setDownloadSettingsSaving(false)
-    }
-  }
 
-  const updateDownloadSettings = (changes) => {
-    const next = normalizeDownloadSettings({ ...downloadSettings, ...changes })
+      return normalized
+    } catch (error) {
+      if (requestId === downloadSaveRequestIdRef.current) {
+        setDownloadSettingsError(t('settings.downloadSettingsSaveFailed', { message: error?.message || error }))
+      }
+      throw error
+    } finally {
+      if (requestId === downloadSaveRequestIdRef.current) {
+        setDownloadSettingsSaving(false)
+      }
+    }
+  }, [API_BASE, t])
+
+  const updateDownloadSettings = React.useCallback((changes) => {
+    const current = downloadSettingsRef.current || DOWNLOAD_SETTINGS_DEFAULTS
+    const patch = typeof changes === 'function' ? changes(current) : changes
+    const next = normalizeDownloadSettings({
+      ...current,
+      ...(patch && typeof patch === 'object' ? patch : {}),
+    })
+
     setDownloadSettings(next)
-    saveDownloadSettings(next)
-  }
+    saveDownloadSettings(next).catch(() => {
+      // error state is handled in saveDownloadSettings
+    })
+  }, [saveDownloadSettings])
 
   useEffect(() => {
     ytCookieSettingsRef.current = ytCookieSettings
@@ -460,6 +547,7 @@ export default function SettingsModal({
     setSection(String(requestedSection || 'general'))
     setSectionFocusTarget(String(requestedFocusTarget || '').trim())
     setSectionFocusRequestId(String(requestedFocusRequestId || `${Date.now()}`).trim())
+    setResetConfirmOpen(false)
   }, [open, requestedSection, requestedFocusRequestId, requestedFocusTarget])
 
   useEffect(() => {
@@ -615,10 +703,10 @@ export default function SettingsModal({
   const canResetSection = section === 'general' || section === 'downloader' || section === 'auto-download'
   const resetDisabled =
     section === 'downloader'
-      ? (downloadSettingsLoading || downloadSettingsSaving)
-      : (section === 'auto-download' ? (autoDownloadLoading || autoDownloadSaving) : false)
+      ? downloadSettingsLoading
+      : (section === 'auto-download' ? autoDownloadLoading : false)
 
-  const handleResetSection = React.useCallback(() => {
+  const applyResetToCurrentSection = React.useCallback(() => {
     if (section === 'general') {
       setLanguage('en')
       setPreference(null)
@@ -628,36 +716,60 @@ export default function SettingsModal({
     if (section === 'downloader') {
       const defaults = { ...DOWNLOAD_SETTINGS_DEFAULTS }
       setDownloadSettings(defaults)
-      saveDownloadSettings(defaults)
+      saveDownloadSettings(defaults).catch(() => {
+        // error state is handled in saveDownloadSettings
+      })
       return
     }
 
     if (section === 'auto-download') {
       const defaults = { ...AUTO_DOWNLOAD_DEFAULTS }
       setAutoDownloadSettings(defaults)
-      saveAutoDownloadSettings(defaults)
+      saveAutoDownloadSettings(defaults).catch(() => {
+        // error state is handled in saveAutoDownloadSettings
+      })
     }
   }, [section, saveAutoDownloadSettings, saveDownloadSettings, setLanguage, setPreference])
+
+  const handleRequestResetSection = React.useCallback(() => {
+    if (!canResetSection || resetDisabled) return
+    setResetConfirmOpen(true)
+  }, [canResetSection, resetDisabled])
+
+  const handleCancelResetSection = React.useCallback(() => {
+    setResetConfirmOpen(false)
+  }, [])
+
+  const handleConfirmResetSection = React.useCallback(() => {
+    setResetConfirmOpen(false)
+    applyResetToCurrentSection()
+  }, [applyResetToCurrentSection])
 
   const isAnyUpdateRunning = isAppUpdateDownloading || updating || ffmpegUpdating || ytInfo.updateInProgress || ffmpegInfo.updateInProgress
 
   const handleDialogClose = React.useCallback(() => {
+    if (resetConfirmOpen) {
+      setResetConfirmOpen(false)
+      return
+    }
     if (isAnyUpdateRunning) return
     onClose?.()
-  }, [isAnyUpdateRunning, onClose])
+  }, [isAnyUpdateRunning, onClose, resetConfirmOpen])
 
   const selectSx = {
     fontSize: 13,
     height: 32,
     minWidth: 140,
     borderRadius: '4px',
-    transition: 'none',
-    '& .MuiOutlinedInput-root': { transition: 'none' },
-    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider', transition: 'none' },
+    '& .MuiOutlinedInput-root': { transition: 'border-color 180ms ease, background-color 180ms ease' },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider', transition: 'border-color 180ms ease' },
     '& .MuiSelect-select': { py: '6px', px: 1.5 },
     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'text.disabled' },
     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: 1 },
   }
+
+  const resetConfirmTitleId = 'settings-reset-confirm-title'
+  const resetConfirmDescriptionId = 'settings-reset-confirm-description'
 
   return (
     <Dialog
@@ -673,16 +785,10 @@ export default function SettingsModal({
           bgcolor: theme.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
           backgroundImage: 'none',
           boxShadow: theme.palette.mode === 'dark' ? '0 0 0 1px rgba(255,255,255,0.1), 0 24px 48px rgba(0,0,0,0.5)' : '0 24px 48px rgba(0,0,0,0.15)',
-          '& .MuiButton-root': { transition: 'none' },
-          '& .MuiIconButton-root': { transition: 'none' },
-          '& .MuiListItemButton-root': { transition: 'none' },
-          '& .MuiMenuItem-root': { transition: 'none' },
-          '& .MuiOutlinedInput-root': { transition: 'none' },
-          '& .MuiOutlinedInput-notchedOutline': { transition: 'none' },
         }),
       }}
     >
-      <DialogContent sx={{ p: 0, '&:first-of-type': { pt: 0 } }}>
+      <DialogContent sx={{ p: 0, position: 'relative', '&:first-of-type': { pt: 0 } }}>
         <Box sx={{ display: 'flex', height: 640 }}>
           <Box sx={(theme) => ({
             width: 240,
@@ -729,6 +835,7 @@ export default function SettingsModal({
                     <ListItemButton
                       selected={section === entry.key}
                       onClick={() => {
+                        setResetConfirmOpen(false)
                         setSection(entry.key)
                         setSectionFocusTarget('')
                         setSectionFocusRequestId(String(Date.now()))
@@ -790,12 +897,15 @@ export default function SettingsModal({
                   variant="text"
                   size="small"
                   disabled={resetDisabled}
-                  onClick={handleResetSection}
+                  onClick={handleRequestResetSection}
                   sx={{
                     textTransform: 'none',
                     fontWeight: 600,
                     borderRadius: '8px',
-                    color: '#007aff',
+                    color: 'primary.main',
+                    '&:hover': {
+                      bgcolor: 'action.hover',
+                    },
                   }}
                 >
                   {t('settings.resetToDefaults')}
@@ -810,6 +920,7 @@ export default function SettingsModal({
                   setLanguage={setLanguage}
                   mode={mode}
                   setPreference={setPreference}
+                  showAppUpdateSection={isElectronRuntime}
                   selectSx={selectSx}
                   t={t}
                   appUpdateState={appUpdateState}
@@ -847,6 +958,7 @@ export default function SettingsModal({
               {section === 'yt-dlp' && (
                 <YtDlpSettingsSection
                   ytInfo={ytInfo}
+                  autoUpdateEnabled={toolUpdateSettings.ytDlpAutoUpdate}
                   updating={updating}
                   startUpdate={startUpdate}
                   onToggleAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ytDlp', enabled)}
@@ -872,6 +984,7 @@ export default function SettingsModal({
               {section === 'ffmpeg' && (
                 <FfmpegSettingsSection
                   ffmpegInfo={ffmpegInfo}
+                  autoUpdateEnabled={toolUpdateSettings.ffmpegAutoUpdate}
                   updating={ffmpegUpdating}
                   startUpdate={startFfmpegUpdate}
                   onToggleAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ffmpeg', enabled)}
@@ -888,6 +1001,64 @@ export default function SettingsModal({
             </SimpleBarScrollArea>
           </Box>
         </Box>
+
+        {resetConfirmOpen && canResetSection && (
+          <Box
+            onClick={handleCancelResetSection}
+            sx={(theme) => ({
+              position: 'absolute',
+              inset: 0,
+              zIndex: 20,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              px: 2,
+              bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.62)' : 'rgba(17,24,39,0.24)',
+            })}
+          >
+            <Box
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={resetConfirmTitleId}
+              aria-describedby={resetConfirmDescriptionId}
+              onClick={(event) => event.stopPropagation()}
+              sx={(theme) => ({
+                width: 'min(420px, 100%)',
+                borderRadius: '12px',
+                p: 2.5,
+                bgcolor: theme.palette.mode === 'dark' ? '#111111' : '#ffffff',
+                border: `1px solid ${theme.palette.divider}`,
+                boxShadow: theme.palette.mode === 'dark' ? '0 18px 32px rgba(0,0,0,0.6)' : '0 18px 30px rgba(0,0,0,0.16)',
+              })}
+            >
+              <Typography id={resetConfirmTitleId} sx={{ fontWeight: 700, fontSize: 18, mb: 1 }}>
+                {t('settings.resetConfirmTitle')}
+              </Typography>
+              <Typography id={resetConfirmDescriptionId} sx={{ color: 'text.secondary', fontSize: 14, lineHeight: 1.5 }}>
+                {t('settings.resetConfirmDescription', { section: sectionTitle })}
+              </Typography>
+
+              <Box sx={{ mt: 2.5, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                <Button
+                  variant="text"
+                  size="small"
+                  onClick={handleCancelResetSection}
+                  sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}
+                >
+                  {t('settings.resetConfirmCancel')}
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleConfirmResetSection}
+                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: '8px', boxShadow: 'none' }}
+                >
+                  {t('settings.resetConfirmConfirm')}
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+        )}
       </DialogContent>
     </Dialog>
   )

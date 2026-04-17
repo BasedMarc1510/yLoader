@@ -8,6 +8,7 @@ import SimpleBarScrollArea from '../SimpleBarScrollArea'
 
 export default function YtDlpSettingsSection({
   ytInfo,
+  autoUpdateEnabled,
   updating,
   startUpdate,
   onToggleAutoUpdate,
@@ -46,9 +47,12 @@ export default function YtDlpSettingsSection({
   const primaryActionLabel = primaryActionIsUpdate
     ? (updateInProgress ? t('settings.updating') : t('settings.updateNow'))
     : (latestLoading ? t('settings.checking') : t('settings.checkForUpdates'))
+  const switchChecked = typeof autoUpdateEnabled === 'boolean'
+    ? autoUpdateEnabled
+    : ytInfo?.autoUpdateEnabled !== false
 
   return (
-    <Box sx={{ px: 4, pt: 4, pb: 4, opacity: updateInProgress || autoUpdateBusy ? 0.6 : 1, pointerEvents: updateInProgress || autoUpdateBusy ? 'none' : 'auto' }}>
+    <Box sx={{ px: 4, pt: 4, pb: 4, opacity: updateInProgress ? 0.6 : 1, pointerEvents: updateInProgress ? 'none' : 'auto' }}>
       
       {updateInProgress && (
         <SettingGroup title={t('settings.updateLogs')} sx={{ mb: 4 }}>
@@ -94,7 +98,7 @@ export default function YtDlpSettingsSection({
           description={t('settings.autoUpdateEnabledDesc')}
         >
           <Switch
-            checked={ytInfo?.autoUpdateEnabled !== false}
+            checked={switchChecked}
             onChange={(event) => onToggleAutoUpdate?.(event.target.checked)}
             disabled={autoUpdateBusy}
           />
