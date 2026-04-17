@@ -57,7 +57,6 @@ export default function HomeMultiInput({
         multiline
         autoFocus
         minRows={multiInputRows}
-        maxRows={5}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -79,7 +78,7 @@ export default function HomeMultiInput({
               lineHeight: 1.45,
               padding: 0,
               resize: 'none',
-              overflowY: 'auto !important',
+              overflowY: 'hidden !important',
             },
             '& textarea::placeholder': {
               color: muiTheme.palette.text.secondary,

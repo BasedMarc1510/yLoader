@@ -1,5 +1,6 @@
 import React from 'react'
 import './styles.css'
+import 'simplebar-react/dist/simplebar.min.css'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import ColorModeProvider from './providers/ColorModeProvider'

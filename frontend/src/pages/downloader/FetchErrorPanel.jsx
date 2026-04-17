@@ -2,6 +2,7 @@ import React from 'react'
 import { Box, Typography, IconButton, Paper, Button } from '@mui/material'
 import { AlertTriangle, X } from 'lucide-react'
 import { formatYtDlpErrorMessage, shouldSuggestCookieSettings } from '../../utils/ytDlpErrorPresentation'
+import SimpleBarScrollArea from '../../components/SimpleBarScrollArea'
 
 export default function FetchErrorPanel({ fetchError, closeError, retryError, onOpenCookieSettings, i18nT }) {
   const message = formatYtDlpErrorMessage(i18nT, fetchError?.message, {
@@ -59,11 +60,11 @@ export default function FetchErrorPanel({ fetchError, closeError, retryError, on
             </IconButton>
           </Box>
 
-          <Box
+          <SimpleBarScrollArea
+            fillContainer={false}
+            hideHorizontal
             sx={(t) => ({
               maxHeight: 160,
-              overflowY: 'auto',
-              overflowX: 'hidden',
               bgcolor: t.palette.mode === 'dark' ? '#111' : '#f5f5f5',
             })}
           >
@@ -82,7 +83,7 @@ export default function FetchErrorPanel({ fetchError, closeError, retryError, on
             >
               {message}
             </Typography>
-          </Box>
+          </SimpleBarScrollArea>
 
           <Box sx={{ px: 2, py: 2 }}>
             {showCookieSettingsHint && (

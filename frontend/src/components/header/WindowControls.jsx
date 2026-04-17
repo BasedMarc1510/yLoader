@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { Box, IconButton } from '@mui/material'
 import { Minus, Square, Copy, X } from 'lucide-react'
 
@@ -8,12 +9,13 @@ export default function WindowControls({
   onMinimize,
   onToggleMaximize,
   onClose,
+  styleVars,
   t,
 }) {
   if (!show) return null
 
-  return (
-    <Box className="yl-window-controls" role="group" aria-label={t('tabs.windowControlsAria')}>
+  const controls = (
+    <Box className="yl-window-controls" style={styleVars} role="group" aria-label={t('tabs.windowControlsAria')}>
       <IconButton
         size="small"
         className="yl-window-btn"
@@ -42,4 +44,7 @@ export default function WindowControls({
       </IconButton>
     </Box>
   )
+
+  if (typeof document === 'undefined') return controls
+  return createPortal(controls, document.body)
 }

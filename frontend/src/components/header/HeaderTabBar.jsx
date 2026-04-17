@@ -344,18 +344,20 @@ export default function HeaderTabBar({
     window.yloaderRuntime?.windowControls?.close?.()
   }, [isElectron])
 
+  const tabbarStyleVars = {
+    '--yl-surface': sidebarBg,
+    '--yl-card': mainBg,
+    '--yl-foreground': theme.palette.text.primary,
+    '--yl-muted-foreground': theme.palette.text.secondary,
+    '--yl-border': theme.palette.divider,
+    '--yl-accent': theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+    '--yl-destructive': theme.palette.error.main,
+  }
+
   return (
     <Box
       className={tabbarClassName}
-      style={{
-        '--yl-surface': sidebarBg,
-        '--yl-card': mainBg,
-        '--yl-foreground': theme.palette.text.primary,
-        '--yl-muted-foreground': theme.palette.text.secondary,
-        '--yl-border': theme.palette.divider,
-        '--yl-accent': theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-        '--yl-destructive': theme.palette.error.main,
-      }}
+      style={tabbarStyleVars}
       sx={{ flex: 1, minWidth: 0 }}
     >
       {isElectron && <Box className="yl-tabbar-drag-strip" aria-hidden="true" />}
@@ -528,6 +530,7 @@ export default function HeaderTabBar({
         onMinimize={handleWindowMinimize}
         onToggleMaximize={handleWindowToggleMaximize}
         onClose={handleWindowClose}
+        styleVars={tabbarStyleVars}
         t={t}
       />
 

@@ -22,6 +22,7 @@ import {
   YT_DLP_COOKIE_SETTINGS_DEFAULTS,
   normalizeYtDlpCookieSettings,
 } from '../utils/ytDlpCookieSettings'
+import SimpleBarScrollArea from './SimpleBarScrollArea'
 
 async function parseApiError(response) {
   let message = `HTTP ${response?.status || 500}`
@@ -721,44 +722,46 @@ export default function SettingsModal({
               </Tooltip>
             </Box>
 
-            <List disablePadding sx={{ px: 2, pt: 1, pb: 4, overflowY: 'auto' }}>
-              {sections.map((entry) => (
-                <ListItem key={entry.key} disablePadding sx={{ mb: 0.5 }}>
-                  <ListItemButton
-                    selected={section === entry.key}
-                    onClick={() => {
-                      setSection(entry.key)
-                      setSectionFocusTarget('')
-                      setSectionFocusRequestId(String(Date.now()))
-                    }}
-                    sx={(theme) => ({
-                      borderRadius: '8px',
-                      py: '6px',
-                      px: 1,
-                      '&.Mui-selected': {
-                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
-                        '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' },
-                      },
-                      '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
-                    })}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, flexShrink: 0 }}>
-                        <entry.icon size={18} strokeWidth={2.5} color={section === entry.key ? 'currentColor' : '#8e8e93'} />
+            <SimpleBarScrollArea sx={{ flex: 1, minHeight: 0 }}>
+              <List disablePadding sx={{ px: 2, pt: 1, pb: 4 }}>
+                {sections.map((entry) => (
+                  <ListItem key={entry.key} disablePadding sx={{ mb: 0.5 }}>
+                    <ListItemButton
+                      selected={section === entry.key}
+                      onClick={() => {
+                        setSection(entry.key)
+                        setSectionFocusTarget('')
+                        setSectionFocusRequestId(String(Date.now()))
+                      }}
+                      sx={(theme) => ({
+                        borderRadius: '8px',
+                        py: '6px',
+                        px: 1,
+                        '&.Mui-selected': {
+                          bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                          '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' },
+                        },
+                        '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
+                      })}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, flexShrink: 0 }}>
+                          <entry.icon size={18} strokeWidth={2.5} color={section === entry.key ? 'currentColor' : '#8e8e93'} />
+                        </Box>
+                        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Typography sx={{ fontSize: 13.5, fontWeight: section === entry.key ? 600 : 500, color: section === entry.key ? 'text.primary' : 'text.secondary' }}>
+                            {entry.label}
+                          </Typography>
+                          {entry.hasUpdate ? (
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ff3b30', flexShrink: 0 }} />
+                          ) : null}
+                        </Box>
                       </Box>
-                      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Typography sx={{ fontSize: 13.5, fontWeight: section === entry.key ? 600 : 500, color: section === entry.key ? 'text.primary' : 'text.secondary' }}>
-                          {entry.label}
-                        </Typography>
-                        {entry.hasUpdate ? (
-                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ff3b30', flexShrink: 0 }} />
-                        ) : null}
-                      </Box>
-                    </Box>
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              </List>
+            </SimpleBarScrollArea>
           </Box>
 
           <Box sx={{
@@ -800,7 +803,7 @@ export default function SettingsModal({
               )}
             </Box>
 
-            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <SimpleBarScrollArea sx={{ flex: 1, minHeight: 0 }}>
               {section === 'general' && (
                 <GeneralSettingsSection
                   language={language}
@@ -882,7 +885,7 @@ export default function SettingsModal({
                   t={t}
                 />
               )}
-            </Box>
+            </SimpleBarScrollArea>
           </Box>
         </Box>
       </DialogContent>

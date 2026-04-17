@@ -20,75 +20,61 @@ body,
   font-family: 'Inter', 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
 }
 
-/* ── Custom scrollbar tokens ── */
+/* SimpleBar scrollbar tokens */
 :root {
-  --yl-scroll-size: 8px;
-  --yl-scroll-thumb: rgba(0, 0, 0, 0.25);
-  --yl-scroll-thumb-hover: rgba(0, 0, 0, 0.40);
-  --yl-scroll-thumb-active: rgba(0, 0, 0, 0.55);
+  --yl-scroll-size: 11px;
+  --yl-scroll-thumb: rgba(0, 0, 0, 0.38);
+  --yl-scroll-thumb-hover: rgba(0, 0, 0, 0.54);
+  --yl-scroll-thumb-active: rgba(0, 0, 0, 0.68);
 }
 
 :root[data-theme-mode='dark'] {
-  --yl-scroll-thumb: rgba(255, 255, 255, 0.22);
-  --yl-scroll-thumb-hover: rgba(255, 255, 255, 0.38);
-  --yl-scroll-thumb-active: rgba(255, 255, 255, 0.52);
+  --yl-scroll-thumb: rgba(255, 255, 255, 0.38);
+  --yl-scroll-thumb-hover: rgba(255, 255, 255, 0.54);
+  --yl-scroll-thumb-active: rgba(255, 255, 255, 0.68);
 }
 
-/* ── Firefox / standards-track ── */
+/* Native Scrollbars auf der Dokumentebene neutral halten. */
 html,
 body,
-#root,
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--yl-scroll-thumb) transparent;
+#root {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
 }
 
-/* ── Webkit / Electron (Chromium) ── */
+/* SimpleBar: only the handle is visible, no track background. */
+.yl-simplebar .simplebar-track {
+  background: transparent !important;
+}
 
-/* Scrollbar rail */
-*::-webkit-scrollbar {
+.yl-simplebar .simplebar-track.simplebar-vertical {
   width: var(--yl-scroll-size);
+  right: 1px;
+}
+
+.yl-simplebar .simplebar-track.simplebar-horizontal {
   height: var(--yl-scroll-size);
-  background: transparent;
+  bottom: 1px;
 }
 
-/* Track – fully transparent */
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-track-piece {
-  background: transparent;
-}
-
-/* Thumb – rounded, semi-transparent, floating */
-*::-webkit-scrollbar-thumb {
-  background-color: var(--yl-scroll-thumb);
+.yl-simplebar .simplebar-scrollbar::before {
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  right: 2px;
   border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-  min-height: 36px;
-  transition: background-color 0.2s ease;
+  opacity: 1;
+  background-color: var(--yl-scroll-thumb);
+  transition: background-color 0.14s ease;
 }
 
-*::-webkit-scrollbar-thumb:hover {
+.yl-simplebar .simplebar-scrollbar.simplebar-visible::before,
+.yl-simplebar .simplebar-scrollbar:hover::before {
   background-color: var(--yl-scroll-thumb-hover);
 }
 
-*::-webkit-scrollbar-thumb:active {
+.yl-simplebar .simplebar-scrollbar:active::before {
   background-color: var(--yl-scroll-thumb-active);
-}
-
-/* Hide arrow buttons */
-*::-webkit-scrollbar-button {
-  width: 0;
-  height: 0;
-  display: none;
-}
-
-/* Corner (when both scrollbars meet) */
-*::-webkit-scrollbar-corner {
-  background: transparent;
 }
 
 .youtube-title {

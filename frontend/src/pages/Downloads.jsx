@@ -27,6 +27,7 @@ import {
     youtubeThumb,
 } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
+import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
 
 function getVideoSourceUrl(item) {
     const raw = typeof item.source_url === 'string' ? item.source_url.trim() : ''
@@ -167,7 +168,7 @@ export default function DownloadsPage({ onOpenDownloader }) {
     }
 
     return (
-        <Box sx={{ height: '100%', overflowY: 'auto' }}>
+        <SimpleBarScrollArea sx={{ height: '100%' }}>
             <Container maxWidth="xl" sx={{ py: 4 }}>
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h4" component="h1" fontWeight={800} gutterBottom>
@@ -494,6 +495,6 @@ export default function DownloadsPage({ onOpenDownloader }) {
                     )}
                 </Grid>
             </Container>
-        </Box>
+        </SimpleBarScrollArea>
     )
 }

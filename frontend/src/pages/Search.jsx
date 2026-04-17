@@ -27,6 +27,7 @@ import {
   normalizeServiceKey,
 } from '../utils/metadata'
 import { formatYtDlpErrorMessage } from '../utils/ytDlpErrorPresentation'
+import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
 
 const SEARCH_SERVICE_OPTIONS = [
   { value: 'youtube', labelKey: 'search.services.youtube', iconKey: 'youtube' },
@@ -95,6 +96,10 @@ export default function SearchPage({ onOpenDownloader }) {
   const [nextOffset, setNextOffset] = React.useState(0)
   const [hasMore, setHasMore] = React.useState(false)
   const [serviceMenuAnchor, setServiceMenuAnchor] = React.useState(null)
+
+  const [hasMeasured, setHasMeasured] = React.useState(false)
+  const [enableAnimation, setEnableAnimation] = React.useState(false)
+  const [availableHeight, setAvailableHeight] = React.useState(0)
 
   const handleClearSearch = React.useCallback(() => {
     setQuery('')
@@ -248,18 +253,192 @@ export default function SearchPage({ onOpenDownloader }) {
     openDownloaderForUrl(entry?.url, entry?.service || lastService)
   }, [lastService, openDownloaderForUrl])
 
+  React.useEffect(() => {
+    const root = scrollRootRef.current
+    if (!root) return undefined
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.height > 0) {
+          setAvailableHeight(entry.contentRect.height)
+          setHasMeasured(true)
+        }
+      }
+    })
+
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [])
+
+  React.useEffect(() => {
+    if (hasMeasured) {
+      const timer = setTimeout(() => {
+        setEnableAnimation(true)
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [hasMeasured])
+
   const showInitialLoading = loadingInitial && results.length === 0
   const showEmptyState = !showInitialLoading && !errorMessage && Boolean(lastQuery) && results.length === 0
 
   const isSearched = loadingInitial || loadingMore || results.length > 0 || errorMessage || Boolean(lastQuery)
   const selectedServiceOption = SEARCH_SERVICE_OPTIONS.find((o) => o.value === selectedService) || SEARCH_SERVICE_OPTIONS[0]
 
+  const calculatedSpacer = Math.max(0, (availableHeight / 2) - 28)
+
+  const searchBarJsx = (
+    <>
+      <Menu
+        anchorEl={serviceMenuAnchor}
+        open={Boolean(serviceMenuAnchor)}
+        onClose={() => setServiceMenuAnchor(null)}
+        transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+        slotProps={{ paper: { sx: { width: 220, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
+      >
+        {SEARCH_SERVICE_OPTIONS.map((option) => (
+          <MenuItem
+            key={option.value}
+            selected={selectedService === option.value}
+            onClick={() => {
+              setSelectedService(option.value)
+              setServiceMenuAnchor(null)
+            }}
+            sx={{ py: 1.5, borderRadius: 2, mx: 1 }}
+          >
+            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.5 }}>
+              <ServiceIcon serviceKey={option.iconKey} size={20} />
+              <Typography variant="body2" fontWeight={selectedService === option.value ? 800 : 500}>
+                {t(option.labelKey)}
+              </Typography>
+            </Box>
+          </MenuItem>
+        ))}
+      </Menu>
+
+      <TextField
+        value={query}
+        fullWidth
+        placeholder={t('search.queryPlaceholder')}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            handleSubmit()
+          }
+        }}
+        sx={(muiTheme) => ({
+          '& .MuiOutlinedInput-root': {
+            position: 'relative',
+            borderRadius: 9999,
+            backgroundColor: muiTheme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
+            outline: 'none',
+            '&:focus-within': {
+              outline: 'none',
+              boxShadow: 'none',
+            },
+            '& fieldset': {
+              borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+              borderWidth: '1px !important',
+            },
+            '&:hover fieldset': {
+              borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
+              borderWidth: '1px !important',
+            },
+            boxShadow: muiTheme.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
+            transition: 'box-shadow 0.3s, border-color 0.3s'
+          },
+          '& .MuiOutlinedInput-input': {
+            paddingLeft: '8px',
+            paddingRight: '16px',
+            color: muiTheme.palette.text.primary,
+            fontWeight: 700,
+            outline: 'none',
+          },
+          '& .MuiOutlinedInput-input::placeholder': {
+            color: muiTheme.palette.text.secondary,
+            fontWeight: 700,
+          },
+        })}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start" sx={{ ml: 0, mr: 0.25 }}>
+              <Button
+                size="small"
+                onClick={(e) => setServiceMenuAnchor(e.currentTarget)}
+                startIcon={<ServiceIcon serviceKey={selectedServiceOption.iconKey} size={18} />}
+                endIcon={<ChevronDown size={14} />}
+                sx={{
+                  height: 36,
+                  borderRadius: 9999,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  px: 1.5,
+                  color: 'text.primary',
+                  bgcolor: 'transparent',
+                  '&:hover': { bgcolor: 'action.hover' }
+                }}
+              >
+                {t(selectedServiceOption.labelKey)}
+              </Button>
+            </InputAdornment>
+          ),
+          endAdornment: (
+            <InputAdornment position="end">
+              {Boolean(query) && (
+                <IconButton size="small" onClick={handleClearSearch} title={t('search.clear')} sx={{ mr: 0.5, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                  <X size={18} />
+                </IconButton>
+              )}
+              <IconButton
+                size="small"
+                edge="end"
+                disabled={loadingInitial || !String(query || '').trim()}
+                onClick={handleSubmit}
+                sx={(muiTheme) => ({
+                  width: 36,
+                  height: 36,
+                  bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                  color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                  borderRadius: '50%',
+                  boxShadow: muiTheme.palette.mode === 'dark'
+                    ? '0 2px 6px rgba(0,0,0,0.4)'
+                    : '0 2px 6px rgba(0,0,0,0.25)',
+                  '&:hover': {
+                    bgcolor: muiTheme.palette.mode === 'dark' ? '#f5f5f5' : '#111111',
+                  },
+                  '&.Mui-disabled': {
+                    opacity: 0.55,
+                    color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
+                    bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                  },
+                })}
+              >
+                <SearchIcon size={18} />
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+        inputProps={{
+          'aria-label': t('search.queryAria'),
+        }}
+      />
+    </>
+  )
+
   return (
-    <Box ref={scrollRootRef} sx={{ height: '100%', overflowY: 'auto' }}>
+    <SimpleBarScrollArea
+      sx={{ height: '100%', opacity: hasMeasured ? 1 : 0, transition: 'opacity 0.2s' }}
+      scrollableNodeProps={{ ref: scrollRootRef }}
+    >
       <Container maxWidth="xl" sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', px: { xs: 2, sm: 3 } }}>
         <Box sx={{
-          transition: 'height 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-          height: isSearched ? 0 : { xs: '30vh', md: '35vh' },
+          transition: enableAnimation ? 'height 0.4s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+          height: isSearched ? 0 : `${calculatedSpacer}px`,
           flexShrink: 0
         }} />
 
@@ -267,157 +446,31 @@ export default function SearchPage({ onOpenDownloader }) {
           width: '100%',
           maxWidth: isSearched ? 1000 : 780,
           mx: 'auto',
-          transition: 'max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-          pb: 8
+          transition: enableAnimation ? 'max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+          pb: isSearched ? 8 : 0
         }}>
           <Box sx={{
             position: isSearched ? 'sticky' : 'relative',
             top: 0,
             zIndex: 10,
             pt: isSearched ? { xs: 2, md: 3 } : 0,
-            pb: isSearched ? 2 : 2,
-            bgcolor: isSearched ? (theme) => theme.palette.mode === 'dark' ? '#212121' : '#ffffff' : 'transparent',
-            transition: 'background-color 0.3s, padding 0.3s',
-            mb: isSearched ? 2 : 2
+            pb: isSearched ? 2 : 0,
+            transition: enableAnimation ? 'padding 0.3s' : 'none',
+            mb: isSearched ? 2 : 0,
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: '44px',
+              bgcolor: (theme) => theme.palette.mode === 'dark' ? '#212121' : '#ffffff',
+              opacity: isSearched ? 1 : 0,
+              transition: enableAnimation ? 'opacity 0.3s' : 'none',
+              zIndex: -1,
+            }
           }}>
-             <Menu
-               anchorEl={serviceMenuAnchor}
-               open={Boolean(serviceMenuAnchor)}
-               onClose={() => setServiceMenuAnchor(null)}
-               transformOrigin={{ horizontal: 'left', vertical: 'top' }}
-               anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
-               slotProps={{ paper: { sx: { width: 220, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
-             >
-               {SEARCH_SERVICE_OPTIONS.map((option) => (
-                 <MenuItem
-                   key={option.value}
-                   selected={selectedService === option.value}
-                   onClick={() => {
-                     setSelectedService(option.value)
-                     setServiceMenuAnchor(null)
-                   }}
-                   sx={{ py: 1.5, borderRadius: 2, mx: 1 }}
-                 >
-                   <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.5 }}>
-                     <ServiceIcon serviceKey={option.iconKey} size={20} />
-                     <Typography variant="body2" fontWeight={selectedService === option.value ? 800 : 500}>
-                       {t(option.labelKey)}
-                     </Typography>
-                   </Box>
-                 </MenuItem>
-               ))}
-             </Menu>
-
-             <TextField
-               value={query}
-               fullWidth
-               placeholder={t('search.queryPlaceholder')}
-               onChange={(event) => setQuery(event.target.value)}
-               onKeyDown={(event) => {
-                 if (event.key === 'Enter') {
-                   event.preventDefault()
-                   handleSubmit()
-                 }
-               }}
-               sx={(muiTheme) => ({
-                 '& .MuiOutlinedInput-root': {
-                   position: 'relative',
-                   borderRadius: 9999,
-                   backgroundColor: muiTheme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
-                   outline: 'none',
-                   '&:focus-within': {
-                     outline: 'none',
-                     boxShadow: 'none',
-                   },
-                   '& fieldset': {
-                     borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-                     borderWidth: '1px !important',
-                   },
-                   '&:hover fieldset': {
-                     borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-                   },
-                   '&.Mui-focused fieldset': {
-                     borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-                     borderWidth: '1px !important',
-                   },
-                   boxShadow: muiTheme.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
-                   transition: 'box-shadow 0.3s, border-color 0.3s'
-                 },
-                 '& .MuiOutlinedInput-input': {
-                   paddingLeft: '4px',
-                   paddingRight: '16px',
-                   color: muiTheme.palette.text.primary,
-                   fontWeight: 700,
-                   outline: 'none',
-                   py: 1.75,
-                   fontSize: '1rem',
-                 },
-                 '& .MuiOutlinedInput-input::placeholder': {
-                   color: muiTheme.palette.text.secondary,
-                   fontWeight: 700,
-                 },
-               })}
-               InputProps={{
-                 startAdornment: (
-                   <InputAdornment position="start" sx={{ ml: 0.5, mr: 0.5 }}>
-                     <Button
-                       size="small"
-                       onClick={(e) => setServiceMenuAnchor(e.currentTarget)}
-                       startIcon={<ServiceIcon serviceKey={selectedServiceOption.iconKey} size={18} />}
-                       endIcon={<ChevronDown size={14} />}
-                       sx={{
-                         borderRadius: 9999,
-                         textTransform: 'none',
-                         fontWeight: 700,
-                         px: 1.5,
-                         py: 0.5,
-                         color: 'text.primary',
-                         bgcolor: 'transparent',
-                         '&:hover': { bgcolor: 'action.hover' }
-                       }}
-                     >
-                       {t(selectedServiceOption.labelKey)}
-                     </Button>
-                   </InputAdornment>
-                 ),
-                 endAdornment: (
-                   <InputAdornment position="end" sx={{ mr: '-8px' }}>
-                     {isSearched && (
-                       <IconButton size="small" onClick={handleClearSearch} title={t('search.clear')} sx={{ mr: 0.5, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                         <X size={18} />
-                       </IconButton>
-                     )}
-                     <Box sx={{
-                       bgcolor: (muiTheme) => muiTheme.palette.mode === 'dark' ? '#e2e2e2' : '#222222',
-                       color: (muiTheme) => muiTheme.palette.mode === 'dark' ? '#111' : '#fff',
-                       borderRadius: 9999,
-                       width: 38,
-                       height: 38,
-                       display: 'flex',
-                       alignItems: 'center',
-                       justifyContent: 'center',
-                       cursor: (loadingInitial || !String(query || '').trim()) ? 'default' : 'pointer',
-                       opacity: (loadingInitial || !String(query || '').trim()) ? 0.5 : 1,
-                       transition: 'opacity 0.2s, background-color 0.2s',
-                       '&:hover': {
-                         bgcolor: (muiTheme) => (loadingInitial || !String(query || '').trim()) 
-                           ? (muiTheme.palette.mode === 'dark' ? '#e2e2e2' : '#222222') 
-                           : (muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000')
-                       }
-                     }}
-                     onClick={() => {
-                        if (loadingInitial || !String(query || '').trim()) return;
-                        handleSubmit();
-                     }}>
-                       <SearchIcon size={18} />
-                     </Box>
-                   </InputAdornment>
-                 ),
-               }}
-               inputProps={{
-                 'aria-label': t('search.queryAria'),
-               }}
-             />
+            {searchBarJsx}
           </Box>
 
           {Boolean(lastQuery) && !loadingInitial && !errorMessage && results.length > 0 && (
@@ -541,6 +594,6 @@ export default function SearchPage({ onOpenDownloader }) {
           )}
         </Box>
       </Container>
-    </Box>
+    </SimpleBarScrollArea>
   )
 }

@@ -13,6 +13,7 @@ import { Check, Copy, ExternalLink, Heart, Wallet } from 'lucide-react'
 import { useTheme } from '@mui/material/styles'
 import QRCode from 'qrcode'
 import { useI18n } from '../providers/I18nProvider'
+import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
 
 const COFFEE_URL = 'https://buymeacoffee.com/michaelsant0s'
 const DONATION_OPTIONS = [
@@ -109,7 +110,7 @@ export default function SupportPage() {
   }
 
   return (
-    <Box sx={{ height: '100%', overflowY: 'auto' }}>
+    <SimpleBarScrollArea sx={{ height: '100%' }}>
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Grid container spacing={2.5}>
           <Grid item xs={12}>
@@ -266,6 +267,6 @@ export default function SupportPage() {
           })}
         </Grid>
       </Container>
-    </Box>
+    </SimpleBarScrollArea>
   )
 }

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Box, Typography } from '@mui/material'
 import { Check, ChevronDown } from 'lucide-react'
 import { useI18n } from '../../providers/I18nProvider'
+import SimpleBarScrollArea from '../SimpleBarScrollArea'
 
 /**
  * Custom Select Dropdown Component
@@ -167,91 +168,96 @@ export default function CustomSelect({
               bottom: menuPos.bottom !== undefined ? `${menuPos.bottom}px` : 'auto',
               left: `${menuPos.left}px`,
               width: `${menuPos.width}px`,
-              maxHeight: `${menuPos.maxHeight}px`,
-              overflowY: 'auto',
               backgroundColor: isDark ? '#1b1b1b' : '#f5f5f5',
               border: `1px solid ${isDark ? '#333333' : '#c0c0c0'}`,
               borderRadius: '12px',
               zIndex: 1600,
+              overflow: 'hidden',
               boxShadow: isDark
                 ? '0 10px 40px -10px rgba(0,0,0,0.6)'
                 : '0 10px 30px -10px rgba(0,0,0,0.2)',
             }}
           >
-            {options.map((option) => {
-              const isSelected = option.value === value
-              return (
-                <Box
-                  key={option.value}
-                  onClick={() => {
-                    onChange(option.value)
-                    setIsOpen(false)
-                  }}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    cursor: 'pointer',
-                    backgroundColor: isSelected
-                      ? (isDark ? '#272727' : '#e0e0e0')
-                      : 'transparent',
-                    transition: 'background-color 150ms ease',
-                    '&:hover': {
-                      backgroundColor: isDark ? '#272727' : '#e0e0e0',
-                    },
-                    '&:first-of-type': {
-                      borderRadius: '14px 14px 0 0',
-                    },
-                    '&:last-of-type': {
-                      borderRadius: '0 0 14px 14px',
-                    },
-                    '&:only-of-type': {
-                      borderRadius: '14px',
-                    },
-                  }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography
-                      sx={{
-                        fontSize: '16px',
-                        fontWeight: isSelected ? 700 : 600,
-                        color: isDark ? '#ffffff' : '#000000',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {option.label}
-                    </Typography>
-                    {option.description && (
+            <SimpleBarScrollArea
+              fillContainer={false}
+              hideHorizontal
+              sx={{ maxHeight: `${menuPos.maxHeight}px` }}
+            >
+              {options.map((option) => {
+                const isSelected = option.value === value
+                return (
+                  <Box
+                    key={option.value}
+                    onClick={() => {
+                      onChange(option.value)
+                      setIsOpen(false)
+                    }}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      cursor: 'pointer',
+                      backgroundColor: isSelected
+                        ? (isDark ? '#272727' : '#e0e0e0')
+                        : 'transparent',
+                      transition: 'background-color 150ms ease',
+                      '&:hover': {
+                        backgroundColor: isDark ? '#272727' : '#e0e0e0',
+                      },
+                      '&:first-of-type': {
+                        borderRadius: '14px 14px 0 0',
+                      },
+                      '&:last-of-type': {
+                        borderRadius: '0 0 14px 14px',
+                      },
+                      '&:only-of-type': {
+                        borderRadius: '14px',
+                      },
+                    }}
+                  >
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography
                         sx={{
-                          fontSize: '13px',
-                          color: isDark ? '#888888' : '#666666',
-                          mt: 0.25,
+                          fontSize: '16px',
+                          fontWeight: isSelected ? 700 : 600,
+                          color: isDark ? '#ffffff' : '#000000',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {option.description}
+                        {option.label}
                       </Typography>
+                      {option.description && (
+                        <Typography
+                          sx={{
+                            fontSize: '13px',
+                            color: isDark ? '#888888' : '#666666',
+                            mt: 0.25,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {option.description}
+                        </Typography>
+                      )}
+                    </Box>
+                    {isSelected && (
+                      <Check
+                        size={20}
+                        style={{
+                          color: isDark ? '#ffffff' : '#000000',
+                          marginLeft: '8px',
+                          flexShrink: 0,
+                        }}
+                      />
                     )}
                   </Box>
-                  {isSelected && (
-                    <Check
-                      size={20}
-                      style={{
-                        color: isDark ? '#ffffff' : '#000000',
-                        marginLeft: '8px',
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
-                </Box>
-              )
-            })}
+                )
+              })}
+            </SimpleBarScrollArea>
           </Box>
         ),
         document.body

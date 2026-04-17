@@ -4,6 +4,7 @@ import { RefreshCw } from 'lucide-react'
 import SettingRow from './SettingRow'
 import SettingGroup from './SettingGroup'
 import YtDlpCookieSettingsSection from './YtDlpCookieSettingsSection'
+import SimpleBarScrollArea from '../SimpleBarScrollArea'
 
 export default function YtDlpSettingsSection({
   ytInfo,
@@ -51,8 +52,10 @@ export default function YtDlpSettingsSection({
       
       {updateInProgress && (
         <SettingGroup title={t('settings.updateLogs')} sx={{ mb: 4 }}>
-          <Box
-            ref={logRef}
+          <SimpleBarScrollArea
+            fillContainer={false}
+            hideHorizontal
+            scrollableNodeProps={{ ref: logRef }}
             sx={(th) => ({
               fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
               fontSize: 12,
@@ -60,7 +63,6 @@ export default function YtDlpSettingsSection({
               color: '#d4d4d4',
               bgcolor: 'transparent',
               height: 240,
-              overflow: 'auto',
               whiteSpace: 'pre-wrap',
               lineHeight: 1.6,
             })}
@@ -82,7 +84,7 @@ export default function YtDlpSettingsSection({
                 </div>
               ))
             )}
-          </Box>
+          </SimpleBarScrollArea>
         </SettingGroup>
       )}
 

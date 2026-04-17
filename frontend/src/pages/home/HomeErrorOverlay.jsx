@@ -8,6 +8,7 @@ import {
 } from '@mui/material'
 import { AlertTriangle, X } from 'lucide-react'
 import { formatYtDlpErrorMessage, shouldSuggestCookieSettings } from '../../utils/ytDlpErrorPresentation'
+import SimpleBarScrollArea from '../../components/SimpleBarScrollArea'
 
 export default function HomeErrorOverlay({
   fetchError,
@@ -69,11 +70,11 @@ export default function HomeErrorOverlay({
             </IconButton>
           </Box>
 
-          <Box
+          <SimpleBarScrollArea
+            fillContainer={false}
+            hideHorizontal
             sx={(muiTheme) => ({
               maxHeight: 160,
-              overflowY: 'auto',
-              overflowX: 'hidden',
               bgcolor: muiTheme.palette.mode === 'dark' ? '#111' : '#f5f5f5',
             })}
           >
@@ -89,7 +90,7 @@ export default function HomeErrorOverlay({
             })}>
               {message}
             </Typography>
-          </Box>
+          </SimpleBarScrollArea>
 
           <Box sx={{ px: 2, py: 2 }}>
             {showCookieSettingsHint && (

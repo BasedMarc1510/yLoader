@@ -3,6 +3,7 @@ import { Box, Typography, Button, Switch } from '@mui/material'
 import { RefreshCw } from 'lucide-react'
 import SettingRow from './SettingRow'
 import SettingGroup from './SettingGroup'
+import SimpleBarScrollArea from '../SimpleBarScrollArea'
 
 export default function FfmpegSettingsSection({
   ffmpegInfo,
@@ -35,8 +36,10 @@ export default function FfmpegSettingsSection({
       
       {updateInProgress && (
         <SettingGroup title={t('settings.updateLogs')} sx={{ mb: 4 }}>
-          <Box
-            ref={logRef}
+          <SimpleBarScrollArea
+            fillContainer={false}
+            hideHorizontal
+            scrollableNodeProps={{ ref: logRef }}
             sx={(th) => ({
               fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
               fontSize: 12,
@@ -44,7 +47,6 @@ export default function FfmpegSettingsSection({
               color: '#d4d4d4',
               bgcolor: 'transparent',
               height: 240,
-              overflow: 'auto',
               whiteSpace: 'pre-wrap',
               lineHeight: 1.6,
             })}
@@ -66,7 +68,7 @@ export default function FfmpegSettingsSection({
                 </div>
               ))
             )}
-          </Box>
+          </SimpleBarScrollArea>
         </SettingGroup>
       )}
 

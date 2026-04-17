@@ -308,12 +308,14 @@
 .yl-window-controls {
   display: flex;
   align-items: center;
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
   height: 32px;
   margin-left: 0;
-  z-index: 40;
+  z-index: 1700;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 
 .yl-window-btn {
@@ -324,7 +326,15 @@
   border-radius: 0 !important;
   color: var(--yl-muted-foreground, inherit);
   cursor: default !important;
+  overflow: hidden;
   transition: none !important;
+}
+
+.yl-window-btn .MuiTouchRipple-root,
+.yl-window-btn .MuiTouchRipple-ripple,
+.yl-window-btn .MuiTouchRipple-child,
+.yl-window-btn .MuiTouchRipple-childLeaving {
+  border-radius: 0 !important;
 }
 
 .yl-window-btn:hover {

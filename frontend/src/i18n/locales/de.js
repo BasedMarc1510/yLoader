@@ -36,7 +36,7 @@ const de = {
   search: {
     title: 'Suche',
     subtitle: 'Wähle einen Dienst, suche Inhalte und öffne ein ausgewähltes Ergebnis im Downloader.',
-    queryPlaceholder: 'Videos, Tracks suchen oder direkte URL einfügen...',
+    queryPlaceholder: 'Videos, Tracks oder Künstler suchen...',
     queryAria: 'Suchbegriff oder direkte URL',
     serviceAria: 'Suchdienst',
     resultCountLabel: 'Ergebnisse',
@@ -52,6 +52,7 @@ const de = {
     unknownUploader: 'Unbekannter Uploader',
     errorGeneric: 'Suche fehlgeschlagen',
     errorWithMessage: 'Suche fehlgeschlagen: {message}',
+    clear: 'Leeren',
     services: {
       youtube: 'YouTube',
       youtubeMusic: 'YouTube Music',

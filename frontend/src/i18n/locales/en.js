@@ -36,7 +36,7 @@ const en = {
   search: {
     title: 'Search',
     subtitle: 'Choose a service, search content, and open a selected result in the downloader.',
-    queryPlaceholder: 'Search videos, tracks, or paste a direct URL...',
+    queryPlaceholder: 'Search videos, tracks, or artists...',
     queryAria: 'Search query or direct URL',
     serviceAria: 'Search service',
     resultCountLabel: 'Results',
@@ -52,6 +52,7 @@ const en = {
     unknownUploader: 'Unknown uploader',
     errorGeneric: 'Search failed',
     errorWithMessage: 'Search failed: {message}',
+    clear: 'Clear',
     services: {
       youtube: 'YouTube',
       youtubeMusic: 'YouTube Music',
