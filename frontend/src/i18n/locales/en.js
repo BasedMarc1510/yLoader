@@ -125,6 +125,8 @@ const en = {
   },
   home: {
     invalidUrlNotification: 'Please enter a valid link.',
+    autoDownloadCompleted: 'Auto download completed: {filename}',
+    autoDownloadCompletedNoFilename: 'Auto download completed.',
     quickActions: {
       openAria: 'Open quick actions',
       multiDownload: 'Multi-download',
@@ -356,6 +358,8 @@ const en = {
     cutEnabledDescVideo: 'Remove sections from video or keep only selected parts',
     cutModeRemove: 'Remove selection',
     cutModeKeep: 'Keep selection',
+    cutModeTipAudio: 'Tip: You can still edit the audio after download.',
+    cutModeTipVideo: 'Tip: You can still edit the video after download.',
     cutRemoveRange: 'Remove range',
     cutKeepRange: 'Keep range',
     cutSegmentLabel: 'Cut {n}',

@@ -30,7 +30,9 @@ export default function CutSegmentsList({
   if (cuts.length === 0) return null
 
   const maxSeconds = Math.max(dur || 0, 1)
-  const otherRemovalColor = isDark ? 'rgba(228,80,80,0.82)' : 'rgba(191,43,43,0.72)'
+  const otherRemovalColor = isDark ? 'rgba(255,70,70,0.96)' : 'rgba(194,35,35,0.92)'
+  const sliderRailBase = isDark ? '#393c41' : '#d8dce3'
+  const sliderTrackColor = isDark ? 'rgba(236,240,246,0.38)' : 'rgba(27,34,45,0.28)'
 
   return (
     <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${dividerColor}` }}>
@@ -50,12 +52,14 @@ export default function CutSegmentsList({
       {cuts.map((cut, idx) => {
         const strs = cutStrs[cut.id] || { startStr: formatTime(cut.start), endStr: formatTime(cut.end) }
         const others = cuts.filter((c) => c.id !== cut.id)
-        const otherRemovals = getRemovalZones(others, mode, trimStart, trimEnd)
+        const otherRemovals = others.length > 0
+          ? getRemovalZones(others, mode, trimStart, trimEnd)
+          : []
         const railGradient = buildRailGradient(
           otherRemovals,
           trimStart,
           Math.max(trimEnd, trimStart + 1),
-          railBase,
+          sliderRailBase,
           otherRemovalColor
         )
 
@@ -99,7 +103,7 @@ export default function CutSegmentsList({
                 onChange={(_, value) => handleCutSlider(cut.id, value)}
                 valueLabelDisplay="auto"
                 valueLabelFormat={(v, i) => `${i % 2 === 1 ? t('downloader.cutEnd') : t('downloader.cutStart')}: ${formatTime(v)}`}
-                sx={makeSliderSx(brandColor, railGradient, true, 0.42)}
+                sx={makeSliderSx(brandColor, railGradient, true, 0.76, sliderTrackColor)}
               />
             </Box>
 

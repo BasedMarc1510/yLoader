@@ -13,6 +13,15 @@ export default function TimeField({ label, value, onChange, onCommit, maxSeconds
   const safeMax = typeof maxSeconds === 'number' && maxSeconds > 0
     ? maxSeconds
     : Number.POSITIVE_INFINITY
+  const currentSeconds = React.useMemo(() => parseTime(value, safeMax), [value, safeMax])
+
+  const isPresetAvailable = React.useCallback((delta) => {
+    const nextSeconds = currentSeconds + delta
+    if (!Number.isFinite(nextSeconds)) return false
+    if (nextSeconds < 0) return false
+    if (nextSeconds > safeMax) return false
+    return true
+  }, [currentSeconds, safeMax])
 
   const closeMenu = () => {
     setMenuAnchorEl(null)
@@ -20,13 +29,12 @@ export default function TimeField({ label, value, onChange, onCommit, maxSeconds
 
   const handlePresetClick = (delta) => {
     if (disabled) return
+    if (!isPresetAvailable(delta)) return
 
-    const currentSeconds = parseTime(value, safeMax)
     const nextSeconds = Math.max(0, Math.min(safeMax, currentSeconds + delta))
     const nextValue = formatTime(nextSeconds)
     onChange?.(nextValue)
     onCommit?.(nextValue)
-    closeMenu()
   }
 
   return (
@@ -37,7 +45,7 @@ export default function TimeField({ label, value, onChange, onCommit, maxSeconds
       >
         {label}
       </Typography>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Box sx={{ display: 'inline-flex', alignItems: 'stretch', gap: 0 }}>
         <Box
           component="input"
           type="text"
@@ -51,14 +59,17 @@ export default function TimeField({ label, value, onChange, onCommit, maxSeconds
           sx={{
             width: 64,
             px: 1,
-            py: '4px',
+            py: 0,
+            height: 30,
             border: `1px solid ${isDark ? '#3a3a3a' : '#d0d0d0'}`,
-            borderRadius: '6px',
+            borderRight: 'none',
+            borderRadius: '6px 0 0 6px',
             bgcolor: isDark ? '#1a1a1a' : '#fff',
             color: textColor,
             fontSize: '0.82rem',
             fontFamily: 'monospace',
             textAlign: 'center',
+            lineHeight: '30px',
             outline: 'none',
             cursor: disabled ? 'default' : 'text',
             boxSizing: 'border-box',
@@ -76,12 +87,13 @@ export default function TimeField({ label, value, onChange, onCommit, maxSeconds
               onClick={(event) => setMenuAnchorEl(event.currentTarget)}
               aria-label={t('downloader.cutTimePresetAria')}
               sx={{
-                width: 22,
-                height: 22,
-                borderRadius: '6px',
+                width: 30,
+                height: 30,
+                borderRadius: '0 6px 6px 0',
+                p: 0,
                 border: `1px solid ${isDark ? '#3a3a3a' : '#d0d0d0'}`,
                 color: isDark ? '#a9a9a9' : '#666',
-                bgcolor: isDark ? '#141414' : '#f4f5f7',
+                bgcolor: isDark ? '#161616' : '#f4f5f7',
                 '&:hover': {
                   bgcolor: isDark ? '#202020' : '#eceef2',
                 },
@@ -114,9 +126,11 @@ export default function TimeField({ label, value, onChange, onCommit, maxSeconds
         >
           {TIME_PRESET_DELTAS.map((delta) => {
             const deltaText = `${delta > 0 ? '+' : ''}${delta}`
+            const isUnavailable = !isPresetAvailable(delta)
             return (
               <MenuItem
                 key={delta}
+                disabled={isUnavailable}
                 onClick={() => handlePresetClick(delta)}
                 sx={{
                   minHeight: 24,

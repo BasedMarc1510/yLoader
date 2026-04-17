@@ -142,6 +142,15 @@ export function useAutoDownload({
   const [autoDownloadProgress, setAutoDownloadProgress] = React.useState(0)
   const [autoDownloadProgressKnown, setAutoDownloadProgressKnown] = React.useState(false)
   const inFlightRef = React.useRef(false)
+  const progressResetTimerRef = React.useRef(null)
+
+  React.useEffect(() => {
+    return () => {
+      if (progressResetTimerRef.current) {
+        clearTimeout(progressResetTimerRef.current)
+      }
+    }
+  }, [])
 
   const fetchAutoDownloadSettingsFromServer = React.useCallback(async () => {
     const API_BASE = getApiBase()
@@ -166,11 +175,14 @@ export function useAutoDownload({
     setFetchError(null)
     setIsResolving(true)
     setAutoDownloadInFlight(true)
-    setAutoDownloadProgress(5)
-    setAutoDownloadProgressKnown(true)
+    setAutoDownloadProgress(0)
+    setAutoDownloadProgressKnown(false)
+    if (progressResetTimerRef.current) {
+      clearTimeout(progressResetTimerRef.current)
+      progressResetTimerRef.current = null
+    }
 
     const API_BASE = getApiBase()
-    let inputCleared = false
     let completed = false
     let ended = false
     let failed = false
@@ -183,11 +195,6 @@ export function useAutoDownload({
       const clampedPercent = Math.max(0, Math.min(100, nextPercent))
       setAutoDownloadProgress((prev) => Math.max(prev, clampedPercent))
       setAutoDownloadProgressKnown(true)
-
-      if (!inputCleared) {
-        inputCleared = true
-        clearInput()
-      }
       return true
     }
 
@@ -289,25 +296,33 @@ export function useAutoDownload({
         }
 
         if (eventName === 'complete') {
+          if (completed) return
           completed = true
           setAutoDownloadProgressKnown(true)
           setAutoDownloadProgress(100)
-          if (!inputCleared) {
-            inputCleared = true
-            clearInput()
-          }
 
           try {
             const data = structuredPayload || JSON.parse(dataStr)
-            if (!data?.filename || !data?.url) return
+            const filename = String(data?.filename || '').trim()
+            const relativeUrl = String(data?.url || '').trim()
+            if (!filename || !relativeUrl) {
+              clearInput()
+              showNotification(t('home.autoDownloadCompletedNoFilename'), 'success')
+              return
+            }
 
             const a = document.createElement('a')
-            a.href = `${API_BASE}${data.url}`
-            a.download = data.filename
+            a.href = `${API_BASE}${relativeUrl}`
+            a.download = filename
             document.body.appendChild(a)
             a.click()
             a.remove()
+
+            clearInput()
+            showNotification(t('home.autoDownloadCompleted', { filename }), 'success')
           } catch {
+            clearInput()
+            showNotification(t('home.autoDownloadCompletedNoFilename'), 'success')
             // ignore malformed complete payload
           }
           return
@@ -350,8 +365,16 @@ export function useAutoDownload({
         setFetchError({ url: target, message: t('downloader.errorDownloadFailed') })
       }
       setAutoDownloadInFlight(false)
-      setAutoDownloadProgress(0)
-      setAutoDownloadProgressKnown(false)
+      if (completed) {
+        progressResetTimerRef.current = setTimeout(() => {
+          setAutoDownloadProgress(0)
+          setAutoDownloadProgressKnown(false)
+          progressResetTimerRef.current = null
+        }, 800)
+      } else {
+        setAutoDownloadProgress(0)
+        setAutoDownloadProgressKnown(false)
+      }
       setIsResolving(false)
     }
   }, [

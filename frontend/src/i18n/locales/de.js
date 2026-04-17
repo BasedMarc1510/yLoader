@@ -125,6 +125,8 @@ const de = {
   },
   home: {
     invalidUrlNotification: 'Bitte gib einen gültigen Link ein.',
+    autoDownloadCompleted: 'Auto-Download abgeschlossen: {filename}',
+    autoDownloadCompletedNoFilename: 'Auto-Download abgeschlossen.',
     quickActions: {
       openAria: 'Schnellaktionen öffnen',
       multiDownload: 'Multi-Download',
@@ -356,6 +358,8 @@ const de = {
     cutEnabledDescVideo: 'Bereiche aus dem Video entfernen oder gezielt behalten',
     cutModeRemove: 'Markierung entfernen',
     cutModeKeep: 'Markierung behalten',
+    cutModeTipAudio: 'Tipp: Du kannst das Audio nach dem Download weiterhin bearbeiten.',
+    cutModeTipVideo: 'Tipp: Du kannst das Video nach dem Download weiterhin bearbeiten.',
     cutRemoveRange: 'Bereich entfernen',
     cutKeepRange: 'Bereich behalten',
     cutSegmentLabel: 'Schnitt {n}',

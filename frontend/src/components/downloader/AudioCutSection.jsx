@@ -1,10 +1,10 @@
 import React from 'react'
-import { Box, Slider, Typography } from '@mui/material'
-import { Plus } from 'lucide-react'
+import { Box, Menu, MenuItem, Slider, Typography } from '@mui/material'
+import { ChevronDown, Plus } from 'lucide-react'
 import { useI18n } from '../../providers/I18nProvider'
 import CutSegmentsList from './audio-cut/CutSegmentsList'
 import TimeField from './audio-cut/TimeField'
-import { makeModeButtonSx, makeSliderSx } from './audio-cut/styles'
+import { makeSliderSx } from './audio-cut/styles'
 import { buildRailGradient, formatTime, invertSegments, mergeSegments, parseTime } from './audio-cut/utils'
 
 /**
@@ -30,11 +30,12 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [enabled, setEnabledState] = React.useState(false)
-  const [mode, setModeState] = React.useState('remove') // remove | keep
+  const [mode, setModeState] = React.useState('keep') // remove | keep
   const [trimStart, setTrimStartState] = React.useState(0)
   const [trimEnd, setTrimEndState] = React.useState(maxDur)
   const [cuts, setCutsState] = React.useState([]) // [{ id, start, end }]
   const nextCutIdRef = React.useRef(1)
+  const [modeMenuAnchorEl, setModeMenuAnchorEl] = React.useState(null)
 
   // Per-field string states for the time inputs (editable before commit)
   const [trimStartStr, setTrimStartStr] = React.useState('0:00')
@@ -171,7 +172,13 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
 
   // ── Toggle ─────────────────────────────────────────────────────────────────
   const toggleEnabled = () => {
-    setEnabledState(prev => !prev)
+    setEnabledState(prev => {
+      const next = !prev
+      if (next) {
+        setModeState('keep')
+      }
+      return next
+    })
   }
 
   // ── Trim slider ────────────────────────────────────────────────────────────
@@ -279,6 +286,11 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
       ? t('downloader.cutEnabledDescVideo')
       : t('downloader.cutEnabledDescAudio')
   const rangeLabel = mode === 'keep' ? t('downloader.cutKeepRange') : t('downloader.cutRemoveRange')
+  const modeMenuOpen = Boolean(modeMenuAnchorEl)
+  const selectedModeLabel = mode === 'keep' ? t('downloader.cutModeKeep') : t('downloader.cutModeRemove')
+  const modeTipLabel = mediaType === 'video'
+    ? t('downloader.cutModeTipVideo')
+    : t('downloader.cutModeTipAudio')
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -324,20 +336,105 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
             {modeLabel}
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 0.75, mt: 0.5 }}>
-            <Box
-              onClick={() => !disabled && setModeState('remove')}
-              sx={makeModeButtonSx({ active: mode === 'remove', isDark, brandColor, disabled })}
-            >
-              {t('downloader.cutModeRemove')}
-            </Box>
-            <Box
-              onClick={() => !disabled && setModeState('keep')}
-              sx={makeModeButtonSx({ active: mode === 'keep', isDark, brandColor, disabled })}
+          <Box
+            onClick={(event) => setModeMenuAnchorEl(event.currentTarget)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                setModeMenuAnchorEl(event.currentTarget)
+              }
+            }}
+            sx={{
+              mt: 0.5,
+              height: 34,
+              borderRadius: '9px',
+              border: `1px solid ${isDark ? '#3a3a3a' : '#d0d0d0'}`,
+              bgcolor: isDark ? '#1b1b1b' : '#fff',
+              color: textColor,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              px: 1,
+              cursor: 'pointer',
+              userSelect: 'none',
+              opacity: disabled ? 0.78 : 1,
+              '&:hover': {
+                borderColor: isDark ? '#616161' : '#b4b8c0',
+                bgcolor: isDark ? '#222' : '#fafbfc',
+              },
+            }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.78rem', color: textColor }}>
+              {selectedModeLabel}
+            </Typography>
+            <ChevronDown
+              size={16}
+              style={{
+                color: isDark ? '#9aa0ad' : '#586071',
+                transform: modeMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.15s ease',
+              }}
+            />
+          </Box>
+
+          <Menu
+            anchorEl={modeMenuAnchorEl}
+            open={modeMenuOpen}
+            onClose={() => setModeMenuAnchorEl(null)}
+            transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+            PaperProps={{
+              sx: {
+                minWidth: 210,
+                borderRadius: 1,
+                border: `1px solid ${isDark ? '#373737' : '#d9dce2'}`,
+                mt: 0.25,
+                overflow: 'hidden',
+              },
+            }}
+            MenuListProps={{
+              dense: true,
+              sx: { py: 0.25 },
+            }}
+          >
+            <MenuItem
+              disabled={disabled}
+              selected={mode === 'keep'}
+              onClick={() => {
+                if (!disabled) setModeState('keep')
+                setModeMenuAnchorEl(null)
+              }}
+              sx={{ fontSize: '0.8rem', fontWeight: 600, minHeight: 30 }}
             >
               {t('downloader.cutModeKeep')}
+            </MenuItem>
+            <MenuItem
+              disabled={disabled}
+              selected={mode === 'remove'}
+              onClick={() => {
+                if (!disabled) setModeState('remove')
+                setModeMenuAnchorEl(null)
+              }}
+              sx={{ fontSize: '0.8rem', fontWeight: 600, minHeight: 30 }}
+            >
+              {t('downloader.cutModeRemove')}
+            </MenuItem>
+
+            <Box
+              sx={{
+                px: 1.25,
+                py: 0.75,
+                borderTop: `1px solid ${isDark ? '#2f2f2f' : '#eceff3'}`,
+                bgcolor: isDark ? '#171717' : '#f8fafc',
+              }}
+            >
+              <Typography variant="caption" sx={{ color: isDark ? '#aab1c0' : '#5d6677', fontSize: '0.72rem' }}>
+                {modeTipLabel}
+              </Typography>
             </Box>
-          </Box>
+          </Menu>
 
           {/* ── Keep / Trim range ── */}
           <Typography variant="caption" sx={{
