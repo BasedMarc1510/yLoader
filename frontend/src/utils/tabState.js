@@ -416,5 +416,5 @@ export function hasUrlInSearch(search) {
   if (!normalizedSearch) return false
 
   const params = new URLSearchParams(normalizedSearch)
-  return Boolean(String(params.get('url') || '').trim())
+  return Boolean(String(params.get('source') || params.get('url') || '').trim())
 }

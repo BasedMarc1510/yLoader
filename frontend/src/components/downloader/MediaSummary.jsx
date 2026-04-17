@@ -1,5 +1,6 @@
 import React from 'react'
 import { Box, Skeleton, Typography, useTheme } from '@mui/material'
+import { Link2 } from 'lucide-react'
 import { useI18n } from '../../providers/I18nProvider'
 
 export default function MediaSummary({ thumbnail, title, author, duration, url, loading = false }) {
@@ -35,7 +36,13 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
         border: t.palette.mode === 'dark' ? '1px solid transparent' : '1px solid #e2e4e8',
         cursor: interactive ? 'pointer' : 'default',
         opacity: loading ? 0.78 : 1,
-        transition: 'all 0.15s ease',
+        transition: 'none',
+        '&:hover .yl-media-thumb-overlay': interactive
+          ? { display: 'flex' }
+          : undefined,
+        '&:hover .yl-media-duration-chip': interactive
+          ? { display: 'none' }
+          : undefined,
         '&:hover': interactive
           ? {
               bgcolor: t.palette.mode === 'dark' ? '#0d0d0d' : '#ffffff',
@@ -61,6 +68,25 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
         ) : (
           <Box sx={{ width: '100%', height: '100%', bgcolor: theme.palette.mode === 'dark' ? 'grey.800' : '#e4e5e7' }} />
         )}
+
+        {interactive && (
+          <Box
+            className="yl-media-thumb-overlay"
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              display: 'none',
+              alignItems: 'center',
+              justifyContent: 'center',
+              bgcolor: 'rgba(0,0,0,0.52)',
+              color: '#fff',
+              pointerEvents: 'none',
+            }}
+          >
+            <Link2 size={20} />
+          </Box>
+        )}
+
         {loading ? (
           <Box sx={{
             position: 'absolute',
@@ -70,19 +96,22 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
             <Skeleton variant="rounded" width={46} height={18} animation="wave" sx={{ ...skeletonSx, borderRadius: 0.75 }} />
           </Box>
         ) : duration && (
-          <Box sx={{
-            position: 'absolute',
-            right: 4,
-            bottom: 4,
-            px: '6px',
-            py: '6px',
-            borderRadius: 0.75,
-            bgcolor: 'rgba(0,0,0,0.7)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            height: 'fit-content',
-            lineHeight: 1,
-          }}>
+          <Box
+            className="yl-media-duration-chip"
+            sx={{
+              position: 'absolute',
+              right: 4,
+              bottom: 4,
+              px: '6px',
+              py: '6px',
+              borderRadius: 0.75,
+              bgcolor: 'rgba(0,0,0,0.7)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              height: 'fit-content',
+              lineHeight: 1,
+            }}
+          >
             <Typography
               variant="caption"
               component="span"

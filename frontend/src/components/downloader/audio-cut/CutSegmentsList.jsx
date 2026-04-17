@@ -17,7 +17,6 @@ export default function CutSegmentsList({
   trimStart,
   trimEnd,
   railBase,
-  cutZoneColor,
   textColor,
   mutedColor,
   dividerColor,
@@ -29,6 +28,9 @@ export default function CutSegmentsList({
   t,
 }) {
   if (cuts.length === 0) return null
+
+  const maxSeconds = Math.max(dur || 0, 1)
+  const otherRemovalColor = isDark ? 'rgba(228,80,80,0.82)' : 'rgba(191,43,43,0.72)'
 
   return (
     <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${dividerColor}` }}>
@@ -54,7 +56,7 @@ export default function CutSegmentsList({
           trimStart,
           Math.max(trimEnd, trimStart + 1),
           railBase,
-          cutZoneColor
+          otherRemovalColor
         )
 
         return (
@@ -97,7 +99,7 @@ export default function CutSegmentsList({
                 onChange={(_, value) => handleCutSlider(cut.id, value)}
                 valueLabelDisplay="auto"
                 valueLabelFormat={(v, i) => `${i % 2 === 1 ? t('downloader.cutEnd') : t('downloader.cutStart')}: ${formatTime(v)}`}
-                sx={makeSliderSx(brandColor, railGradient, true)}
+                sx={makeSliderSx(brandColor, railGradient, true, 0.42)}
               />
             </Box>
 
@@ -107,6 +109,7 @@ export default function CutSegmentsList({
                 value={strs.startStr}
                 onChange={(v) => setCutStrs((prev) => ({ ...prev, [cut.id]: { ...prev[cut.id], startStr: v } }))}
                 onCommit={(v) => commitCutStart(cut.id, v)}
+                maxSeconds={maxSeconds}
                 isDark={isDark}
                 disabled={disabled || dur === 0}
                 textColor={textColor}
@@ -116,6 +119,7 @@ export default function CutSegmentsList({
                 value={strs.endStr}
                 onChange={(v) => setCutStrs((prev) => ({ ...prev, [cut.id]: { ...prev[cut.id], endStr: v } }))}
                 onCommit={(v) => commitCutEnd(cut.id, v)}
+                maxSeconds={maxSeconds}
                 isDark={isDark}
                 disabled={disabled || dur === 0}
                 textColor={textColor}

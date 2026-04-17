@@ -30,7 +30,18 @@ const ALLOWED_PATHS = new Set([
   '/support',
 ])
 
+const DOWNLOADER_SOURCE_PARAM = 'source'
+const LEGACY_DOWNLOADER_SOURCE_PARAM = 'url'
+
 export const DOWNLOADER_PATHS = new Set()
+
+function getDownloaderSourceFromParams(params) {
+  return String(
+    params.get(DOWNLOADER_SOURCE_PARAM)
+    || params.get(LEGACY_DOWNLOADER_SOURCE_PARAM)
+    || ''
+  ).trim()
+}
 
 function normalizeLegacyPath(path) {
   const normalized = String(path || '').trim()
@@ -45,7 +56,7 @@ function hasUrlInSearch(search) {
   if (!normalizedSearch) return false
 
   const params = new URLSearchParams(normalizedSearch)
-  return Boolean(String(params.get('url') || '').trim())
+  return Boolean(getDownloaderSourceFromParams(params))
 }
 
 function getServiceFromSearch(search) {
@@ -56,7 +67,7 @@ function getServiceFromSearch(search) {
   const serviceParam = normalizeServiceKey(params.get('service'))
   if (serviceParam && VALID_SERVICE_KEYS.has(serviceParam)) return serviceParam
 
-  const urlParam = String(params.get('url') || '').trim()
+  const urlParam = getDownloaderSourceFromParams(params)
   if (!urlParam) return null
   return detectService(urlParam) || GENERIC_SERVICE_KEY
 }
@@ -70,7 +81,27 @@ export function normalizeTabSearch(search) {
   const raw = String(search || '').trim()
   if (!raw) return ''
   const prefixed = raw.startsWith('?') ? raw : `?${raw}`
-  return prefixed.slice(0, 1024)
+  const normalized = prefixed.slice(0, 1024)
+
+  if (!normalized.includes(`${LEGACY_DOWNLOADER_SOURCE_PARAM}=`)) {
+    return normalized
+  }
+
+  try {
+    const params = new URLSearchParams(normalized)
+    const sourceParam = String(params.get(DOWNLOADER_SOURCE_PARAM) || '').trim()
+    const legacySourceParam = String(params.get(LEGACY_DOWNLOADER_SOURCE_PARAM) || '').trim()
+
+    if (legacySourceParam && !sourceParam) {
+      params.set(DOWNLOADER_SOURCE_PARAM, legacySourceParam)
+    }
+
+    params.delete(LEGACY_DOWNLOADER_SOURCE_PARAM)
+    const serialized = params.toString()
+    return serialized ? `?${serialized}` : ''
+  } catch {
+    return normalized
+  }
 }
 
 export function isDownloaderPath(path) {

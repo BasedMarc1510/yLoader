@@ -233,7 +233,7 @@ export function useTabsController({ t }) {
 
     const params = new URLSearchParams()
     params.set('service', detected)
-    if (trimmedUrl) params.set('url', trimmedUrl)
+    if (trimmedUrl) params.set('source', trimmedUrl)
     if (options?.prefetched) params.set('prefetch', '1')
     if (options?.autostart) params.set('autostart', options.autostart)
 

@@ -87,21 +87,9 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
         return { ...c, start, end }
       })
       .filter(c => c.end > c.start)
-      .sort((a, b) => a.start - b.start)
+      .sort((a, b) => (a.start - b.start) || (a.end - b.end))
 
-    const nonOverlapping = []
-    for (const cut of sorted) {
-      const prev = nonOverlapping[nonOverlapping.length - 1]
-      if (!prev) {
-        nonOverlapping.push(cut)
-        continue
-      }
-      const shiftedStart = Math.max(cut.start, prev.end)
-      if (cut.end <= shiftedStart) continue
-      nonOverlapping.push({ ...cut, start: shiftedStart })
-    }
-
-    return nonOverlapping
+    return sorted
   }, [])
 
   const getRemovalZones = React.useCallback((segments, currentMode, ts, te) => {
@@ -127,9 +115,14 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     [cuts, trimStart, trimEnd, clampCutsToTrim]
   )
 
+  const mergedSelectedSegments = React.useMemo(
+    () => mergeSegments(normalizedCuts),
+    [normalizedCuts]
+  )
+
   const computedRemovals = React.useMemo(
-    () => getRemovalZones(normalizedCuts, mode, trimStart, trimEnd),
-    [normalizedCuts, mode, trimStart, trimEnd, getRemovalZones]
+    () => getRemovalZones(mergedSelectedSegments, mode, trimStart, trimEnd),
+    [mergedSelectedSegments, mode, trimStart, trimEnd, getRemovalZones]
   )
 
   const payload = React.useMemo(() => ({
@@ -137,9 +130,9 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     mode,
     trimStart,
     trimEnd,
-    segments: normalizedCuts.map(c => ({ start: c.start, end: c.end })),
+    segments: mergedSelectedSegments.map(c => ({ start: c.start, end: c.end })),
     removals: computedRemovals,
-  }), [enabled, mode, trimStart, trimEnd, normalizedCuts, computedRemovals])
+  }), [enabled, mode, trimStart, trimEnd, mergedSelectedSegments, computedRemovals])
 
   React.useEffect(() => {
     onChange?.(payload)
@@ -161,17 +154,13 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
   }, [cuts, trimStart, trimEnd, clampCutsToTrim, applyCuts])
 
   const updateCutById = (id, updater) => {
-    const idx = cuts.findIndex(c => c.id === id)
-    if (idx === -1) return
+    const current = cuts.find(c => c.id === id)
+    if (!current) return
 
-    const lowerBound = idx > 0 ? cuts[idx - 1].end : trimStart
-    const upperBound = idx < cuts.length - 1 ? cuts[idx + 1].start : trimEnd
-
-    const current = cuts[idx]
-    const next = updater(current, { lowerBound, upperBound })
-
-    const clampedStart = Math.max(lowerBound, Math.min(next.start, upperBound - 1))
-    const clampedEnd = Math.max(clampedStart + 1, Math.min(next.end, upperBound))
+    const next = updater(current, { trimStart, trimEnd })
+    const safeTrimEnd = Math.max(trimEnd, trimStart + 1)
+    const clampedStart = Math.max(trimStart, Math.min(next.start, safeTrimEnd - 1))
+    const clampedEnd = Math.max(clampedStart + 1, Math.min(next.end, safeTrimEnd))
 
     const updatedCuts = cuts.map(c => {
       if (c.id !== id) return c
@@ -225,24 +214,25 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
 
   const commitCutStart = (id, str) => {
     const v = parseTime(str, maxDur)
-    updateCutById(id, (current, { lowerBound, upperBound }) => ({
-      start: Math.max(lowerBound, Math.min(v, upperBound - 1)),
+    updateCutById(id, (current, { trimStart: localTrimStart }) => ({
+      start: Math.max(localTrimStart, Math.min(v, current.end - 1)),
       end: current.end,
     }))
   }
 
   const commitCutEnd = (id, str) => {
     const v = parseTime(str, maxDur)
-    updateCutById(id, (current, { lowerBound, upperBound }) => ({
+    updateCutById(id, (current, { trimEnd: localTrimEnd }) => ({
       start: current.start,
-      end: Math.max(lowerBound + 1, Math.min(v, upperBound)),
+      end: Math.max(current.start + 1, Math.min(v, localTrimEnd)),
     }))
   }
 
   const getLargestGap = React.useCallback(() => {
+    const covered = mergeSegments(clampCutsToTrim(cuts, trimStart, trimEnd))
     const gaps = []
     let prev = trimStart
-    for (const c of cuts) {
+    for (const c of covered) {
       if (c.start > prev) gaps.push({ from: prev, to: c.start })
       prev = c.end
     }
@@ -252,7 +242,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
       (a, b) => (b.to - b.from > a.to - a.from ? b : a),
       { from: trimStart, to: trimStart }
     )
-  }, [cuts, trimStart, trimEnd])
+  }, [cuts, trimStart, trimEnd, clampCutsToTrim])
 
   const canAddCut = React.useMemo(() => {
     if (dur === 0) return false
@@ -288,6 +278,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     mediaType === 'video'
       ? t('downloader.cutEnabledDescVideo')
       : t('downloader.cutEnabledDescAudio')
+  const rangeLabel = mode === 'keep' ? t('downloader.cutKeepRange') : t('downloader.cutRemoveRange')
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -355,7 +346,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
             mt: 1.5,
             display: 'inline-block',
           }}>
-            {t('downloader.cutKeepRange')}
+            {rangeLabel}
           </Typography>
 
           <Box sx={{ px: 0.5, mt: 0.5 }}>
@@ -377,6 +368,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
               value={trimStartStr}
               onChange={setTrimStartStr}
               onCommit={commitTrimStart}
+              maxSeconds={maxDur}
               isDark={isDark}
               disabled={disabled || dur === 0}
               textColor={textColor}
@@ -386,6 +378,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
               value={trimEndStr}
               onChange={setTrimEndStr}
               onCommit={commitTrimEnd}
+              maxSeconds={maxDur}
               isDark={isDark}
               disabled={disabled || dur === 0}
               textColor={textColor}
@@ -405,7 +398,6 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
             trimStart={trimStart}
             trimEnd={trimEnd}
             railBase={railBase}
-            cutZoneColor={cutZoneColor}
             textColor={textColor}
             mutedColor={mutedColor}
             dividerColor={dividerColor}

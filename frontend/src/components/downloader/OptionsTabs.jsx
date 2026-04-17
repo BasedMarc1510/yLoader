@@ -123,6 +123,7 @@ export default function OptionsTabs({
   const tabHoverBg = isDark ? tabActiveBg : 'rgba(255,255,255,0.55)'
   const tabTextColor = isDark ? '#ffffff' : '#111111'
   const tabActiveShadow = isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)'
+  const optionsSurfaceColor = isDark ? '#0a0a0a' : '#f9fafc'
   const skeletonSx = React.useMemo(() => ({
     bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
     '&::after': {
@@ -183,7 +184,7 @@ export default function OptionsTabs({
           margin: theme.spacing(1.5, 1.5, 0, 1.5),
           padding: theme.spacing(1.5),
           borderRadius: '12px 12px 0 0',
-          bgcolor: isDark ? '#0a0a0a' : '#eef0f4',
+          bgcolor: optionsSurfaceColor,
           boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
           border: isDark ? 'none' : '1px solid #e2e4e8',
           borderBottom: 'none',
@@ -286,7 +287,7 @@ export default function OptionsTabs({
           margin: theme.spacing(0, 1.5, 1.5, 1.5),
           padding: theme.spacing(0.75, 1.5, 1.5, 1.5),
           borderRadius: '0 0 12px 12px',
-          bgcolor: isDark ? '#0a0a0a' : '#eef0f4',
+          bgcolor: optionsSurfaceColor,
           boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
           border: isDark ? 'none' : '1px solid #e2e4e8',
           borderTop: 'none',

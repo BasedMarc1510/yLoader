@@ -1,4 +1,4 @@
-export const makeSliderSx = (brandColor, railGradient, trackVisible = true) => ({
+export const makeSliderSx = (brandColor, railGradient, trackVisible = true, trackOpacity = 0.85) => ({
   color: brandColor,
   py: '10px',
   '& .MuiSlider-thumb': {
@@ -9,7 +9,7 @@ export const makeSliderSx = (brandColor, railGradient, trackVisible = true) => (
     '&.Mui-active': { boxShadow: `0 0 0 10px ${brandColor}26` },
   },
   '& .MuiSlider-track': trackVisible
-    ? { bgcolor: brandColor, opacity: 0.85, height: 4, border: 'none' }
+    ? { bgcolor: brandColor, opacity: trackOpacity, height: 4, border: 'none' }
     : { display: 'none' },
   '& .MuiSlider-rail': {
     background: railGradient,

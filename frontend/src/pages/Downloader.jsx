@@ -29,7 +29,7 @@ export default function Downloader({
 
   const params = React.useMemo(() => new URLSearchParams(routeSearch), [routeSearch])
   const serviceParam = React.useMemo(() => normalizeServiceKey(params.get('service')), [params])
-  const queryUrl = React.useMemo(() => String(params.get('url') || '').trim(), [params])
+  const queryUrl = React.useMemo(() => String(params.get('source') || params.get('url') || '').trim(), [params])
   const autostartFormat = React.useMemo(() => String(params.get('autostart') || '').trim().toLowerCase(), [params])
   const serviceFromQuery = services[serviceParam] ? serviceParam : null
   const resolvedServiceKey = serviceFromQuery || detectService(queryUrl) || serviceKey || 'generic'
@@ -51,11 +51,11 @@ export default function Downloader({
     setIdx(0)
   }, [resolvedServiceKey])
 
-  // Read ?url= param and prefill
+  // Read source URL param and prefill.
   React.useEffect(() => {
     if (!tabsReady) return
 
-    const urlParam = params.get('url')
+    const urlParam = params.get('source') || params.get('url')
     if (urlParam && typeof urlParam === 'string') {
       const normalizedUrlParam = String(urlParam || '').trim()
       const cachedSourceUrl = String(runtimeState?.sourceUrl || '').trim()
@@ -94,11 +94,11 @@ export default function Downloader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeSearch, routeToken, runtimeState, serviceFromQuery, serviceKey, tabsReady])
 
-  // Reset to input bar when navigating to the downloader base route (no ?url)
+  // Reset to input bar when navigating to the downloader base route (no source URL)
   // This also covers clicking the same downloader again in the sidebar.
   React.useEffect(() => {
     const params = new URLSearchParams(routeSearch)
-    const urlParam = params.get('url')
+    const urlParam = params.get('source') || params.get('url')
     if (!urlParam) {
       if (meta) setMeta(null)
       if (value) setValue('')
@@ -233,7 +233,7 @@ export default function Downloader({
     const url = fetchError?.url
     setFetchError(null)
     const retryService = detectService(url) || resolvedServiceKey || 'generic'
-    onNavigate?.(basePath, `?service=${encodeURIComponent(retryService)}&url=${encodeURIComponent(url)}`)
+    onNavigate?.(basePath, `?service=${encodeURIComponent(retryService)}&source=${encodeURIComponent(url)}`)
   }
 
   const openCookieSettings = React.useCallback(() => {
