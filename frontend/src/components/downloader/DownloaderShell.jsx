@@ -38,6 +38,7 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFe
               videoTitle={meta.title}
               videoAuthor={meta.author}
               videoUrl={meta.url}
+              videoThumbnail={meta.thumbnail}
               durationSeconds={meta.durationSeconds}
               serviceKey={serviceKey}
               initialFormats={meta.preloadedFormats}

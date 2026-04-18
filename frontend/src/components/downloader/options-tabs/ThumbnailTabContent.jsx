@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box, Button, Typography } from '@mui/material'
+import { Box, Button, Skeleton, Typography } from '@mui/material'
 import { Download } from 'lucide-react'
 import CombinedFilenameInput from '../CombinedFilenameInput'
 import CustomSelect from '../CustomSelect'
@@ -56,14 +56,24 @@ export default function ThumbnailTabContent({
   return (
     <Box>
       <Box sx={{ mb: 1.5 }}>
-        <CustomSelect
-          value={selectedThumbValue}
-          onChange={setSelectedThumbValue}
-          options={thumbOptions}
-          label={i18nT('downloader.thumbSize')}
-          isDark={isDark}
-          disabled={thumbOptions.length === 0}
-        />
+        {loadingThumbs ? (
+          <Skeleton
+            variant="rounded"
+            animation="wave"
+            width="100%"
+            height={46}
+            sx={{ borderRadius: 1.25, bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
+          />
+        ) : (
+          <CustomSelect
+            value={selectedThumbValue}
+            onChange={setSelectedThumbValue}
+            options={thumbOptions}
+            label={i18nT('downloader.thumbSize')}
+            isDark={isDark}
+            disabled={thumbOptions.length === 0}
+          />
+        )}
       </Box>
 
       <Box
@@ -76,7 +86,17 @@ export default function ThumbnailTabContent({
           position: 'relative',
         }}
       >
-        {selectedThumb ? (
+        {loadingThumbs ? (
+          <Box sx={{ p: 1.5 }}>
+            <Skeleton
+              variant="rounded"
+              animation="wave"
+              width="100%"
+              height={220}
+              sx={{ borderRadius: 1.5, bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
+            />
+          </Box>
+        ) : selectedThumb ? (
           <Box component="img" src={selectedThumb.url} alt={videoTitle || i18nT('downloader.thumbnailAltFallback')} sx={{ width: '100%', display: 'block' }} />
         ) : (
           <Box sx={{ p: 2, textAlign: 'center' }}>
@@ -119,7 +139,7 @@ export default function ThumbnailTabContent({
           ]}
           placeholder={i18nT('downloader.filename')}
           isDark={isDark}
-          disabled={downloading || thumbOptions.length === 0}
+          disabled={downloading || loadingThumbs || thumbOptions.length === 0}
         />
       </Box>
 
@@ -127,7 +147,7 @@ export default function ThumbnailTabContent({
         fullWidth
         startIcon={<Download size={20} />}
         onClick={handleDownloadThumb}
-        disabled={!selectedThumb}
+        disabled={!selectedThumb || loadingThumbs}
         sx={{
           bgcolor: brandColor,
           borderRadius: '999px',

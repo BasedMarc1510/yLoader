@@ -43,6 +43,12 @@ export default function AudioTabContent({
   setCoverEmbedEnabled,
   coverSource,
   setCoverSource,
+  videoThumbnailUrl,
+  hasVideoThumbnail,
+  videoThumbnailChecked,
+  videoThumbnailChecking,
+  coverVideoEdit,
+  setCoverVideoEdit,
   coverUpload,
   setCoverUpload,
   coverUploadError,
@@ -278,6 +284,12 @@ export default function AudioTabContent({
           setCoverEmbedEnabled={setCoverEmbedEnabled}
           coverSource={coverSource}
           setCoverSource={setCoverSource}
+          videoThumbnailUrl={videoThumbnailUrl}
+          hasVideoThumbnail={hasVideoThumbnail}
+          videoThumbnailChecked={videoThumbnailChecked}
+          videoThumbnailChecking={videoThumbnailChecking}
+          coverVideoEdit={coverVideoEdit}
+          setCoverVideoEdit={setCoverVideoEdit}
           coverUpload={coverUpload}
           setCoverUpload={setCoverUpload}
           coverUploadError={coverUploadError}

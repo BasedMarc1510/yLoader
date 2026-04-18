@@ -47,6 +47,7 @@ export default function OptionsTabs({
   videoTitle = '',
   videoAuthor = '',
   videoUrl = '',
+  videoThumbnail = '',
   durationSeconds = null,
   serviceKey = null,
   initialFormats = null,
@@ -83,6 +84,7 @@ export default function OptionsTabs({
     videoTitle,
     videoAuthor,
     videoUrl: effectiveVideoUrl,
+    videoThumbnail,
     initialFormats: effectiveInitialFormats,
     onFetchError,
     defaultDownloadType: normalizeDownloadType(defaultDownloadType, 'video'),
@@ -112,6 +114,8 @@ export default function OptionsTabs({
     coverEmbedEnabled: data.coverEmbedEnabled,
     coverSource: data.coverSource,
     coverUpload: data.coverUpload,
+    coverVideoEdit: data.coverVideoEdit,
+    hasVideoThumbnail: data.hasVideoThumbnail,
     audioDownloadTargetSettings: data.audioDownloadTargetSettings,
     videoDownloadTargetSettings: data.videoDownloadTargetSettings,
   })
@@ -331,6 +335,12 @@ export default function OptionsTabs({
             setCoverEmbedEnabled={data.setCoverEmbedEnabled}
             coverSource={data.coverSource}
             setCoverSource={data.setCoverSource}
+            videoThumbnailUrl={data.videoThumbnailUrl}
+            hasVideoThumbnail={data.hasVideoThumbnail}
+            videoThumbnailChecked={data.videoThumbnailChecked}
+            videoThumbnailChecking={data.videoThumbnailChecking}
+            coverVideoEdit={data.coverVideoEdit}
+            setCoverVideoEdit={data.setCoverVideoEdit}
             coverUpload={data.coverUpload}
             setCoverUpload={data.setCoverUpload}
             coverUploadError={data.coverUploadError}

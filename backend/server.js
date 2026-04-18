@@ -93,6 +93,9 @@ const MAX_TAB_SEARCH_SELECTED_ENTRIES = 160
 const MAX_TAB_DOWNLOADER_AUDIO_FORMATS = 240
 const MAX_TAB_DOWNLOADER_VIDEO_FORMATS = 240
 const MAX_TAB_DOWNLOADER_THUMBNAILS = 140
+const TAB_DOWNLOADER_THUMBNAIL_MAX_OPTIONS = 7
+const TAB_DOWNLOADER_THUMBNAIL_MIN_DIMENSION = 64
+const TAB_DOWNLOADER_THUMBNAIL_TARGET_HEIGHTS = Object.freeze([2160, 1440, 1080, 720, 480, 360, 240, 180, 120, 90])
 const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
 const DOWNLOAD_CONCURRENT_OPTIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8])
@@ -1907,6 +1910,20 @@ function normalizeThumbnailDimension(value) {
   return rounded > 0 ? rounded : 0
 }
 
+function normalizeThumbnailPreference(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return Math.round(numeric)
+}
+
+function normalizeThumbnailIdentifier(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '')
+    .slice(0, 64)
+}
+
 function resolveThumbnailCandidateUrl(candidate) {
   if (candidate && typeof candidate === 'object') {
     const targetUrl = String(candidate.url || '').trim()
@@ -1915,6 +1932,211 @@ function resolveThumbnailCandidateUrl(candidate) {
 
   const rawValue = String(candidate || '').trim()
   return isValidHttpUrl(rawValue) ? rawValue : ''
+}
+
+function getThumbnailCandidateArea(candidate) {
+  return normalizeThumbnailDimension(candidate?.width) * normalizeThumbnailDimension(candidate?.height)
+}
+
+function compareThumbnailCandidatesByQuality(a, b) {
+  const areaDiff = getThumbnailCandidateArea(b) - getThumbnailCandidateArea(a)
+  if (areaDiff !== 0) return areaDiff
+
+  const heightDiff = normalizeThumbnailDimension(b?.height) - normalizeThumbnailDimension(a?.height)
+  if (heightDiff !== 0) return heightDiff
+
+  const widthDiff = normalizeThumbnailDimension(b?.width) - normalizeThumbnailDimension(a?.width)
+  if (widthDiff !== 0) return widthDiff
+
+  const prefA = normalizeThumbnailPreference(a?.preference)
+  const prefB = normalizeThumbnailPreference(b?.preference)
+  if (prefA !== prefB) {
+    return (prefB ?? -9999) - (prefA ?? -9999)
+  }
+
+  const idA = normalizeThumbnailIdentifier(a?.id)
+  const idB = normalizeThumbnailIdentifier(b?.id)
+  if (idA === idB) return 0
+  return idA.localeCompare(idB)
+}
+
+function sanitizeTabDownloaderThumbnailCandidate(value) {
+  const url = resolveThumbnailCandidateUrl(value)
+  if (!url) return null
+
+  const width = normalizeThumbnailDimension(value?.width)
+  const height = normalizeThumbnailDimension(value?.height)
+  if (
+    width > 0
+    && height > 0
+    && width < TAB_DOWNLOADER_THUMBNAIL_MIN_DIMENSION
+    && height < TAB_DOWNLOADER_THUMBNAIL_MIN_DIMENSION
+  ) {
+    return null
+  }
+
+  return {
+    url,
+    id: normalizeThumbnailIdentifier(value?.id || value?.name || ''),
+    width,
+    height,
+    preference: normalizeThumbnailPreference(value?.preference),
+  }
+}
+
+function getThumbnailCandidateKey(candidate) {
+  const width = normalizeThumbnailDimension(candidate?.width)
+  const height = normalizeThumbnailDimension(candidate?.height)
+  if (width > 0 && height > 0) return `dim:${width}x${height}`
+
+  const id = normalizeThumbnailIdentifier(candidate?.id)
+  if (id) return `id:${id}`
+
+  return `url:${resolveThumbnailCandidateUrl(candidate)}`
+}
+
+function selectRepresentativeThumbnailCandidates(candidates) {
+  const sorted = [...candidates].sort(compareThumbnailCandidatesByQuality)
+  const selected = []
+  const usedDimensionKeys = new Set()
+
+  const addCandidate = (candidate) => {
+    if (!candidate) return false
+    const width = normalizeThumbnailDimension(candidate.width)
+    const height = normalizeThumbnailDimension(candidate.height)
+    if (!(width > 0 && height > 0)) return false
+
+    const key = `${width}x${height}`
+    if (usedDimensionKeys.has(key)) return false
+    usedDimensionKeys.add(key)
+    selected.push(candidate)
+    return true
+  }
+
+  if (sorted.length > 0) {
+    addCandidate(sorted[0])
+  }
+
+  for (const targetHeight of TAB_DOWNLOADER_THUMBNAIL_TARGET_HEIGHTS) {
+    if (selected.length >= TAB_DOWNLOADER_THUMBNAIL_MAX_OPTIONS) break
+
+    let bestCandidate = null
+    let bestScore = Number.POSITIVE_INFINITY
+
+    for (const candidate of sorted) {
+      const width = normalizeThumbnailDimension(candidate.width)
+      const height = normalizeThumbnailDimension(candidate.height)
+      if (!(width > 0 && height > 0)) continue
+
+      const key = `${width}x${height}`
+      if (usedDimensionKeys.has(key)) continue
+
+      const diff = Math.abs(height - targetHeight)
+      const belowTargetPenalty = height < targetHeight ? (targetHeight * 0.08) : 0
+      const preferencePenalty = (normalizeThumbnailPreference(candidate.preference) ?? 0) < 0 ? 24 : 0
+      const score = diff + belowTargetPenalty + preferencePenalty
+
+      if (score < bestScore) {
+        bestScore = score
+        bestCandidate = candidate
+      }
+    }
+
+    if (!bestCandidate) continue
+
+    const bestHeight = normalizeThumbnailDimension(bestCandidate.height)
+    const tolerance = Math.max(80, targetHeight * 0.55)
+    if (Math.abs(bestHeight - targetHeight) > tolerance && selected.length > 0) continue
+
+    addCandidate(bestCandidate)
+  }
+
+  const smallest = [...sorted]
+    .filter((candidate) => normalizeThumbnailDimension(candidate.width) > 0 && normalizeThumbnailDimension(candidate.height) > 0)
+    .sort((a, b) => {
+      const heightDiff = normalizeThumbnailDimension(a.height) - normalizeThumbnailDimension(b.height)
+      if (heightDiff !== 0) return heightDiff
+      return normalizeThumbnailDimension(a.width) - normalizeThumbnailDimension(b.width)
+    })[0]
+  if (selected.length < TAB_DOWNLOADER_THUMBNAIL_MAX_OPTIONS) {
+    addCandidate(smallest)
+  }
+
+  for (const candidate of sorted) {
+    if (selected.length >= TAB_DOWNLOADER_THUMBNAIL_MAX_OPTIONS) break
+    addCandidate(candidate)
+  }
+
+  return selected.slice(0, TAB_DOWNLOADER_THUMBNAIL_MAX_OPTIONS)
+}
+
+function buildTabDownloaderThumbnailOptions(rawThumbnails, fallbackThumbnailUrl = '') {
+  const normalizedRawList = Array.isArray(rawThumbnails) ? rawThumbnails : []
+  const candidatesByKey = new Map()
+  const seenUrls = new Set()
+
+  for (const rawThumbnail of normalizedRawList) {
+    const candidate = sanitizeTabDownloaderThumbnailCandidate(rawThumbnail)
+    if (!candidate) continue
+    if (seenUrls.has(candidate.url)) continue
+
+    seenUrls.add(candidate.url)
+
+    const key = getThumbnailCandidateKey(candidate)
+    const current = candidatesByKey.get(key)
+    if (!current) {
+      candidatesByKey.set(key, candidate)
+      continue
+    }
+
+    if (compareThumbnailCandidatesByQuality(candidate, current) < 0) {
+      candidatesByKey.set(key, candidate)
+    }
+  }
+
+  const allCandidates = [...candidatesByKey.values()]
+  const candidatesWithDimensions = allCandidates.filter((candidate) => candidate.width > 0 && candidate.height > 0)
+  const candidatesWithoutDimensions = allCandidates
+    .filter((candidate) => !(candidate.width > 0 && candidate.height > 0))
+    .sort(compareThumbnailCandidatesByQuality)
+
+  const selected = selectRepresentativeThumbnailCandidates(candidatesWithDimensions)
+
+  if (selected.length === 0 && candidatesWithoutDimensions.length > 0) {
+    selected.push(candidatesWithoutDimensions[0])
+  }
+
+  if (selected.length === 0) {
+    const fallbackUrl = resolveThumbnailCandidateUrl(fallbackThumbnailUrl)
+    if (fallbackUrl) {
+      selected.push({
+        url: fallbackUrl,
+        id: '',
+        width: 0,
+        height: 0,
+        preference: null,
+      })
+    }
+  }
+
+  const output = []
+  const outputUrls = new Set()
+
+  for (const candidate of selected) {
+    const url = resolveThumbnailCandidateUrl(candidate)
+    if (!url || outputUrls.has(url)) continue
+    outputUrls.add(url)
+
+    output.push({
+      url,
+      id: normalizeThumbnailIdentifier(candidate.id),
+      width: normalizeThumbnailDimension(candidate.width) || null,
+      height: normalizeThumbnailDimension(candidate.height) || null,
+      preference: normalizeThumbnailPreference(candidate.preference),
+    })
+  }
+
+  return output
 }
 
 function pickSearchEntryThumbnail(entry, _provider = '') {
@@ -3788,7 +4010,6 @@ app.get('/api/meta/formats', async (req, res) => {
 
     const audioFormats = []
     const videoFormats = []
-    const thumbnails = []
 
     // Parse audio formats
     if (data.formats) {
@@ -3833,29 +4054,7 @@ app.get('/api/meta/formats', async (req, res) => {
       return bHeight - aHeight
     })
 
-    // Collect thumbnails if present (yt-dlp provides array with url/width/height/id/preference)
-    if (Array.isArray(data.thumbnails)) {
-      for (const t of data.thumbnails) {
-        if (!t || !t.url) continue
-        thumbnails.push({
-          url: t.url,
-          id: t.id || null,
-          width: t.width || null,
-          height: t.height || null,
-          preference: typeof t.preference === 'number' ? t.preference : null,
-        })
-      }
-    }
-
-    // Sort thumbnails by (height then width) descending when dimensions known
-    thumbnails.sort((a, b) => {
-      const ah = a.height || 0
-      const bh = b.height || 0
-      if (bh !== ah) return bh - ah
-      const aw = a.width || 0
-      const bw = b.width || 0
-      return bw - aw
-    })
+    const thumbnails = buildTabDownloaderThumbnailOptions(data?.thumbnails, data?.thumbnail)
 
     const numericDuration = Number(data?.duration)
     const duration = Number.isFinite(numericDuration) ? numericDuration : null
@@ -3883,6 +4082,58 @@ app.get('/api/meta/formats', async (req, res) => {
     const ytDlpError = buildYtDlpErrorPayload(details)
     res.status(500).json({
       error: 'Failed to query formats',
+      details: ytDlpError.rawMessage || details,
+      ytDlpError,
+    })
+  }
+})
+
+// GET /api/meta/thumbnails?url=...
+// Returns only curated thumbnail choices for the downloader thumbnail tab.
+app.get('/api/meta/thumbnails', async (req, res) => {
+  const url = (req.query.url || '').toString().trim()
+  if (!url) return res.status(400).json({ error: 'Missing url' })
+  if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
+
+  const cachedPayload = readCachedMetaFormats(url)
+  if (cachedPayload) {
+    const thumbnails = buildTabDownloaderThumbnailOptions(
+      cachedPayload?.thumbnails,
+      cachedPayload?.thumbnail,
+    )
+
+    return res.json({
+      title: String(cachedPayload?.title || '').trim(),
+      author: String(cachedPayload?.author || '').trim(),
+      extractor: String(cachedPayload?.extractor || '').trim(),
+      thumbnail: String(cachedPayload?.thumbnail || thumbnails?.[0]?.url || '').trim() || null,
+      thumbnails,
+    })
+  }
+
+  try {
+    const thumbnailArgs = await buildYtDlpNetworkArgs(['--no-warnings', '--no-playlist', '--skip-download', '--dump-json', url])
+    const out = await runCmd(
+      YT_DLP,
+      thumbnailArgs,
+      { maxBuffer: 50 * 1024 * 1024, timeout: 60000 }
+    )
+    const data = parseYtDlpJson(out)
+    const thumbnails = buildTabDownloaderThumbnailOptions(data?.thumbnails, data?.thumbnail)
+
+    res.json({
+      title: String(data?.title || '').trim(),
+      author: String(data?.uploader || data?.channel || data?.creator || data?.uploader_id || '').trim(),
+      extractor: String(data?.extractor_key || data?.extractor || '').trim(),
+      thumbnail: String(data?.thumbnail || thumbnails?.[0]?.url || '').trim() || null,
+      thumbnails,
+    })
+  } catch (err) {
+    console.error('Error fetching thumbnails:', err)
+    const details = extractCommandErrorDetails(err)
+    const ytDlpError = buildYtDlpErrorPayload(details)
+    res.status(500).json({
+      error: 'Failed to query thumbnails',
       details: ytDlpError.rawMessage || details,
       ytDlpError,
     })

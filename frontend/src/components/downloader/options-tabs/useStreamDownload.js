@@ -53,6 +53,8 @@ export default function useStreamDownload({
   coverEmbedEnabled,
   coverSource,
   coverUpload,
+  coverVideoEdit,
+  hasVideoThumbnail,
   audioDownloadTargetSettings,
   videoDownloadTargetSettings,
 }) {
@@ -92,7 +94,37 @@ export default function useStreamDownload({
   const handleDownload = React.useCallback(async (type) => {
     if (downloading) return
 
-    if (type === 'audio' && coverEmbedEnabled && coverSource === 'upload' && !coverUpload?.dataUrl) {
+    const editedVideoCoverUpload = coverEmbedEnabled
+      && coverSource === 'video'
+      && coverVideoEdit?.dataUrl
+      ? {
+        name: coverVideoEdit.name || 'video-thumbnail-cover.jpg',
+        type: coverVideoEdit.type || 'image/jpeg',
+        dataUrl: coverVideoEdit.dataUrl,
+      }
+      : null
+
+    const selectedUploadCover = coverEmbedEnabled
+      && coverSource === 'upload'
+      && coverUpload?.dataUrl
+      ? {
+        name: coverUpload.name || 'cover',
+        type: coverUpload.type || '',
+        dataUrl: coverUpload.dataUrl,
+      }
+      : null
+
+    const effectiveCoverSource = editedVideoCoverUpload ? 'upload' : coverSource
+    const effectiveCoverUpload = editedVideoCoverUpload || selectedUploadCover
+    const effectiveCoverEnabled = coverEmbedEnabled
+      && (effectiveCoverSource !== 'video' || hasVideoThumbnail)
+
+    if (type === 'audio' && coverEmbedEnabled && effectiveCoverSource === 'video' && !hasVideoThumbnail) {
+      setDownloadError(i18nT('downloader.errorVideoThumbUnavailable'))
+      return
+    }
+
+    if (type === 'audio' && coverEmbedEnabled && effectiveCoverSource === 'upload' && !effectiveCoverUpload?.dataUrl) {
       setDownloadError(i18nT('downloader.errorSelectCover'))
       return
     }
@@ -220,14 +252,10 @@ export default function useStreamDownload({
           : undefined,
         cover: type === 'audio'
           ? {
-            enabled: coverEmbedEnabled,
-            source: coverSource,
-            upload: coverEmbedEnabled && coverSource === 'upload' && coverUpload?.dataUrl
-              ? {
-                name: coverUpload.name || 'cover',
-                type: coverUpload.type || '',
-                dataUrl: coverUpload.dataUrl,
-              }
+            enabled: effectiveCoverEnabled,
+            source: effectiveCoverSource,
+            upload: effectiveCoverEnabled && effectiveCoverSource === 'upload' && effectiveCoverUpload?.dataUrl
+              ? effectiveCoverUpload
               : undefined,
           }
           : undefined,
@@ -453,6 +481,8 @@ export default function useStreamDownload({
     coverEmbedEnabled,
     coverSource,
     coverUpload,
+    coverVideoEdit,
+    hasVideoThumbnail,
     i18nT,
     videoUrl,
     audioCutsData,

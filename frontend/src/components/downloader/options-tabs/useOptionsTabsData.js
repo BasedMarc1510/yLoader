@@ -3,10 +3,6 @@ import { parseVideoTitle } from '../../../utils/metadataParser'
 import {
   getApiBase,
   normalizeUrlForNoembed,
-  detectService,
-  extractYouTubeId,
-  youtubeThumb,
-  fetchNoembed,
 } from '../../../utils/metadata'
 import {
   DOWNLOAD_SETTINGS_DEFAULTS,
@@ -45,6 +41,7 @@ export default function useOptionsTabsData({
   videoTitle,
   videoAuthor,
   videoUrl,
+  videoThumbnail,
   initialFormats,
   onFetchError,
   defaultDownloadType = 'video',
@@ -94,6 +91,8 @@ export default function useOptionsTabsData({
   const [selectedThumbValue, setSelectedThumbValue] = React.useState('')
   const [selectedThumbFormat, setSelectedThumbFormat] = React.useState('jpg')
   const [loadingThumbs, setLoadingThumbs] = React.useState(false)
+  const [thumbsResolvedUrl, setThumbsResolvedUrl] = React.useState('')
+  const [thumbnailEndpointAvailable, setThumbnailEndpointAvailable] = React.useState(true)
 
   const [audioCutsData, setAudioCutsData] = React.useState(null)
   const [videoCutsData, setVideoCutsData] = React.useState(null)
@@ -101,7 +100,15 @@ export default function useOptionsTabsData({
   const [coverEmbedEnabled, setCoverEmbedEnabled] = React.useState(true)
   const [coverSource, setCoverSource] = React.useState('video')
   const [coverUpload, setCoverUpload] = React.useState(null)
+  const [coverVideoEdit, setCoverVideoEdit] = React.useState(null)
   const [coverUploadError, setCoverUploadError] = React.useState('')
+  const [hasVideoThumbnail, setHasVideoThumbnail] = React.useState(false)
+  const [videoThumbnailChecked, setVideoThumbnailChecked] = React.useState(false)
+  const [videoThumbnailChecking, setVideoThumbnailChecking] = React.useState(false)
+  const normalizedVideoThumbnail = React.useMemo(
+    () => String(videoThumbnail || '').trim(),
+    [videoThumbnail]
+  )
   const [downloadSettings, setDownloadSettings] = React.useState(() => ({ ...DOWNLOAD_SETTINGS_DEFAULTS }))
   const [downloadSettingsLoaded, setDownloadSettingsLoaded] = React.useState(false)
   const defaultsAppliedRef = React.useRef(false)
@@ -157,7 +164,13 @@ export default function useOptionsTabsData({
     const reader = new FileReader()
     reader.onload = () => {
       const dataUrl = typeof reader.result === 'string' ? reader.result : ''
-      setCoverUpload({ name: file.name, type: file.type, size: file.size, dataUrl })
+      setCoverUpload({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        dataUrl,
+        originalDataUrl: dataUrl,
+      })
       setCoverUploadError('')
       if (event?.target) event.target.value = ''
     }
@@ -169,6 +182,63 @@ export default function useOptionsTabsData({
 
     reader.readAsDataURL(file)
   }, [i18nT])
+
+  React.useEffect(() => {
+    setCoverVideoEdit(null)
+  }, [videoUrl, normalizedVideoThumbnail])
+
+  React.useEffect(() => {
+    setCoverSource('video')
+  }, [videoUrl])
+
+  React.useEffect(() => {
+    const source = normalizedVideoThumbnail
+    let cancelled = false
+
+    if (!source) {
+      setHasVideoThumbnail(false)
+      setVideoThumbnailChecked(true)
+      setVideoThumbnailChecking(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setVideoThumbnailChecking(true)
+    setVideoThumbnailChecked(false)
+    setHasVideoThumbnail(false)
+
+    const probe = new Image()
+    probe.onload = () => {
+      if (cancelled) return
+      setHasVideoThumbnail(true)
+      setVideoThumbnailChecked(true)
+      setVideoThumbnailChecking(false)
+    }
+    probe.onerror = () => {
+      if (cancelled) return
+      setHasVideoThumbnail(false)
+      setVideoThumbnailChecked(true)
+      setVideoThumbnailChecking(false)
+    }
+
+    const cacheBusterSeparator = source.includes('?') ? '&' : '?'
+    probe.src = `${source}${cacheBusterSeparator}v=${Date.now()}`
+
+    return () => {
+      cancelled = true
+    }
+  }, [normalizedVideoThumbnail, videoUrl])
+
+  React.useEffect(() => {
+    if (!videoThumbnailChecked || videoThumbnailChecking || hasVideoThumbnail) return
+    if (coverSource !== 'video') return
+
+    setCoverSource('upload')
+    if (coverEmbedEnabled) {
+      setCoverEmbedEnabled(false)
+    }
+  }, [coverEmbedEnabled, coverSource, hasVideoThumbnail, videoThumbnailChecked, videoThumbnailChecking])
 
   React.useEffect(() => {
     if (!videoTitle) return
@@ -262,10 +332,9 @@ export default function useOptionsTabsData({
   )
 
   const applyBackendThumbnails = React.useCallback((thumbnails) => {
-    const valid = (thumbnails || []).filter((item) => item.width && item.height && item.width > 0 && item.height > 0)
-    valid.sort((a, b) => (b.height || 0) - (a.height || 0))
-
+    const entries = Array.isArray(thumbnails) ? thumbnails : []
     const seen = new Set()
+    const seenUrls = new Set()
     const opts = []
     const friendlyMap = {
       maxresdefault: i18nT('downloader.maxResolution'),
@@ -275,22 +344,36 @@ export default function useOptionsTabsData({
       default: i18nT('downloader.default'),
     }
 
-    for (const item of valid) {
-      const dimLabel = `${item.width}x${item.height}`
-      if (seen.has(dimLabel)) continue
-      seen.add(dimLabel)
+    for (const item of entries) {
+      const url = String(item?.url || '').trim()
+      if (!url || seenUrls.has(url)) continue
 
-      const label = (item.id && friendlyMap[item.id])
-        ? `${friendlyMap[item.id]} (${dimLabel})`
-        : dimLabel
+      const widthRaw = Number(item?.width)
+      const heightRaw = Number(item?.height)
+      const width = Number.isFinite(widthRaw) && widthRaw > 0 ? Math.round(widthRaw) : 0
+      const height = Number.isFinite(heightRaw) && heightRaw > 0 ? Math.round(heightRaw) : 0
+      const id = String(item?.id || '').trim().toLowerCase()
+
+      const key = width > 0 && height > 0
+        ? `${width}x${height}`
+        : (id ? `id:${id}` : `url:${url}`)
+      if (seen.has(key)) continue
+
+      seen.add(key)
+      seenUrls.add(url)
+
+      const friendly = id ? friendlyMap[id] : ''
+      const label = width > 0 && height > 0
+        ? (friendly ? `${friendly} (${width}x${height})` : `${width}x${height}`)
+        : (friendly || i18nT('downloader.originalThumb'))
 
       opts.push({
-        value: item.id || `thumb-${opts.length}`,
+        value: `${id || 'thumb'}-${width || 'x'}-${height || 'x'}-${opts.length}`,
         label,
         description: undefined,
-        url: item.url,
-        width: item.width,
-        height: item.height,
+        url,
+        width,
+        height,
       })
     }
 
@@ -305,28 +388,25 @@ export default function useOptionsTabsData({
   }, [i18nT])
 
   React.useEffect(() => {
+    setThumbOptions([])
+    setSelectedThumbValue('')
+    setLoadingThumbs(false)
+    setThumbsResolvedUrl('')
+  }, [videoUrl])
+
+  React.useEffect(() => {
     const loadFormats = async () => {
       if (!videoUrl) {
         setAudioFormats((prev) => (prev.length ? [] : prev))
         setVideoFormats((prev) => (prev.length ? [] : prev))
         setSelectedAudioFormat((prev) => (prev === 'best' ? prev : 'best'))
         setSelectedVideoFormat((prev) => (prev === 'best' ? prev : 'best'))
-        setThumbOptions((prev) => (prev.length ? [] : prev))
-        setSelectedThumbValue((prev) => (prev ? '' : prev))
         return
       }
 
       if (initialFormats != null) {
         setAudioFormats(initialFormats.audioFormats || [])
         setVideoFormats(initialFormats.videoFormats || [])
-
-        const isYouTube = !!extractYouTubeId(videoUrl)
-        if (!isYouTube && Array.isArray(initialFormats.thumbnails) && initialFormats.thumbnails.length) {
-          applyBackendThumbnails(initialFormats.thumbnails)
-        } else {
-          setThumbOptions([])
-          setSelectedThumbValue('')
-        }
         return
       }
 
@@ -352,19 +432,9 @@ export default function useOptionsTabsData({
         const data = await res.json()
         setAudioFormats(data.audioFormats || [])
         setVideoFormats(data.videoFormats || [])
-
-        const isYouTube = !!extractYouTubeId(videoUrl)
-        if (!isYouTube && Array.isArray(data.thumbnails) && data.thumbnails.length) {
-          applyBackendThumbnails(data.thumbnails)
-        } else {
-          setThumbOptions([])
-          setSelectedThumbValue('')
-        }
       } catch (err) {
         setAudioFormats([])
         setVideoFormats([])
-        setThumbOptions([])
-        setSelectedThumbValue('')
         const directMessage = String(err?.message || '').trim()
         const message = directMessage || formatYtDlpErrorMessage(i18nT, err, {
           fallbackKey: 'downloader.errorDownloadFailed',
@@ -377,127 +447,87 @@ export default function useOptionsTabsData({
     }
 
     loadFormats()
-  }, [videoUrl, initialFormats, applyBackendThumbnails, onFetchError])
+  }, [videoUrl, initialFormats, onFetchError])
 
   React.useEffect(() => {
     let cancelled = false
 
     const loadThumbs = async () => {
-      if (thumbOptions.length > 0) return
+      if (tab !== 'thumbnail') return
+      if (!videoUrl) {
+        setThumbOptions([])
+        setSelectedThumbValue('')
+        setThumbsResolvedUrl('')
+        return
+      }
+      if (thumbsResolvedUrl === videoUrl) return
+
       setLoadingThumbs(true)
+      let resolvedForUrl = false
 
       try {
-        const ytId = extractYouTubeId(videoUrl)
-        const service = ytId ? 'youtube' : detectService(videoUrl)
-        const options = []
+        const apiBase = getApiBase()
+        const normalized = normalizeUrlForNoembed(videoUrl)
 
-        if (!videoUrl || !service) {
-          setThumbOptions([])
-          setSelectedThumbValue('')
-          return
-        }
+        let payload = null
 
-        if (service === 'youtube') {
-          const id = ytId || extractYouTubeId(videoUrl)
-          if (!id) {
-            setThumbOptions([])
-            setSelectedThumbValue('')
-            return
-          }
-
-          const candidates = [
-            { key: 'maxresdefault', label: i18nT('downloader.maxResolution'), width: 1280, height: 720 },
-            { key: 'sddefault', label: i18nT('downloader.sd'), width: 640, height: 480 },
-            { key: 'hqdefault', label: i18nT('downloader.hq'), width: 480, height: 360 },
-            { key: 'mqdefault', label: i18nT('downloader.mq'), width: 320, height: 180 },
-            { key: 'default', label: i18nT('downloader.default'), width: 120, height: 90 },
-          ]
-
-          const preOptions = candidates.map((candidate) => ({
-            value: candidate.key,
-            label: `${candidate.label} (${candidate.width}x${candidate.height})`,
-            description: undefined,
-            url: youtubeThumb(id, candidate.key),
-            width: candidate.width,
-            height: candidate.height,
-          }))
-
-          if (!cancelled) {
-            setThumbOptions(preOptions)
-            setSelectedThumbValue(preOptions[0]?.value || '')
-          }
-
-          try {
-            const probes = await Promise.all(
-              candidates.map((candidate) => new Promise((resolve) => {
-                const url = youtubeThumb(id, candidate.key)
-                const img = new Image()
-                img.onload = () => resolve({
-                  ok: true,
-                  url,
-                  key: candidate.key,
-                  label: candidate.label,
-                  width: img.naturalWidth,
-                  height: img.naturalHeight,
-                })
-                img.onerror = () => resolve({ ok: false })
-                img.src = `${url}?v=${Date.now()}`
-              }))
-            )
-
-            const available = probes
-              .filter((probe) => probe.ok && probe.width && probe.height)
-              .sort((a, b) => (b.height || 0) - (a.height || 0))
-              .map((probe) => ({
-                value: probe.key,
-                label: `${probe.label} (${probe.width}x${probe.height})`,
-                description: undefined,
-                url: probe.url,
-                width: probe.width,
-                height: probe.height,
-              }))
-
-            if (!cancelled && available.length) {
-              setThumbOptions(available)
-              setSelectedThumbValue(available[0]?.value || '')
+        if (thumbnailEndpointAvailable) {
+          const res = await fetch(`${apiBase}/api/meta/thumbnails?url=${encodeURIComponent(normalized)}`)
+          if (res.ok) {
+            payload = await res.json()
+          } else if (res.status === 404) {
+            setThumbnailEndpointAvailable(false)
+          } else {
+            let errorPayload = null
+            try {
+              errorPayload = await res.json()
+            } catch {
+              errorPayload = `HTTP ${res.status}`
             }
-          } catch {
-            // keep preloaded options
+            throw new Error(formatYtDlpErrorMessage(i18nT, errorPayload, {
+              fallbackKey: 'downloader.errorDownloadFailed',
+              includeRawForUnknown: true,
+            }))
           }
-        } else {
-          try {
-            const noembed = await fetchNoembed(normalizeUrlForNoembed(videoUrl))
-            const url = noembed?.thumbnail_url || ''
-            if (url) {
-              const dim = await new Promise((resolve) => {
-                const img = new Image()
-                img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
-                img.onerror = () => resolve({ w: 0, h: 0 })
-                img.src = `${url}`
-              })
+        }
 
-              options.push({
-                value: 'original',
-                label: dim.w && dim.h
-                  ? `${i18nT('downloader.originalThumb')} (${dim.w}x${dim.h})`
-                  : i18nT('downloader.originalThumb'),
-                description: undefined,
-                url,
-                width: dim.w,
-                height: dim.h,
-              })
+        if (!payload) {
+          const legacyRes = await fetch(`${apiBase}/api/meta/formats?url=${encodeURIComponent(normalized)}`)
+          if (!legacyRes.ok) {
+            let errorPayload = null
+            try {
+              errorPayload = await legacyRes.json()
+            } catch {
+              errorPayload = `HTTP ${legacyRes.status}`
             }
-          } catch {
-            // ignore noembed probe failures
+            throw new Error(formatYtDlpErrorMessage(i18nT, errorPayload, {
+              fallbackKey: 'downloader.errorDownloadFailed',
+              includeRawForUnknown: true,
+            }))
+          }
+
+          const legacyPayload = await legacyRes.json()
+          payload = {
+            thumbnails: legacyPayload?.thumbnails || [],
+            thumbnail: legacyPayload?.thumbnail || null,
           }
         }
 
-        if (!cancelled && thumbOptions.length === 0) {
-          setThumbOptions(options)
-          setSelectedThumbValue(options[0]?.value || '')
-        }
+        if (cancelled) return
+
+        applyBackendThumbnails(payload?.thumbnails)
+        resolvedForUrl = true
+      } catch {
+        if (cancelled) return
+        setThumbOptions([])
+        setSelectedThumbValue('')
       } finally {
-        if (!cancelled) setLoadingThumbs(false)
+        if (!cancelled) {
+          setLoadingThumbs(false)
+          if (resolvedForUrl) {
+            setThumbsResolvedUrl(videoUrl)
+          }
+        }
       }
     }
 
@@ -505,7 +535,7 @@ export default function useOptionsTabsData({
     return () => {
       cancelled = true
     }
-  }, [videoUrl, thumbOptions.length, i18nT])
+  }, [tab, videoUrl, thumbsResolvedUrl, i18nT, applyBackendThumbnails, thumbnailEndpointAvailable])
 
   return {
     tab,
@@ -532,7 +562,12 @@ export default function useOptionsTabsData({
     coverEmbedEnabled,
     coverSource,
     coverUpload,
+    coverVideoEdit,
     coverUploadError,
+    hasVideoThumbnail,
+    videoThumbnailChecked,
+    videoThumbnailChecking,
+    videoThumbnailUrl: normalizedVideoThumbnail,
     audioDownloadTargetSettings,
     videoDownloadTargetSettings,
     maxAudioBitrateKbps: downloadSettings.maxAudioBitrateKbps,
@@ -557,6 +592,7 @@ export default function useOptionsTabsData({
     setCoverEmbedEnabled,
     setCoverSource,
     setCoverUpload,
+    setCoverVideoEdit,
     setCoverUploadError,
 
     toggleSection,
