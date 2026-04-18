@@ -12,6 +12,17 @@ yLoader is built for fast daily use: clean UI, advanced media controls, and feat
 
 ![yLoader Home](https://raw.githubusercontent.com/BasedMarc1510/yLoader/main/docs/images/yloader-home.png)
 
+## Recommended: Electron Desktop App
+
+Install yLoader directly from the latest release for your operating system:
+
+[![Download for Windows](https://img.shields.io/badge/Windows-Download%20EXE-0078D6?style=for-the-badge&logo=windows)](https://github.com/BasedMarc1510/yLoader/releases/latest/download/yLoaderSetup.exe)
+[![Download for macOS](https://img.shields.io/badge/macOS-Download%20DMG-111111?style=for-the-badge&logo=apple)](https://github.com/BasedMarc1510/yLoader/releases/latest/download/yLoaderSetup.dmg)
+[![Download for Linux](https://img.shields.io/badge/Linux-Download%20AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/BasedMarc1510/yLoader/releases/latest/download/yLoaderSetup.AppImage)
+
+Latest release page:
+https://github.com/BasedMarc1510/yLoader/releases/latest
+
 ![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
 ![Node](https://img.shields.io/badge/node-18%2B-43853D)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED)
@@ -19,7 +30,7 @@ yLoader is built for fast daily use: clean UI, advanced media controls, and feat
 ## Features
 
 - Download from 1000+ sites supported by yt-dlp
-- Dedicated downloader flows for YouTube, X/Twitter, Reddit, and generic URLs
+- Service-focused downloader workflows with integrated generic mode
 - Integrated search with provider support (including YouTube and SoundCloud)
 - Browser-like tab system for managing multiple downloads in parallel
 - Advanced audio and video cutting workflows
@@ -39,15 +50,15 @@ yLoader is built for fast daily use: clean UI, advanced media controls, and feat
 
 ## Quick Start
 
-### Option 1: Docker Hub (simplest)
+### Option 1: Electron Desktop App (recommended)
+
+Download and run the installer for your operating system from the links above.
+
+### Option 2: Docker Hub
 
 ```bash
 docker pull yloader/yloader:latest
-docker run -d --name yloader \
-  -p 8080:8080 \
-  -v yloader_downloads:/downloads \
-  -v yloader_data:/app/data \
-  yloader/yloader:latest
+docker run -d --name yloader -p 8080:8080 -v yloader_downloads:/downloads -v yloader_data:/app/data yloader/yloader:latest
 ```
 
 Open http://localhost:8080
@@ -59,7 +70,7 @@ docker pull yloader/yloader:2026.1.2-beta
 docker run -d --name yloader -p 8080:8080 yloader/yloader:2026.1.2-beta
 ```
 
-### Option 2: Docker Compose (from source)
+### Option 3: Docker Compose (from source)
 
 ```bash
 git clone https://github.com/BasedMarc1510/yLoader.git
@@ -69,7 +80,7 @@ docker compose up -d --build --remove-orphans
 
 Open http://localhost:8080
 
-### Option 3: Local Web App
+### Option 4: Local Web App
 
 ```bash
 git clone https://github.com/BasedMarc1510/yLoader.git
@@ -78,7 +89,7 @@ npm install
 npm run start
 ```
 
-### Option 4: Local Electron App
+### Option 5: Local Electron App
 
 ```bash
 git clone https://github.com/BasedMarc1510/yLoader.git
@@ -95,18 +106,6 @@ npm run start:electron
 - Version tags are also published in both forms:
   - `v2026.1.2-beta`
   - `2026.1.2-beta`
-
-## Key Routes
-
-| Route | Purpose |
-| --- | --- |
-| `/youtube-downloader` | YouTube focused downloader |
-| `/x-downloader` | X / Twitter downloader |
-| `/reddit-downloader` | Reddit downloader |
-| `/generic-downloader` | Generic yt-dlp route |
-| `/downloads` | Download history |
-| `/search` | Integrated search |
-| `/health` | Health endpoint |
 
 ## Configuration
 
@@ -129,26 +128,6 @@ npm run build:electron
 npm run docker:start
 npm run docker:logs
 npm run docker:stop
-npm run release:publish -- 2026.1.2-beta
-```
-
-## Releases and CI
-
-Release flows are automated with GitHub Actions:
-
-- Electron Build and Release
-  - Builds Windows (NSIS), macOS (DMG), Linux (AppImage)
-  - Publishes assets to GitHub Releases for `v*` tags
-- Docker Build and Publish
-  - Builds and publishes multi-arch Docker images (`linux/amd64`, `linux/arm64`)
-  - Updates Docker Hub `latest` + explicit version tags
-  - Syncs Docker Hub repository overview from this `README.md`
-
-Typical release trigger:
-
-```bash
-git tag -a v2026.1.2-beta -m "release v2026.1.2-beta"
-git push origin v2026.1.2-beta
 ```
 
 ## Legal Notice
