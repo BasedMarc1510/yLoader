@@ -2460,37 +2460,37 @@ function getYtDlpUpdateCommand() {
 try {
   execFile(YT_DLP, ['--version'], (err, stdout) => {
     if (err) {
-      console.error('⚠️  yt-dlp not accessible at:', YT_DLP)
-      console.error('⚠️  Error:', err.message)
-      console.error('❌ yt-dlp is required for downloads and metadata endpoints')
+      console.error('[WARN] yt-dlp not accessible at:', YT_DLP)
+      console.error('[WARN] Error:', err.message)
+      console.error('[ERROR] yt-dlp is required for downloads and metadata endpoints')
     } else {
-      console.log('✅ yt-dlp found at:', YT_DLP)
+      console.log('[OK] yt-dlp found at:', YT_DLP)
       console.log('   Version:', stdout.trim())
     }
   })
 } catch (e) {
-  console.error('❌ Failed to check yt-dlp:', e.message)
+  console.error('[ERROR] Failed to check yt-dlp:', e.message)
 }
 
 // Check if ffmpeg is available (required for merging)
 let HAS_FFMPEG = false
 if (!FFMPEG_BIN) {
-  console.error('⚠️  FFMPEG_PATH is not configured - video/audio merging features are disabled!')
+  console.error('[WARN] FFMPEG_PATH is not configured - video/audio merging features are disabled!')
   HAS_FFMPEG = false
 } else {
   try {
     execFile(FFMPEG_BIN, ['-version'], (err, stdout) => {
       if (err) {
-        console.error(`⚠️  ffmpeg not found at "${FFMPEG_BIN}" - video/audio merging will fail!`)
+        console.error(`[WARN] ffmpeg not found at "${FFMPEG_BIN}" - video/audio merging will fail!`)
         HAS_FFMPEG = false
       } else {
         const firstLine = stdout.split('\n')[0]
-        console.log('✅ ffmpeg found:', firstLine)
+        console.log('[OK] ffmpeg found:', firstLine)
         HAS_FFMPEG = true
       }
     })
   } catch (e) {
-    console.error('⚠️  ffmpeg check failed:', e.message)
+    console.error('[WARN] ffmpeg check failed:', e.message)
     HAS_FFMPEG = false
   }
 }
@@ -4870,7 +4870,7 @@ app.post('/api/download/stream', async (req, res) => {
       ext = requestedVideoContainer || 'mp4'
 
       if (!HAS_FFMPEG) {
-        send('message', '⚠️ ffmpeg not detected. Falling back to "best" (single file).')
+        send('message', 'ffmpeg not detected. Falling back to "best" (single file).')
         if (maxVideoHeight > 0) {
           const capSelector = `[height<=${maxVideoHeight}]`
           formatArgs = ['-f', `best${capSelector}/best`]
@@ -5227,7 +5227,7 @@ app.post('/api/download/stream', async (req, res) => {
             // Apply media cuts (trim + remove/keep segments) if requested
             if ((type === 'audio' || type === 'video') && cuts?.enabled) {
               if (!HAS_FFMPEG) {
-                send('message', '⚠️ ffmpeg required for media cutting – skipping cuts')
+                send('message', 'ffmpeg required for media cutting - skipping cuts')
               } else {
                 const keepSegments = computeMediaKeepSegments(cuts, mediaDuration)
                 if (keepSegments) {

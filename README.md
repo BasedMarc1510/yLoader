@@ -1,57 +1,45 @@
 # yLoader
 
-Self-hosted `yt-dlp` web UI for downloading audio and video from YouTube, X/Twitter, Reddit, and other `yt-dlp` supported sites.
+world's most advanced Downloader
 
-`yLoader` is local-first: you run the frontend and backend on your own machine or server.
+All-in-one, local-first yt-dlp frontend for people who want one tool that can run exactly how they prefer:
+
+- Web app (frontend + backend)
+- Single Docker container
+- Electron desktop app
+
+yLoader is built for fast daily use: clean UI, advanced media controls, and feature parity across web, Docker, and Electron runtimes.
+
+![yLoader Home](https://raw.githubusercontent.com/BasedMarc1510/yLoader/main/docs/images/yloader-home.png)
+
+![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
+![Node](https://img.shields.io/badge/node-18%2B-43853D)
+![Docker](https://img.shields.io/badge/docker-ready-2496ED)
+
+## Features
+
+- Download from 1000+ sites supported by yt-dlp
+- Dedicated downloader flows for YouTube, X/Twitter, Reddit, and generic URLs
+- Integrated search with provider support (including YouTube and SoundCloud)
+- Browser-like tab system for managing multiple downloads in parallel
+- Advanced audio and video cutting workflows
+- Metadata editing and cover art editing/embedding for audio downloads
+- Format, bitrate, and resolution controls
+- SQLite-backed download history
+- Built-in yt-dlp and ffmpeg update handling
+- Same core behavior across Web, Docker, and Electron
+
+## Runtime Modes
+
+| Mode | What you run | Access |
+| --- | --- | --- |
+| Web (local dev) | React + Node backend | http://localhost:5173 (UI), http://localhost:4000 (API) |
+| Docker | Single container serving frontend + backend | http://localhost:8080 |
+| Electron | Desktop shell over the same backend/frontend behavior | Native app window |
 
 ## Quick Start
 
-Run all commands from the repository root.
-
-### Local
-
-```bash
-npm run start
-```
-
-Local starts read optional overrides from the repository root `.env` file. Cookie-related values are used as defaults for the Settings UI.
-
-### Local (Electron)
-
-```bash
-npm run start:electron
-```
-
-This keeps the same backend (`http://localhost:4000`) and frontend source (`Vite` dev server on `http://localhost:5173`) and only changes the wrapper from browser tab to Electron window.
-
-Local start is fully self-contained: `yLoader` uses project-local binaries from `.tools/` for `yt-dlp` and `ffmpeg` (no fallback to a globally installed ffmpeg on PATH).
-
-### Docker
-
-```bash
-npm run docker:start
-```
-
-This command builds and starts a **single container** that serves both frontend and backend, then prints localhost and LAN URLs.
-
-If you prefer raw Docker Compose output:
-
-```bash
-docker compose up -d --build --remove-orphans
-```
-
-The Docker image downloads `ffmpeg`/`ffprobe` and `yt-dlp` directly from GitHub Releases during build, so no host-level tool setup is required.
-
-For Docker Hub publishing, set image names before building (for example in a root `.env` file):
-
-```bash
-YLOADER_IMAGE=yourdockerhubuser/yloader:latest
-YLOADER_FRONTEND_PORT=8080
-```
-
-In Docker mode, frontend and API are served from the same host port.
-
-If you want to run directly from Docker Hub (without Compose), publish a host port explicitly:
+### Option 1: Docker Hub (simplest)
 
 ```bash
 docker pull yloader/yloader:latest
@@ -62,255 +50,111 @@ docker run -d --name yloader \
   yloader/yloader:latest
 ```
 
-Then open `http://localhost:8080`.
+Open http://localhost:8080
 
-If you start the container without `-p ...:8080`, the backend still runs inside the container but no host port is exposed, so the frontend is not reachable from your browser.
-
-`latest` tracks the newest pushed release tag (including `-beta`/`-rc`). If you need a pinned image, use an explicit version tag.
-
-Example explicit pre-release pull:
+If you need a pinned version instead of `latest`:
 
 ```bash
-docker pull yloader/yloader:2026.1.1-beta
+docker pull yloader/yloader:2026.1.2-beta
+docker run -d --name yloader -p 8080:8080 yloader/yloader:2026.1.2-beta
 ```
 
-Then build and push:
+### Option 2: Docker Compose (from source)
 
 ```bash
-docker compose build app
-docker compose push app
+git clone https://github.com/BasedMarc1510/yLoader.git
+cd yLoader
+docker compose up -d --build --remove-orphans
 ```
 
-### Default URLs
+Open http://localhost:8080
 
-| Mode | Frontend | Backend | Health |
-| --- | --- | --- | --- |
-| Local | `http://localhost:5173` | `http://localhost:4000` | `http://localhost:4000/health` |
-| Local Electron (dev) | Electron window (`http://localhost:5173`) | `http://localhost:4000` | `http://localhost:4000/health` |
-| Docker | `http://localhost:8080` | `http://localhost:8080` | `http://localhost:8080/health` |
+### Option 3: Local Web App
 
-## What You Get
+```bash
+git clone https://github.com/BasedMarc1510/yLoader.git
+cd yLoader
+npm install
+npm run start
+```
 
-- Browser UI for URL-based downloads
-- Dedicated downloaders for YouTube, X/Twitter, Reddit, and generic URLs
-- Audio/video format selection
-- Download history (SQLite-backed)
-- Metadata and thumbnail handling
-- Built-in ffmpeg handling for local and Docker workflows
+### Option 4: Local Electron App
 
-## Supported Routes
+```bash
+git clone https://github.com/BasedMarc1510/yLoader.git
+cd yLoader
+npm install
+npm run start:electron
+```
 
-| Service | Route |
+## Docker Image Notes
+
+- The image runs the app on container port `8080`
+- If you do not publish a host port with `-p`, the app runs but is not reachable from your browser
+- `latest` tracks the newest pushed `v*` release tag
+- Version tags are also published in both forms:
+  - `v2026.1.2-beta`
+  - `2026.1.2-beta`
+
+## Key Routes
+
+| Route | Purpose |
 | --- | --- |
-| YouTube | `/youtube-downloader` |
-| X / Twitter | `/x-downloader` |
-| Reddit | `/reddit-downloader` |
-| Generic | `/generic-downloader` |
-
-## Requirements
-
-### Local Mode
-
-- Node.js 18+
-- npm 9+
-
-### Docker Mode
-
-- Docker
-- Docker Compose v2
+| `/youtube-downloader` | YouTube focused downloader |
+| `/x-downloader` | X / Twitter downloader |
+| `/reddit-downloader` | Reddit downloader |
+| `/generic-downloader` | Generic yt-dlp route |
+| `/downloads` | Download history |
+| `/search` | Integrated search |
+| `/health` | Health endpoint |
 
 ## Configuration
 
-Use `.env.example` as a reference.
+Use `.env.example` as a reference. Most users can start without custom overrides.
 
-### Key Backend Variables
+Common variables:
 
-| Variable | Purpose | Default (local) |
-| --- | --- | --- |
-| `DB_PATH` | SQLite file path | `backend-data/metadata.db` |
-| `DOWNLOAD_DIR` | Download output directory | `downloads/` |
-| `YT_DLP_PATH` | Explicit `yt-dlp` binary path | auto-detected |
-| `FFMPEG_PATH` | Explicit `ffmpeg` binary path | project-managed `.tools/ffmpeg-bin/.../bin/ffmpeg` |
-| `FFPROBE_PATH` | Explicit `ffprobe` binary path | sibling of configured `FFMPEG_PATH` when available |
-| `YT_DLP_JS_RUNTIMES` | JS runtimes for extractors | `node` |
-| `YT_DLP_UPDATE_METHOD` | `yt-dlp` update strategy | auto-managed |
-| `YT_PIP_PATH` | `pip` path for optional updates | unset |
-| `YT_DLP_MANAGED_BY_YLOADER` | Force yLoader-managed yt-dlp update handling | auto (`.tools` path detection) |
-| `FFMPEG_MANAGED_BY_YLOADER` | Force yLoader-managed ffmpeg update handling | auto (`.tools` path detection) |
-| `GITHUB_API_TOKEN` | Optional token to increase GitHub API release-rate limits | unset |
+- `DOWNLOAD_DIR` for downloaded files
+- `DB_PATH` for SQLite metadata
+- `YLOADER_FRONTEND_PORT` for Docker host port mapping
+- `YT_DLP_PATH`, `FFMPEG_PATH`, `FFPROBE_PATH` for explicit binary paths
+- `YT_DLP_JS_RUNTIMES` for yt-dlp JS extractor runtime selection
 
-### Optional Auth / Extractor Variables
-
-| Variable | Purpose |
-| --- | --- |
-| `YT_DLP_COOKIES_FROM_BROWSER` | Default `--cookies-from-browser` value used to prefill Settings (Electron runtime only) |
-| `YT_DLP_COOKIES_FILE` | Default `--cookies` file path used to prefill Settings |
-| `YT_DLP_EXTRACTOR_ARGS` | Advanced `yt-dlp` extractor tuning |
-
-Cookie import is configured in **Settings -> yt-dlp -> Cookie import**:
-
-- Web/server runtime: cookie file import (`--cookies`) only.
-- Electron runtime: cookie file import and browser cookie import (`--cookies-from-browser`).
-
-If you hit bot-check/login restrictions, configure one of these cookie options in Settings.
-
-## Tool Updates (yt-dlp + ffmpeg)
-
-- Both tools support manual checks and updates in **Settings**.
-- Automatic updates are enabled by default for both tools.
-- Periodic background checks continue even if automatic install is disabled.
-- If auto-install is disabled, update availability is shown via indicators in Settings and the sidebar.
-- Update notifications are shown for found/started installs and completed installs.
-
-## Data and Persistence
-
-- `downloads/` stores downloaded media
-- `backend-data/` stores SQLite data and updater state
-- `docker compose up -d --build --remove-orphans` updates/recreates the app container while keeping those folders untouched.
-- Avoid `docker compose down -v` unless you explicitly want to remove persisted data.
-
-## Useful Commands
-
-```bash
-npm run docker:start
-npm run docker:start:guided
-npm run docker:start:plain
-npm run docker:start:fresh
-npm run docker:logs
-npm run docker:stop
-npm run docker:push
-```
+## Development Commands
 
 ```bash
 npm run start
 npm run start:electron
 npm run build:electron
-npm run release:publish
-npm run dist:win
+npm run docker:start
+npm run docker:logs
+npm run docker:stop
+npm run release:publish -- 2026.1.2-beta
 ```
 
-`release:publish` asks for the next version (or accepts one via `npm run release:publish -- 2026.1.2-beta`) and then automatically:
+## Releases and CI
 
-- updates root/frontend/backend package versions,
-- creates a commit,
-- creates and pushes a `v*` tag,
-- waits for the GitHub Actions release workflow,
-- waits until the GitHub Release and its assets are available.
+Release flows are automated with GitHub Actions:
 
-`build:electron` prepares local tool binaries, builds the frontend, stages backend runtime files, rebuilds `sqlite3` for Electron, and then packages with `electron-builder`.
+- Electron Build and Release
+  - Builds Windows (NSIS), macOS (DMG), Linux (AppImage)
+  - Publishes assets to GitHub Releases for `v*` tags
+- Docker Build and Publish
+  - Builds and publishes multi-arch Docker images (`linux/amd64`, `linux/arm64`)
+  - Updates Docker Hub `latest` + explicit version tags
+  - Syncs Docker Hub repository overview from this `README.md`
 
-Electron packaging notes:
-
-- `build:electron` now regenerates all app icons from `frontend/public/yloader-icon.svg` into web assets plus `build/icons/icon.ico` and `build/icons/icon.icns`.
-- macOS targets must be built on macOS (`--mac` on other hosts is blocked to avoid broken app bundles).
-- To avoid Gatekeeper "damaged" messages on distributed mac builds, set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`; these are picked up automatically by `scripts/notarize.cjs` via `electron-builder` `afterSign`.
-
-Electron auto-update flow:
-
-- Packaged Electron builds perform a silent update check on startup.
-- Downloads are user-driven in **Settings > General** (`Check for updates` -> `Download update` -> `Restart & Install`).
-- While an app update is downloading, closing the app is blocked to prevent interrupted installers.
-- Pre-release detection is enabled (`allowPrerelease=true`) so beta tags from GitHub Releases can be used for update testing.
-- On macOS, updates are still detected and shown in Settings, but in-place updater download/install is disabled. `Download update` opens the matching GitHub Release page so the DMG can be installed manually.
-
-## GitHub Actions (Electron and Docker Releases)
-
-This repository includes a cross-platform Electron workflow in `.github/workflows/electron-release.yml`.
-
-### What it builds
-
-- Windows installer (`nsis`, `.exe`)
-- macOS disk image (`dmg`, `.dmg`)
-- Linux portable package (`AppImage`, `.AppImage`)
-
-### Safe test run (no release publish)
-
-1. Open **Actions** on GitHub.
-2. Select **Electron Build and Release**.
-3. Click **Run workflow** on your branch.
-4. Leave `publish` set to `false`.
-
-Result: all three OS builds run and upload artifacts to the workflow run, but nothing is published to GitHub Releases.
-
-### Real release publish
-
-Push a version tag (for example `v1.0.1`):
+Typical release trigger:
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag -a v2026.1.2-beta -m "release v2026.1.2-beta"
+git push origin v2026.1.2-beta
 ```
-
-Result: the same matrix build runs, and electron-builder uploads the platform artifacts to the matching GitHub Release.
-Result: the same matrix build runs, workflow artifacts are collected, and the publish job uploads platform artifacts to the matching GitHub Release.
-
-### Manual publish from a tag
-
-You can also manually run the workflow on an existing `v*` tag and set `publish=true`.
-On non-tag refs, `publish=true` is ignored to avoid accidental release uploads.
-
-### Docker Hub publishing workflow
-
-This repository also includes `.github/workflows/docker-publish.yml` to publish the single Docker image (`linux/amd64` + `linux/arm64`) to Docker Hub.
-
-Before first use, configure GitHub secrets:
-
-1. Open **GitHub -> Settings -> Secrets and variables -> Actions**.
-2. Add secret `DOCKERHUB_USERNAME` (your Docker Hub username).
-3. Add secret `DOCKERHUB_TOKEN` (Docker Hub access token with push permissions).
-
-Publish flow:
-
-1. Push a release tag like `v2026.1.1`.
-2. GitHub Actions runs **Docker Build and Publish** automatically.
-3. Every `v*` tag updates `latest` and also publishes the explicit version tag (`v2026.1.2-beta` and `2026.1.2-beta`).
-
-Manual flow:
-
-1. Open **Actions -> Docker Build and Publish**.
-2. Click **Run workflow**.
-3. Select a `v*` tag ref and set `publish=true` if prompted.
-
-## Health Check
-
-`GET /health` reports backend status including:
-
-- SQLite access
-- `yt-dlp` availability
-- `ffmpeg` availability
-
-## Why use yLoader? (Use Cases)
-If you are looking for a way to **bulk download YouTube videos**, archive **Twitter/X media**, or save **Reddit videos with sound**, yLoader provides a clean interface for it. 
-Unlike cloud-based downloaders, yLoader is completely private. You avoid ads, tracking, and rate limits. Because it supports `yt-dlp` cookies, you can easily bypass login-walls or age-restrictions by passing your browser cookies directly to the backend.
-
-
-## Support
-
-If you find this useful, consider supporting development:
-
-<a href="https://buymeacoffee.com/michaelsant0s">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200">
-</a>
-
-BTC donations:  
-`bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f`
-
-![BTC Donation QR](frontend/src/assets/btc-qr.png)
-
-DOGE donations:  
-`DASGta7VgHuxUCvDh9v5cfRCFLirjs611B`
-
-![DOGE Donation QR](frontend/src/assets/doge-qr.png)
-
-## License
-
-This project is licensed under `AGPL-3.0-or-later`.
-
-- License text: `LICENSE`
-- Trademark/third-party mark notes: `NOTICE.md`
-
-Brand icons in `frontend/public/dl-icons/` are used only to identify supported third-party services and remain the property of their respective owners.
 
 ## Legal Notice
 
-Use `yLoader`, `yt-dlp`, and related tools only where you have the legal right to access and download content. You are responsible for complying with local law and platform terms.
+Use yLoader, yt-dlp, and related tools only where you have the legal right to access and download content. You are responsible for complying with local law and platform terms.
+
+## License
+
+AGPL-3.0-or-later. See `LICENSE` and `NOTICE.md`.

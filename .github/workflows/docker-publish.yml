@@ -81,3 +81,39 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Sync Docker Hub overview from README
+        if: env.SHOULD_PUBLISH == 'true'
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+        run: |
+          set -euo pipefail
+
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required for README sync"
+            exit 1
+          fi
+
+          namespace="${IMAGE_NAME%%/*}"
+          repository="${IMAGE_NAME##*/}"
+
+          login_response="$(curl -fsS -X POST https://hub.docker.com/v2/users/login/ \
+            -H 'Content-Type: application/json' \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}")"
+
+          jwt="$(printf '%s' "$login_response" | jq -r '.token')"
+          if [ -z "$jwt" ] || [ "$jwt" = "null" ]; then
+            echo "Failed to obtain Docker Hub JWT"
+            exit 1
+          fi
+
+          full_description="$(jq -Rs . < README.md)"
+          short_description="yLoader - world's most advanced Downloader"
+
+          curl -fsS -X PATCH "https://hub.docker.com/v2/repositories/${namespace}/${repository}/" \
+            -H "Authorization: JWT ${jwt}" \
+            -H 'Content-Type: application/json' \
+            --data "{\"description\":\"${short_description}\",\"full_description\":${full_description}}"
