@@ -49,6 +49,8 @@ export default function OptionsTabs({
   videoUrl = '',
   videoThumbnail = '',
   durationSeconds = null,
+  durationLoading = false,
+  durationResolved = false,
   serviceKey = null,
   initialFormats = null,
   onFetchError = null,
@@ -72,6 +74,13 @@ export default function OptionsTabs({
     () => new Set(normalizedDisabledDownloadTypes),
     [normalizedDisabledDownloadTypes]
   )
+  const normalizedDurationSeconds = React.useMemo(() => {
+    const numeric = Number(durationSeconds)
+    if (!Number.isFinite(numeric) || numeric <= 0) return null
+    return Math.round(numeric)
+  }, [durationSeconds])
+  const isDurationLoading = normalizedDurationSeconds == null && (Boolean(durationLoading) || !Boolean(durationResolved))
+  const isDurationUnavailable = normalizedDurationSeconds == null && Boolean(durationResolved) && !isDurationLoading
 
   const effectiveVideoUrl = loadingState ? '' : videoUrl
   const effectiveInitialFormats = React.useMemo(
@@ -143,7 +152,7 @@ export default function OptionsTabs({
     onDownloadStateChange,
     videoUrl: effectiveVideoUrl,
     serviceKey,
-    durationSeconds,
+    durationSeconds: normalizedDurationSeconds,
     videoTitle,
     videoAuthor,
     audioFilenameValue: data.audioFilenameValue,
@@ -363,7 +372,9 @@ export default function OptionsTabs({
             activeSection={data.activeSection}
             toggleSection={data.toggleSection}
             downloading={interactionsDisabled}
-            durationSeconds={durationSeconds}
+            durationSeconds={normalizedDurationSeconds}
+            durationLoading={isDurationLoading}
+            durationUnavailable={isDurationUnavailable}
             titleValue={data.titleValue}
             setTitleValue={data.setTitleValue}
             artistValue={data.artistValue}
@@ -413,7 +424,9 @@ export default function OptionsTabs({
             activeSection={data.activeSection}
             toggleSection={data.toggleSection}
             downloading={interactionsDisabled}
-            durationSeconds={durationSeconds}
+            durationSeconds={normalizedDurationSeconds}
+            durationLoading={isDurationLoading}
+            durationUnavailable={isDurationUnavailable}
             setVideoCutsData={data.setVideoCutsData}
             selectedVideoFormat={data.selectedVideoFormat}
             setSelectedVideoFormat={data.setSelectedVideoFormat}

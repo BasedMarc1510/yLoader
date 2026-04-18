@@ -32,6 +32,8 @@ export default function AudioTabContent({
   toggleSection,
   downloading,
   durationSeconds,
+  durationLoading = false,
+  durationUnavailable = false,
   titleValue,
   setTitleValue,
   artistValue,
@@ -90,6 +92,10 @@ export default function AudioTabContent({
   const canPickSavePath = Boolean(pathModeEnabled && runtime?.downloads?.pickSavePath)
   const [pickingSavePath, setPickingSavePath] = React.useState(false)
   const pathModeInitializedRef = React.useRef(false)
+  const cutControlsDisabled = downloading || durationLoading || durationUnavailable
+  const cutStatusLabel = durationLoading
+    ? i18nT('downloader.loadingDuration')
+    : (durationUnavailable ? i18nT('downloader.durationUnavailable') : '')
 
   React.useEffect(() => {
     if (!pathModeEnabled) {
@@ -249,15 +255,30 @@ export default function AudioTabContent({
         label={i18nT('downloader.cutAudio')}
         theme={theme}
       >
-        <AudioCutSection
-          duration={durationSeconds}
-          brandColor={brandColor}
-          isDark={isDark}
-          disabled={downloading}
-          kind="audio"
-          onChange={setAudioCutsData}
-          mediaType="audio"
-        />
+        {cutStatusLabel && (
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              mb: 1,
+              color: isDark ? '#a7adbb' : '#5e6675',
+              fontWeight: 600,
+            }}
+          >
+            {cutStatusLabel}
+          </Typography>
+        )}
+        <Box sx={{ opacity: cutControlsDisabled ? 0.58 : 1, transition: 'opacity 180ms ease' }}>
+          <AudioCutSection
+            duration={durationSeconds}
+            brandColor={brandColor}
+            isDark={isDark}
+            disabled={cutControlsDisabled}
+            kind="audio"
+            onChange={setAudioCutsData}
+            mediaType="audio"
+          />
+        </Box>
       </CollapsibleSection>
 
       <CollapsibleSection

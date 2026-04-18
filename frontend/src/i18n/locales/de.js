@@ -424,6 +424,8 @@ const de = {
     downloadVideo: 'Video herunterladen',
     downloadThumbnail: 'Thumbnail herunterladen',
     loadingThumbnails: 'Verfügbare Thumbnails werden geladen...',
+    loadingDuration: 'Dauer wird geladen...',
+    durationUnavailable: 'Dauer nicht verfügbar. Schneiden ist deaktiviert.',
     noThumbnailAvailable: 'Kein Thumbnail verfügbar',
     merging: 'Führe zusammen...',
     processing: 'Verarbeite...',

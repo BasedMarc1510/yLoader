@@ -3,7 +3,7 @@ import { Box, Skeleton, Typography, useTheme } from '@mui/material'
 import { Link2 } from 'lucide-react'
 import { useI18n } from '../../providers/I18nProvider'
 
-export default function MediaSummary({ thumbnail, title, author, duration, url, loading = false }) {
+export default function MediaSummary({ thumbnail, title, author, duration, url, loading = false, durationLoading = false }) {
   const { t } = useI18n()
   const theme = useTheme()
   const interactive = !loading && Boolean(url)
@@ -87,7 +87,7 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
           </Box>
         )}
 
-        {loading ? (
+        {(loading || durationLoading) ? (
           <Box sx={{
             position: 'absolute',
             right: 4,

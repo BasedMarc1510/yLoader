@@ -395,8 +395,16 @@ export default function useOptionsTabsData({
   }, [videoUrl])
 
   React.useEffect(() => {
+    setAudioCutsData(null)
+    setVideoCutsData(null)
+  }, [videoUrl])
+
+  React.useEffect(() => {
+    let cancelled = false
+
     const loadFormats = async () => {
       if (!videoUrl) {
+        if (cancelled) return
         setAudioFormats((prev) => (prev.length ? [] : prev))
         setVideoFormats((prev) => (prev.length ? [] : prev))
         setSelectedAudioFormat((prev) => (prev === 'best' ? prev : 'best'))
@@ -405,14 +413,17 @@ export default function useOptionsTabsData({
       }
 
       if (initialFormats != null) {
+        if (cancelled) return
         setAudioFormats(initialFormats.audioFormats || [])
         setVideoFormats(initialFormats.videoFormats || [])
+        setLoadingFormats(false)
         return
       }
 
       try {
         const apiBase = getApiBase()
         const normalized = normalizeUrlForNoembed(videoUrl)
+        if (cancelled) return
         setLoadingFormats(true)
 
         const res = await fetch(`${apiBase}/api/meta/formats?url=${encodeURIComponent(normalized)}`)
@@ -430,9 +441,11 @@ export default function useOptionsTabsData({
         }
 
         const data = await res.json()
+        if (cancelled) return
         setAudioFormats(data.audioFormats || [])
         setVideoFormats(data.videoFormats || [])
       } catch (err) {
+        if (cancelled) return
         setAudioFormats([])
         setVideoFormats([])
         const directMessage = String(err?.message || '').trim()
@@ -442,12 +455,18 @@ export default function useOptionsTabsData({
         })
         onFetchError?.(videoUrl, message)
       } finally {
-        setLoadingFormats(false)
+        if (!cancelled) {
+          setLoadingFormats(false)
+        }
       }
     }
 
     loadFormats()
-  }, [videoUrl, initialFormats, onFetchError])
+
+    return () => {
+      cancelled = true
+    }
+  }, [videoUrl, initialFormats, onFetchError, i18nT])
 
   React.useEffect(() => {
     let cancelled = false

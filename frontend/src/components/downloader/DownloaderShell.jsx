@@ -30,6 +30,7 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFe
               duration={meta.duration}
               url={meta.url}
               loading={loadingState}
+              durationLoading={Boolean(meta.durationLoading)}
             />
           </Box>
           <Box sx={{ mt: 0.5 }}>
@@ -45,6 +46,8 @@ export default function DownloaderShell({ brand, meta, onClose, serviceKey, onFe
               onFetchError={onFetchError}
               onDownloadStateChange={onDownloadStateChange}
               loadingState={loadingState}
+              durationLoading={Boolean(meta.durationLoading)}
+              durationResolved={Boolean(meta.durationResolved)}
               autostartFormat={autostartFormat}
               defaultDownloadType={brand.defaultDownloadType}
               disabledDownloadTypes={brand.disabledDownloadTypes}

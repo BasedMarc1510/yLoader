@@ -45,6 +45,8 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
   // Sync trim range when duration becomes available / changes.
   React.useEffect(() => {
     if (dur <= 0) {
+      setEnabledState(false)
+      setModeMenuAnchorEl(null)
       setTrimStartState(0)
       setTrimEndState(1)
       setTrimStartStr('0:00')
@@ -172,6 +174,11 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
 
   // ── Toggle ─────────────────────────────────────────────────────────────────
   const toggleEnabled = () => {
+    if (disabled || dur <= 0) {
+      setEnabledState(false)
+      return
+    }
+
     setEnabledState(prev => {
       const next = !prev
       if (next) {
@@ -337,11 +344,15 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
           </Typography>
 
           <Box
-            onClick={(event) => setModeMenuAnchorEl(event.currentTarget)}
+            onClick={(event) => {
+              if (!disabled && dur > 0) {
+                setModeMenuAnchorEl(event.currentTarget)
+              }
+            }}
             role="button"
             tabIndex={0}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
+              if ((event.key === 'Enter' || event.key === ' ') && !disabled && dur > 0) {
                 event.preventDefault()
                 setModeMenuAnchorEl(event.currentTarget)
               }

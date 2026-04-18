@@ -424,6 +424,8 @@ const en = {
     downloadVideo: 'Download video',
     downloadThumbnail: 'Download thumbnail',
     loadingThumbnails: 'Loading available thumbnails...',
+    loadingDuration: 'Loading duration...',
+    durationUnavailable: 'Duration is unavailable. Cutting is disabled.',
     noThumbnailAvailable: 'No thumbnail available',
     merging: 'Merging...',
     processing: 'Processing...',

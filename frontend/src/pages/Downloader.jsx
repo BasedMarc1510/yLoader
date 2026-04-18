@@ -2,14 +2,37 @@ import React from 'react'
 import { Box } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import DownloaderShell from '../components/downloader/DownloaderShell'
-import { detectService, toMetaModel, isLikelyValidUrlFor, fetchFormats, normalizeServiceKey } from '../utils/metadata'
+import { detectService, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchNoembed, normalizeServiceKey } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import DownloaderLanding from './downloader/DownloaderLanding'
 import FetchErrorPanel from './downloader/FetchErrorPanel'
 import buildServices from './downloader/buildServices'
 import { FADE_MS, HOLD_MS } from './downloader/constants'
-import { formatYtDlpErrorMessage } from '../utils/ytDlpErrorPresentation'
 import { openSettingsModal } from './home/settingsBridge'
+
+function normalizeDurationSeconds(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return null
+  return Math.round(numeric)
+}
+
+function normalizeDownloaderMeta(rawMeta) {
+  if (!rawMeta || typeof rawMeta !== 'object') return null
+
+  const durationSeconds = normalizeDurationSeconds(rawMeta.durationSeconds)
+  const duration = String(rawMeta.duration || '').trim() || null
+  const durationLoading = Boolean(rawMeta.durationLoading) && durationSeconds == null
+  const durationResolved = durationSeconds != null || Boolean(rawMeta.durationResolved)
+
+  return {
+    ...rawMeta,
+    duration,
+    durationSeconds,
+    preloadedFormats: rawMeta.preloadedFormats || null,
+    durationLoading,
+    durationResolved,
+  }
+}
 
 export default function Downloader({
   serviceKey = 'generic',
@@ -39,6 +62,75 @@ export default function Downloader({
   const [meta, setMeta] = React.useState(null) // when set -> show downloader UI
   const [fetchError, setFetchError] = React.useState(null) // { url, message } when set -> show error panel
   const lastRuntimePayloadRef = React.useRef('')
+  const activeMetaRequestRef = React.useRef(0)
+  const activeSourceUrlRef = React.useRef('')
+
+  const invalidateActiveMetaRequest = React.useCallback(() => {
+    activeMetaRequestRef.current += 1
+  }, [])
+
+  const updateMetaForRequest = React.useCallback((requestId, targetUrl, updater) => {
+    if (activeMetaRequestRef.current !== requestId) return
+
+    const normalizedTargetUrl = String(targetUrl || '').trim()
+    setMeta((prevMeta) => {
+      if (!prevMeta) return prevMeta
+      if (String(prevMeta.url || '').trim() !== normalizedTargetUrl) return prevMeta
+
+      const nextMeta = typeof updater === 'function'
+        ? updater(prevMeta)
+        : { ...prevMeta, ...updater }
+      const normalizedNextMeta = normalizeDownloaderMeta(nextMeta)
+      if (normalizedNextMeta) {
+        activeSourceUrlRef.current = String(normalizedNextMeta.url || normalizedTargetUrl).trim()
+      }
+      return normalizedNextMeta
+    })
+  }, [])
+
+  const startDurationFetch = React.useCallback((targetUrl, requestId) => {
+    void (async () => {
+      try {
+        const payload = await fetchDuration(targetUrl)
+        const durationSeconds = normalizeDurationSeconds(payload?.duration)
+        const durationLabel = String(payload?.durationString || '').trim() || null
+
+        updateMetaForRequest(requestId, targetUrl, (prevMeta) => ({
+          ...prevMeta,
+          duration: durationLabel || prevMeta.duration || null,
+          durationSeconds: durationSeconds ?? prevMeta.durationSeconds ?? null,
+          durationLoading: false,
+          durationResolved: true,
+        }))
+      } catch {
+        // Duration is optional for initial usability; resolve loading state silently.
+        updateMetaForRequest(requestId, targetUrl, (prevMeta) => ({
+          ...prevMeta,
+          durationLoading: false,
+          durationResolved: true,
+        }))
+      }
+    })()
+  }, [updateMetaForRequest])
+
+  const startNoembedFetch = React.useCallback((targetService, targetUrl, requestId) => {
+    void (async () => {
+      try {
+        const noembed = await fetchNoembed(targetUrl)
+        const mappedMeta = toMetaModel(targetService, targetUrl, noembed)
+
+        updateMetaForRequest(requestId, targetUrl, (prevMeta) => ({
+          ...prevMeta,
+          title: mappedMeta.title || prevMeta.title,
+          author: mappedMeta.author || prevMeta.author,
+          provider: mappedMeta.provider || prevMeta.provider,
+          thumbnail: mappedMeta.thumbnail || prevMeta.thumbnail,
+        }))
+      } catch {
+        // Keep the UI interactive even when noembed data is unavailable.
+      }
+    })()
+  }, [updateMetaForRequest])
 
   // Placeholder cycling (fade + hold)
   const [idx, setIdx] = React.useState(0)
@@ -65,17 +157,45 @@ export default function Downloader({
       const cachedErrorUrl = String(cachedError?.url || '').trim()
       const hasMatchingCachedMeta = Boolean(cachedMeta && cachedSourceUrl && cachedSourceUrl === normalizedUrlParam && cachedMetaUrl === normalizedUrlParam)
       const hasMatchingCachedError = Boolean(cachedError && cachedSourceUrl && cachedSourceUrl === normalizedUrlParam && cachedErrorUrl === normalizedUrlParam)
+      const effectiveService = detectService(normalizedUrlParam) || serviceFromQuery || serviceKey || 'generic'
 
       setValue(normalizedUrlParam)
 
       if (hasMatchingCachedMeta) {
-        setMeta(cachedMeta)
+        const cachedRequestId = activeMetaRequestRef.current + 1
+        activeMetaRequestRef.current = cachedRequestId
+        activeSourceUrlRef.current = normalizedUrlParam
+
+        const normalizedCachedMeta = normalizeDownloaderMeta(cachedMeta)
+          || normalizeDownloaderMeta({
+            ...toMetaModel(effectiveService, normalizedUrlParam, null),
+            duration: null,
+            durationSeconds: null,
+            preloadedFormats: null,
+            durationLoading: true,
+            durationResolved: false,
+          })
+        const hasDurationSeconds = normalizeDurationSeconds(normalizedCachedMeta?.durationSeconds) != null
+        const hydratedCachedMeta = normalizeDownloaderMeta({
+          ...normalizedCachedMeta,
+          durationLoading: !hasDurationSeconds,
+          durationResolved: hasDurationSeconds ? true : normalizedCachedMeta?.durationResolved,
+        })
+
+        setMeta(hydratedCachedMeta)
         setFetchError(null)
         setLoading(false)
+
+        startNoembedFetch(effectiveService, normalizedUrlParam, cachedRequestId)
+        if (!hasDurationSeconds) {
+          startDurationFetch(normalizedUrlParam, cachedRequestId)
+        }
         return
       }
 
       if (hasMatchingCachedError) {
+        invalidateActiveMetaRequest()
+        activeSourceUrlRef.current = normalizedUrlParam
         setMeta(null)
         setFetchError(cachedError)
         setLoading(false)
@@ -83,7 +203,6 @@ export default function Downloader({
       }
 
       setFetchError(null)
-      const effectiveService = detectService(normalizedUrlParam) || serviceFromQuery || serviceKey || 'generic'
 
       // If a valid URL is provided via query, auto-fetch meta on mount.
       if (isLikelyValidUrlFor(effectiveService, normalizedUrlParam)) {
@@ -100,9 +219,12 @@ export default function Downloader({
     const params = new URLSearchParams(routeSearch)
     const urlParam = params.get('source') || params.get('url')
     if (!urlParam) {
+      invalidateActiveMetaRequest()
+      activeSourceUrlRef.current = ''
       if (meta) setMeta(null)
       if (value) setValue('')
       if (fetchError) setFetchError(null)
+      if (loading) setLoading(false)
     }
     // We intentionally only depend on route token and service key to capture repeated route clicks
     // without causing re-runs while typing
@@ -135,6 +257,8 @@ export default function Downloader({
     duration: null,
     durationSeconds: null,
     preloadedFormats: null,
+    durationLoading: true,
+    durationResolved: false,
     url: queryUrl || value || '',
   }), [queryUrl, value])
 
@@ -181,56 +305,73 @@ export default function Downloader({
     }
   }, [value, resolvedServiceKey])
 
-  const handleFetch = async (urlOverride) => {
+  const handleFetch = (urlOverride) => {
     const target = (urlOverride ?? value).trim()
     const targetService = detectService(target) || resolvedServiceKey || 'generic'
     if (!isLikelyValidUrlFor(targetService, target) || loading) return
+
+    const requestId = activeMetaRequestRef.current + 1
+    activeMetaRequestRef.current = requestId
+    activeSourceUrlRef.current = target
+
     setLoading(true)
     setMeta(null)
     setFetchError(null)
-    try {
-      const formats = await fetchFormats(target)
-      const model = toMetaModel(targetService, target, {
-        title: formats?.title || '',
-        author_name: formats?.author || '',
-        provider_name: formats?.extractor || '',
-        thumbnail_url: formats?.thumbnail || '',
-      })
-      model.duration = formats?.durationString || null
-      model.durationSeconds = formats?.duration || null
-      model.preloadedFormats = formats
-      setMeta(model)
-    } catch (e) {
-      const message = formatYtDlpErrorMessage(i18nT, e?.payload || e?.message || e, {
-        fallbackKey: 'downloader.errorDownloadFailed',
-        includeRawForUnknown: true,
-      })
-      setFetchError({ url: target, message })
-    } finally {
-      setLoading(false)
-    }
+
+    const baseMeta = normalizeDownloaderMeta({
+      ...toMetaModel(targetService, target, null),
+      duration: null,
+      durationSeconds: null,
+      preloadedFormats: null,
+      durationLoading: true,
+      durationResolved: false,
+    })
+
+    setMeta(baseMeta)
+    setLoading(false)
+
+    startNoembedFetch(targetService, target, requestId)
+    startDurationFetch(target, requestId)
   }
 
   const basePath = '/'
 
   const closeInterface = () => {
+    invalidateActiveMetaRequest()
+    activeSourceUrlRef.current = ''
+    setLoading(false)
     setMeta(null)
     setValue('') // Clear input bar when closing
     onNavigate?.(basePath, '')
   }
 
   const handleFetchError = React.useCallback((url, message) => {
+    const normalizedUrl = String(url || '').trim()
+    const activeSourceUrl = String(activeSourceUrlRef.current || '').trim()
+    if (normalizedUrl && activeSourceUrl && normalizedUrl !== activeSourceUrl) {
+      return
+    }
+
+    invalidateActiveMetaRequest()
+    activeSourceUrlRef.current = normalizedUrl || activeSourceUrl
+
+    setLoading(false)
     setMeta(null)
-    setFetchError({ url, message })
-  }, [])
+    setFetchError({ url: normalizedUrl, message })
+  }, [invalidateActiveMetaRequest])
 
   const closeError = () => {
+    invalidateActiveMetaRequest()
+    activeSourceUrlRef.current = ''
+    setLoading(false)
     setFetchError(null)
     onNavigate?.(basePath, '')
   }
 
   const retryError = () => {
     const url = fetchError?.url
+    invalidateActiveMetaRequest()
+    activeSourceUrlRef.current = String(url || '').trim()
     setFetchError(null)
     const retryService = detectService(url) || resolvedServiceKey || 'generic'
     onNavigate?.(basePath, `?service=${encodeURIComponent(retryService)}&source=${encodeURIComponent(url)}`)
@@ -297,6 +438,8 @@ export default function Downloader({
   }, [fetchError, meta, onTabStateChange, queryUrl, resolvedServiceKey, tabsReady, value])
 
   React.useEffect(() => () => {
+    invalidateActiveMetaRequest()
+    activeSourceUrlRef.current = ''
     onTabStateChange?.({
       loading: false,
       download: {
@@ -306,7 +449,7 @@ export default function Downloader({
         title: '',
       },
     })
-  }, [onTabStateChange])
+  }, [invalidateActiveMetaRequest, onTabStateChange])
 
   // Ensure the URL input gets focus when navigating here or after closing the interface
   React.useEffect(() => {

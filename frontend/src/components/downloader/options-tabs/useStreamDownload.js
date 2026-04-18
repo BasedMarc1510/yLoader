@@ -252,6 +252,8 @@ export default function useStreamDownload({
       const apiBase = getApiBase()
       const normalized = normalizeUrlForNoembed(videoUrl)
       const selectedCuts = type === 'audio' ? audioCutsData : videoCutsData
+      const numericDurationSeconds = Number(durationSeconds)
+      const hasDurationSeconds = Number.isFinite(numericDurationSeconds) && numericDurationSeconds > 0
       const normalizedSegments = Array.isArray(selectedCuts?.segments)
         ? selectedCuts.segments
             .filter((s) => typeof s?.start === 'number' && typeof s?.end === 'number' && s.end > s.start)
@@ -263,12 +265,12 @@ export default function useStreamDownload({
             .map((s) => ({ start: Math.max(0, s.start), end: Math.max(0, s.end) }))
         : []
 
-      const cutsPayload = selectedCuts?.enabled
+      const cutsPayload = selectedCuts?.enabled && hasDurationSeconds
         ? {
           enabled: true,
           mode: selectedCuts?.mode === 'keep' ? 'keep' : 'remove',
           trimStart: selectedCuts?.trimStart ?? 0,
-          trimEnd: selectedCuts?.trimEnd ?? (durationSeconds || 0),
+          trimEnd: selectedCuts?.trimEnd ?? numericDurationSeconds,
           segments: normalizedSegments,
           removals: normalizedRemovals,
         }
@@ -357,7 +359,7 @@ export default function useStreamDownload({
         url: normalized,
         service: resolveServiceKey(serviceKey, normalized),
         type,
-        duration: durationSeconds,
+        duration: hasDurationSeconds ? numericDurationSeconds : null,
         videoTitle: normalizedVideoTitle,
         videoAuthor: sanitizeMetadataValue(videoAuthor, 220),
         format: type === 'video' ? videoContainer : (type === 'audio' ? audioContainer : undefined),
@@ -390,11 +392,11 @@ export default function useStreamDownload({
             removals: cutsPayload.removals,
           }
           : undefined,
-        videoCuts: type === 'video' && videoCutsData?.enabled
+        videoCuts: type === 'video' && videoCutsData?.enabled && hasDurationSeconds
           ? {
             enabled: true,
             trimStart: videoCutsData.trimStart ?? 0,
-            trimEnd: videoCutsData.trimEnd ?? (durationSeconds || 0),
+            trimEnd: videoCutsData.trimEnd ?? numericDurationSeconds,
             removals: videoCutsData.removals ?? [],
           }
           : undefined,
