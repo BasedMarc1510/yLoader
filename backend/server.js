@@ -55,6 +55,16 @@ db.serialize(() => {
 
 const app = express()
 const PORT = process.env.PORT || 4000
+const FRONTEND_DIST_DIR = (() => {
+  const configured = String(process.env.FRONTEND_DIST_DIR || '').trim()
+  if (!configured) return ''
+  try {
+    return path.resolve(configured)
+  } catch {
+    return ''
+  }
+})()
+const FRONTEND_DIST_INDEX = FRONTEND_DIST_DIR ? path.join(FRONTEND_DIST_DIR, 'index.html') : ''
 
 function getDefaultSystemDownloadsDir() {
   const configured = String(process.env.SYSTEM_DOWNLOADS_DIR || '').trim()
@@ -5591,6 +5601,29 @@ app.get('/api/download/file/:filename', (req, res) => {
     res.status(500).json({ error: 'Failed to serve file', details: String(err?.message || err) })
   }
 })
+
+function configureFrontendStaticHosting() {
+  if (!FRONTEND_DIST_DIR) return
+
+  if (!FRONTEND_DIST_INDEX || !fs.existsSync(FRONTEND_DIST_INDEX)) {
+    console.warn(`Frontend dist missing at ${FRONTEND_DIST_DIR}; running in API-only mode.`)
+    return
+  }
+
+  app.use(express.static(FRONTEND_DIST_DIR, {
+    index: false,
+    maxAge: '1h',
+  }))
+
+  // Keep API/health endpoints untouched and hand all other routes to the SPA.
+  app.get(/^\/(?!api(?:\/|$)|health(?:\/|$)).*/, (_req, res) => {
+    res.sendFile(FRONTEND_DIST_INDEX)
+  })
+
+  console.log(`Frontend static hosting enabled: ${FRONTEND_DIST_DIR}`)
+}
+
+configureFrontendStaticHosting()
 
 app.listen(PORT, () => {
   console.log(`yLoader backend listening on port ${PORT}`)

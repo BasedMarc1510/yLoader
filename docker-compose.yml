@@ -1,31 +1,24 @@
 services:
-  backend:
-    image: ${YLOADER_BACKEND_IMAGE:-yloader-backend}
+  app:
+    image: ${YLOADER_IMAGE:-yloader}
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: yloader-backend
+    container_name: yloader
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "${YLOADER_FRONTEND_PORT:-8080}:4000"
+      - "${YLOADER_BACKEND_PORT:-4000}:4000"
     environment:
       - DOWNLOAD_DIR=/downloads
       - DB_PATH=/app/data/metadata.db
+      - FRONTEND_DIST_DIR=/app/frontend/dist
       - FFMPEG_PATH=/usr/local/bin/ffmpeg
       - FFPROBE_PATH=/usr/local/bin/ffprobe
       - YT_DLP_MANAGED_BY_YLOADER=1
       - FFMPEG_MANAGED_BY_YLOADER=1
+      - YLOADER_RUNTIME_TARGET=server
+      - YLOADER_ALLOW_BROWSER_COOKIE_IMPORT=0
     volumes:
       - ./downloads:/downloads
       - ./backend-data:/app/data
-  frontend:
-    image: ${YLOADER_FRONTEND_IMAGE:-yloader-frontend}
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    container_name: yloader-web
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    depends_on:
-      - backend

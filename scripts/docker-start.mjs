@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import process from 'process'
 import { fileURLToPath } from 'url'
@@ -9,6 +10,8 @@ const __dirname = path.dirname(__filename)
 const ROOT_DIR = path.resolve(__dirname, '..')
 const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads')
 const BACKEND_DATA_DIR = path.join(ROOT_DIR, 'backend-data')
+const FRONTEND_PORT = Number.parseInt(String(process.env.YLOADER_FRONTEND_PORT || '8080'), 10) || 8080
+const BACKEND_PORT = Number.parseInt(String(process.env.YLOADER_BACKEND_PORT || '4000'), 10) || 4000
 
 function info(message) {
   process.stdout.write(`[yloader] ${message}\n`)
@@ -38,6 +41,26 @@ function streamWithPrefix(stream, prefix, target) {
       target.write(`[${prefix}] ${buffer}\n`)
     }
   })
+}
+
+function getReachableIpv4Addresses() {
+  const interfaces = os.networkInterfaces()
+  const addresses = new Set()
+
+  for (const entries of Object.values(interfaces)) {
+    if (!Array.isArray(entries)) continue
+
+    for (const entry of entries) {
+      if (!entry || entry.internal || entry.family !== 'IPv4') continue
+
+      const address = String(entry.address || '').trim()
+      if (!address || address.startsWith('169.254.')) continue
+
+      addresses.add(address)
+    }
+  }
+
+  return Array.from(addresses).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 }
 
 function runCommand(command, args, options = {}) {
@@ -118,8 +141,8 @@ async function main() {
   await runCommand('docker', ['compose', 'up', '-d', '--build', '--remove-orphans'])
 
   info('Waiting for containers to become reachable...')
-  const backendReady = await waitForHttp('http://127.0.0.1:4000/health', 90000)
-  const frontendReady = await waitForHttp('http://127.0.0.1:8080', 90000)
+  const backendReady = await waitForHttp(`http://127.0.0.1:${BACKEND_PORT}/health`, 90000)
+  const frontendReady = await waitForHttp(`http://127.0.0.1:${FRONTEND_PORT}`, 90000)
 
   if (!backendReady) {
     info('Backend health endpoint is not ready yet. Check logs with: npm run docker:logs')
@@ -130,9 +153,21 @@ async function main() {
 
   process.stdout.write('\n')
   info('Docker stack is running.')
-  process.stdout.write('  Frontend: http://localhost:8080\n')
-  process.stdout.write('  Backend : http://localhost:4000\n')
-  process.stdout.write('  Health  : http://localhost:4000/health\n')
+  process.stdout.write(`  Frontend: http://localhost:${FRONTEND_PORT}\n`)
+  process.stdout.write(`  Backend : http://localhost:${BACKEND_PORT}\n`)
+  process.stdout.write(`  Health  : http://localhost:${BACKEND_PORT}/health\n`)
+
+  const lanAddresses = getReachableIpv4Addresses()
+  if (lanAddresses.length > 0) {
+    process.stdout.write('  LAN URLs:\n')
+    for (const address of lanAddresses) {
+      process.stdout.write(`    - Frontend: http://${address}:${FRONTEND_PORT}\n`)
+      if (BACKEND_PORT !== FRONTEND_PORT) {
+        process.stdout.write(`    - Backend : http://${address}:${BACKEND_PORT}\n`)
+      }
+    }
+  }
+
   process.stdout.write('  Logs    : npm run docker:logs\n')
   process.stdout.write('  Stop    : npm run docker:stop\n\n')
 }

@@ -9,6 +9,11 @@
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "Self-hosted yt-dlp web wrapper with React UI and Node backend",
+  "author": "Marc",
+  "homepage": "https://github.com/BasedMarc1510/yLoader",
+  "bugs": {
+    "url": "https://github.com/BasedMarc1510/yLoader/issues"
+  },
   "scripts": {
     "start": "node scripts/start.mjs",
     "start:electron": "node scripts/start-electron.mjs",
@@ -18,13 +23,13 @@
     "dist:win": "npm run build:electron -- --win",
     "dist:mac": "npm run build:electron -- --mac",
     "dist:linux": "npm run build:electron -- --linux",
-    "docker:start": "docker compose up -d --build --remove-orphans",
-    "docker:start:plain": "docker compose --progress plain build backend && docker compose --progress plain build frontend && docker compose up -d --remove-orphans",
-    "docker:start:fresh": "docker compose --progress plain build --no-cache --pull backend && docker compose --progress plain build --no-cache --pull frontend && docker compose up -d --remove-orphans",
+    "docker:start": "node scripts/docker-start.mjs",
+    "docker:start:plain": "docker compose up -d --build --remove-orphans",
+    "docker:start:fresh": "docker compose --progress plain build --no-cache --pull app && docker compose up -d --remove-orphans",
     "docker:start:guided": "node scripts/docker-start.mjs",
     "docker:stop": "docker compose down",
     "docker:logs": "docker compose logs -f --tail=100",
-    "docker:push": "docker compose push backend frontend"
+    "docker:push": "docker compose push app"
   },
   "devDependencies": {
     "@electron/notarize": "^2.2.1",

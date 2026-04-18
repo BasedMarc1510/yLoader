@@ -1,5 +1,19 @@
 # syntax=docker/dockerfile:1.7
 
+# Build frontend once and copy dist into the runtime image.
+FROM node:20-slim AS frontend-builder
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci --no-audit --no-fund
+
+WORKDIR /app
+COPY frontend ./frontend
+COPY shared ./shared
+
+WORKDIR /app/frontend
+RUN npm run build
+
 FROM node:20-bookworm-slim
 
 ARG TARGETARCH
@@ -7,7 +21,10 @@ ARG TARGETARCH
 # App setup
 WORKDIR /app/backend
 ENV NODE_ENV=production
+ENV PORT=4000
 ENV DOWNLOAD_DIR=/downloads
+ENV DB_PATH=/app/data/metadata.db
+ENV FRONTEND_DIST_DIR=/app/frontend/dist
 ENV YT_DLP_PATH=/usr/local/bin/yt-dlp
 ENV YT_DLP_UPDATE_METHOD=self
 ENV YT_DLP_MANAGED_BY_YLOADER=1
@@ -27,13 +44,31 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 			 esac \
 		&& FFMPEG_ASSET="ffmpeg-${FFMPEG_SUFFIX}" \
 		&& FFPROBE_ASSET="ffprobe-${FFMPEG_SUFFIX}" \
-		&& curl -fL --retry 6 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 300 "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YT_DLP_ASSET}" -o /usr/local/bin/yt-dlp \
-		&& curl -fL --retry 6 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 300 "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/${FFMPEG_ASSET}" -o /usr/local/bin/ffmpeg \
-		&& curl -fL --retry 6 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 300 "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/${FFPROBE_ASSET}" -o /usr/local/bin/ffprobe \
+		&& download_with_retry() { \
+				 curl -fL --retry 10 --retry-delay 3 --retry-all-errors --retry-max-time 900 --connect-timeout 20 --max-time 300 "$1" -o "$2"; \
+		 } \
+		&& if ! download_with_retry "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YT_DLP_ASSET}" /usr/local/bin/yt-dlp; then \
+				 echo "yt-dlp download failed; falling back to Debian package." >&2; \
+				 apt-get install -y --no-install-recommends yt-dlp; \
+				 cp "$(command -v yt-dlp)" /usr/local/bin/yt-dlp; \
+		 fi \
+		&& if ! download_with_retry "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/${FFMPEG_ASSET}" /usr/local/bin/ffmpeg; then \
+				 echo "ffmpeg download failed; falling back to Debian package." >&2; \
+				 apt-get install -y --no-install-recommends ffmpeg; \
+				 cp "$(command -v ffmpeg)" /usr/local/bin/ffmpeg; \
+		 fi \
+		&& if ! download_with_retry "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/${FFPROBE_ASSET}" /usr/local/bin/ffprobe; then \
+				 echo "ffprobe download failed; falling back to Debian package." >&2; \
+				 if ! command -v ffprobe >/dev/null 2>&1; then \
+						 apt-get install -y --no-install-recommends ffmpeg; \
+				 fi; \
+				 cp "$(command -v ffprobe)" /usr/local/bin/ffprobe; \
+		 fi \
 		&& chmod +x /usr/local/bin/yt-dlp \
 		&& chmod +x /usr/local/bin/ffmpeg \
 		&& chmod +x /usr/local/bin/ffprobe \
 		&& /usr/local/bin/yt-dlp --version \
+		&& /usr/local/bin/ffmpeg -version \
 		&& apt-get purge -y --auto-remove curl
 
 # Install Node dependencies
@@ -44,9 +79,10 @@ RUN npm ci --omit=dev --no-audit --no-fund \
 # Copy application source
 COPY backend/server.js ./
 COPY shared /app/shared
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 # Ensure directories exist (bind-mounts will override at runtime)
-RUN mkdir -p /downloads /app/data
+RUN mkdir -p /downloads /app/data /app/frontend/dist
 
 EXPOSE 4000
 CMD ["npm", "start"]

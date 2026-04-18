@@ -29,23 +29,32 @@ Local start is fully self-contained: `yLoader` uses project-local binaries from 
 ### Docker
 
 ```bash
+npm run docker:start
+```
+
+This command builds and starts a **single container** that serves both frontend and backend, then prints localhost and LAN URLs.
+
+If you prefer raw Docker Compose output:
+
+```bash
 docker compose up -d --build --remove-orphans
 ```
 
-The backend Docker image downloads `ffmpeg`/`ffprobe` and `yt-dlp` directly from GitHub Releases during build, so no host-level tool setup is required.
+The Docker image downloads `ffmpeg`/`ffprobe` and `yt-dlp` directly from GitHub Releases during build, so no host-level tool setup is required.
 
 For Docker Hub publishing, set image names before building (for example in a root `.env` file):
 
 ```bash
-YLOADER_BACKEND_IMAGE=yourdockerhubuser/yloader-backend:latest
-YLOADER_FRONTEND_IMAGE=yourdockerhubuser/yloader-frontend:latest
+YLOADER_IMAGE=yourdockerhubuser/yloader:latest
+YLOADER_FRONTEND_PORT=8080
+YLOADER_BACKEND_PORT=4000
 ```
 
 Then build and push:
 
 ```bash
-docker compose build backend frontend
-docker compose push backend frontend
+docker compose build app
+docker compose push app
 ```
 
 ### Default URLs
@@ -137,6 +146,7 @@ If you hit bot-check/login restrictions, configure one of these cookie options i
 ## Useful Commands
 
 ```bash
+npm run docker:start
 npm run docker:start:guided
 npm run docker:start:plain
 npm run docker:start:fresh
@@ -177,7 +187,7 @@ Electron auto-update flow:
 - Pre-release detection is enabled (`allowPrerelease=true`) so beta tags from GitHub Releases can be used for update testing.
 - On macOS, updates are still detected and shown in Settings, but in-place updater download/install is disabled. `Download update` opens the matching GitHub Release page so the DMG can be installed manually.
 
-## GitHub Actions (Electron Builds and Releases)
+## GitHub Actions (Electron and Docker Releases)
 
 This repository includes a cross-platform Electron workflow in `.github/workflows/electron-release.yml`.
 
@@ -211,6 +221,28 @@ Result: the same matrix build runs, and electron-builder uploads the platform ar
 
 You can also manually run the workflow on an existing `v*` tag and set `publish=true`.
 On non-tag refs, `publish=true` is ignored to avoid accidental release uploads.
+
+### Docker Hub publishing workflow
+
+This repository also includes `.github/workflows/docker-publish.yml` to publish the single Docker image (`linux/amd64` + `linux/arm64`) to Docker Hub.
+
+Before first use, configure GitHub secrets:
+
+1. Open **GitHub -> Settings -> Secrets and variables -> Actions**.
+2. Add secret `DOCKERHUB_USERNAME` (your Docker Hub username).
+3. Add secret `DOCKERHUB_TOKEN` (Docker Hub access token with push permissions).
+
+Publish flow:
+
+1. Push a release tag like `v2026.1.1`.
+2. GitHub Actions runs **Docker Build and Publish** automatically.
+3. Stable tags (without `-beta`/`-rc`) also update the `latest` tag.
+
+Manual flow:
+
+1. Open **Actions -> Docker Build and Publish**.
+2. Click **Run workflow**.
+3. Select a `v*` tag ref and set `publish=true` if prompted.
 
 ## Health Check
 
