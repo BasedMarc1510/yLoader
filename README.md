@@ -12,7 +12,7 @@ yLoader is built for fast daily use: clean UI, advanced media controls, and feat
 
 <img width="1157" height="717" alt="image1" src="https://github.com/user-attachments/assets/9d3abc5c-d565-48b9-a59e-0e735f326eaa" />
 
-## Recommended: Electron Desktop App
+## Electron Desktop App
 
 Install yLoader directly from the latest release for your operating system:
 
@@ -20,8 +20,13 @@ Install yLoader directly from the latest release for your operating system:
 [![Download for macOS](https://img.shields.io/badge/macOS-Download%20DMG-111111?style=for-the-badge&logo=apple)](https://github.com/BasedMarc1510/yLoader/releases/latest/download/yLoaderSetup.dmg)
 [![Download for Linux](https://img.shields.io/badge/Linux-Download%20AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/BasedMarc1510/yLoader/releases/latest/download/yLoaderSetup.AppImage)
 
-Latest release page:
-https://github.com/BasedMarc1510/yLoader/releases/latest
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-yloader%2Fyloader-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/yloader/yloader)
+
+Docker quick install:
+
+```bash
+docker pull yloader/yloader
+```
 
 ![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
 ![Node](https://img.shields.io/badge/node-18%2B-43853D)
@@ -50,7 +55,7 @@ https://github.com/BasedMarc1510/yLoader/releases/latest
 
 ## Quick Start
 
-### Option 1: Electron Desktop App (recommended)
+### Option 1: Electron Desktop App
 
 Download and run the installer for your operating system from the links above.
 
@@ -66,8 +71,8 @@ Open http://localhost:8080
 If you need a pinned version instead of `latest`:
 
 ```bash
-docker pull yloader/yloader:2026.1.2-beta
-docker run -d --name yloader -p 8080:8080 yloader/yloader:2026.1.2-beta
+docker pull yloader/yloader:2026.1.0
+docker run -d --name yloader -p 8080:8080 yloader/yloader:2026.1.0
 ```
 
 ### Option 3: Docker Compose (from source)
@@ -103,9 +108,7 @@ npm run start:electron
 - The image runs the app on container port `8080`
 - If you do not publish a host port with `-p`, the app runs but is not reachable from your browser
 - `latest` tracks the newest pushed `v*` release tag
-- Version tags are also published in both forms:
-  - `v2026.1.2-beta`
-  - `2026.1.2-beta`
+- Version tags are also published in both forms (for example `v2026.1.0` and `2026.1.0`)
 
 ## Configuration
 
