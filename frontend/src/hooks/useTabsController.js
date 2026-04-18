@@ -250,7 +250,7 @@ export function useTabsController({ t }) {
     }, 0)
   }, [openDownloaderInTab])
 
-  const openHomeMultiInNewTab = React.useCallback((rawUrls = []) => {
+  const buildHomeMultiSearch = React.useCallback((rawUrls = []) => {
     const urls = Array.isArray(rawUrls)
       ? Array.from(new Set(
           rawUrls
@@ -259,7 +259,7 @@ export function useTabsController({ t }) {
         ))
       : []
 
-    if (!urls.length) return
+    if (!urls.length) return ''
 
     const linksBlock = urls.join('\n')
     const params = new URLSearchParams()
@@ -272,13 +272,31 @@ export function useTabsController({ t }) {
       params.set('links', linksBlock)
     }
 
+    return `?${params.toString()}`
+  }, [])
+
+  const openHomeMultiInTab = React.useCallback((tabId, rawUrls = []) => {
+    const targetTabId = String(tabId || '').trim()
+    if (!targetTabId) return false
+
+    const search = buildHomeMultiSearch(rawUrls)
+    if (!search) return false
+
+    navigateTab(targetTabId, '/', search)
+    return true
+  }, [buildHomeMultiSearch, navigateTab])
+
+  const openHomeMultiInNewTab = React.useCallback((rawUrls = []) => {
+    const search = buildHomeMultiSearch(rawUrls)
+    if (!search) return
+
     const newTab = createDefaultTab()
     newTab.path = '/'
-    newTab.search = `?${params.toString()}`
+    newTab.search = search
 
     setTabs((prevTabs) => [...prevTabs, newTab])
     setActiveTabId(newTab.id)
-  }, [])
+  }, [buildHomeMultiSearch])
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0]
 
@@ -662,6 +680,7 @@ export function useTabsController({ t }) {
     navigateActiveTab,
     openDownloaderInTab,
     openDownloaderInNewTab,
+    openHomeMultiInTab,
     openHomeMultiInNewTab,
     selectRelativeTab,
     handleRequestCloseTab,

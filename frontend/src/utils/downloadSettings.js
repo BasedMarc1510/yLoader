@@ -117,3 +117,33 @@ export function normalizeDownloadSettings(value) {
       : DOWNLOAD_SETTINGS_DEFAULTS.thumbnailAlwaysAsk,
   }
 }
+
+export function resolveDownloadTargetSettings(settings, downloadType = 'video') {
+  const normalized = normalizeDownloadSettings(settings)
+
+  if (String(normalized.downloadLocationMode || 'all') !== 'separate') {
+    return {
+      directoryPath: String(normalized.globalDownloadPath || '').trim(),
+      alwaysAsk: Boolean(normalized.globalAlwaysAsk),
+    }
+  }
+
+  if (downloadType === 'audio') {
+    return {
+      directoryPath: String(normalized.audioDownloadPath || '').trim(),
+      alwaysAsk: Boolean(normalized.audioAlwaysAsk),
+    }
+  }
+
+  if (downloadType === 'thumbnail') {
+    return {
+      directoryPath: String(normalized.thumbnailDownloadPath || '').trim(),
+      alwaysAsk: Boolean(normalized.thumbnailAlwaysAsk),
+    }
+  }
+
+  return {
+    directoryPath: String(normalized.videoDownloadPath || '').trim(),
+    alwaysAsk: Boolean(normalized.videoAlwaysAsk),
+  }
+}

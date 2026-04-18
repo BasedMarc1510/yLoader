@@ -45,6 +45,10 @@ const downloads = {
   pickDirectory: (initialPath = '') => ipcRenderer.invoke('downloads:pick-directory', {
     initialPath: String(initialPath || ''),
   }),
+  pickSavePath: (options = {}) => ipcRenderer.invoke('downloads:pick-save-path', {
+    initialDirectory: String(options?.initialDirectory || ''),
+    suggestedName: String(options?.suggestedName || ''),
+  }),
   pickFile: (initialPath = '') => ipcRenderer.invoke('downloads:pick-file', {
     initialPath: String(initialPath || ''),
   }),

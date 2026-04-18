@@ -35,6 +35,26 @@ async function parseApiError(response) {
   return message
 }
 
+function hasOwnPropertyKey(value, key) {
+  if (!value || typeof value !== 'object') return false
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
+function mergeLegacyAutoDownloadFields(serverValue, fallbackValue) {
+  const server = (serverValue && typeof serverValue === 'object') ? serverValue : {}
+  const fallback = (fallbackValue && typeof fallbackValue === 'object') ? fallbackValue : {}
+
+  return {
+    ...server,
+    useFixedDownloadPath: hasOwnPropertyKey(server, 'useFixedDownloadPath')
+      ? server.useFixedDownloadPath
+      : fallback.useFixedDownloadPath,
+    fixedDownloadPath: hasOwnPropertyKey(server, 'fixedDownloadPath')
+      ? server.fixedDownloadPath
+      : fallback.fixedDownloadPath,
+  }
+}
+
 export default function SettingsModal({
   open,
   onClose,
@@ -361,7 +381,8 @@ export default function SettingsModal({
       const resp = await fetch(`${API_BASE}/api/auto-download/settings`)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data = await resp.json()
-      setAutoDownloadSettings(normalizeAutoDownloadSettings(data))
+      const merged = mergeLegacyAutoDownloadFields(data, autoDownloadSettingsRef.current || AUTO_DOWNLOAD_DEFAULTS)
+      setAutoDownloadSettings(normalizeAutoDownloadSettings(merged))
     } catch (error) {
       setAutoDownloadError(t('settings.autoDownloadLoadFailed', { message: error?.message || error }))
     } finally {
@@ -382,7 +403,8 @@ export default function SettingsModal({
       })
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data = await resp.json()
-      const normalized = normalizeAutoDownloadSettings(data)
+      const merged = mergeLegacyAutoDownloadFields(data, nextSettings)
+      const normalized = normalizeAutoDownloadSettings(merged)
       if (requestId === autoDownloadSaveRequestIdRef.current) {
         setAutoDownloadSettings(normalized)
       }
@@ -940,6 +962,7 @@ export default function SettingsModal({
                   updateAutoDownloadSettings={updateAutoDownloadSettings}
                   selectSx={selectSx}
                   t={t}
+                  isElectronRuntime={isElectronRuntime}
                 />
               )}
 

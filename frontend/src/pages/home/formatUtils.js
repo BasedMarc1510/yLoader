@@ -1,15 +1,31 @@
 import { AUTO_DOWNLOAD_SETTINGS_DEFAULTS } from './constants'
 
+function normalizeDownloadPath(value, fallbackPath) {
+  const fallback = String(fallbackPath || '').trim()
+  const raw = String(value || '')
+    .replace(/\u0000/g, '')
+    .trim()
+  return raw || fallback
+}
+
 export function normalizeAutoDownloadSettings(value) {
   const input = (value && typeof value === 'object') ? value : {}
   const maxAudioBitrateKbps = Number(input.maxAudioBitrateKbps)
   const maxVideoHeight = Number(input.maxVideoHeight)
+  const fixedDownloadPath = normalizeDownloadPath(
+    input.fixedDownloadPath,
+    AUTO_DOWNLOAD_SETTINGS_DEFAULTS.fixedDownloadPath,
+  )
 
   return {
     useMetadata: input.useMetadata !== undefined ? Boolean(input.useMetadata) : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.useMetadata,
     embedCoverArt: input.embedCoverArt !== undefined ? Boolean(input.embedCoverArt) : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.embedCoverArt,
     maxAudioBitrateKbps: Number.isFinite(maxAudioBitrateKbps) ? maxAudioBitrateKbps : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.maxAudioBitrateKbps,
     maxVideoHeight: Number.isFinite(maxVideoHeight) ? maxVideoHeight : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.maxVideoHeight,
+    useFixedDownloadPath: input.useFixedDownloadPath !== undefined
+      ? Boolean(input.useFixedDownloadPath)
+      : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.useFixedDownloadPath,
+    fixedDownloadPath,
   }
 }
 

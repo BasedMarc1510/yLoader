@@ -406,7 +406,15 @@ function resolvePreviewEmbedPayload(entry, fallbackService, getServiceLabel) {
   }
 }
 
-export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMultiInNewTab, tabsReady = true, runtimeState = null, onTabStateChange = null }) {
+export default function SearchPage({
+  onOpenDownloader,
+  onOpenInNewTab,
+  onOpenMultiInTab,
+  onOpenMultiInNewTab,
+  tabsReady = true,
+  runtimeState = null,
+  onTabStateChange = null,
+}) {
   const initialRuntimeRef = React.useRef(normalizeSearchRuntimeState(runtimeState))
   const lastRuntimeSnapshotRef = React.useRef('')
   const runtimeHydratedRef = React.useRef(false)
@@ -438,6 +446,7 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
   const [kebabAnchorEl, setKebabAnchorEl] = React.useState(null)
   const [downloadAnchorEl, setDownloadAnchorEl] = React.useState(null)
   const [selectedListAnchorEl, setSelectedListAnchorEl] = React.useState(null)
+  const [selectedDownloadAnchorEl, setSelectedDownloadAnchorEl] = React.useState(null)
   const [actionEntry, setActionEntry] = React.useState(null)
   const [embedPreview, setEmbedPreview] = React.useState(null)
   const [quickDownloadState, setQuickDownloadState] = React.useState(null)
@@ -759,6 +768,7 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
   const handleClearSelectedEntries = React.useCallback(() => {
     setSelectedEntriesMap(new Map())
     setSelectedListAnchorEl(null)
+    setSelectedDownloadAnchorEl(null)
   }, [])
 
   const handleRemoveSelectedEntry = React.useCallback((entryIdentity) => {
@@ -773,12 +783,44 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
     })
   }, [])
 
-  const handleDownloadSelectedEntries = React.useCallback(() => {
-    const urls = Array.from(new Set(
+  const collectSelectedEntryUrls = React.useCallback(() => {
+    return Array.from(new Set(
       selectedEntries
         .map((item) => String(item?.url || '').trim())
         .filter(Boolean)
     ))
+  }, [selectedEntries])
+
+  const handleOpenSelectedDownloadOptions = React.useCallback((event) => {
+    setSelectedDownloadAnchorEl(event.currentTarget)
+  }, [])
+
+  const handleCloseSelectedDownloadOptions = React.useCallback(() => {
+    setSelectedDownloadAnchorEl(null)
+  }, [])
+
+  const handleDownloadSelectedEntries = React.useCallback(() => {
+    const urls = collectSelectedEntryUrls()
+    if (!urls.length) return
+
+    if (typeof onOpenMultiInTab === 'function') {
+      onOpenMultiInTab(urls)
+      handleClearSelectedEntries()
+      return
+    }
+
+    if (typeof onOpenMultiInNewTab === 'function') {
+      onOpenMultiInNewTab(urls)
+      handleClearSelectedEntries()
+      return
+    }
+
+    showNotification(t('search.errorGeneric'), 'error')
+  }, [collectSelectedEntryUrls, handleClearSelectedEntries, onOpenMultiInNewTab, onOpenMultiInTab, showNotification, t])
+
+  const handleDownloadSelectedEntriesInNewTab = React.useCallback(() => {
+    const urls = collectSelectedEntryUrls()
+    setSelectedDownloadAnchorEl(null)
     if (!urls.length) return
 
     if (typeof onOpenMultiInNewTab === 'function') {
@@ -788,7 +830,7 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
     }
 
     showNotification(t('search.errorGeneric'), 'error')
-  }, [handleClearSelectedEntries, onOpenMultiInNewTab, selectedEntries, showNotification, t])
+  }, [collectSelectedEntryUrls, handleClearSelectedEntries, onOpenMultiInNewTab, showNotification, t])
 
   const isQuickDownloadActive = Boolean(quickDownloadState?.active)
 
@@ -1158,6 +1200,7 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
   React.useEffect(() => {
     if (selectedCount > 0) return
     setSelectedListAnchorEl(null)
+    setSelectedDownloadAnchorEl(null)
   }, [selectedCount])
 
   const showInitialLoading = loadingInitial && results.length === 0
@@ -1186,6 +1229,7 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
     ? Math.max(0, Math.min(100, Number(quickDownloadState.progress)))
     : 0
   const selectedListOpen = Boolean(selectedListAnchorEl)
+  const selectedDownloadOptionsOpen = Boolean(selectedDownloadAnchorEl)
   const quickDownloadTitle = String(quickDownloadState?.title || '').trim()
 
   const quickDownloadFormatLabel = React.useMemo(() => {
@@ -1718,15 +1762,25 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
           )}
 
           {selectedCount > 0 && (
-            <Box sx={{ position: 'sticky', bottom: { xs: 8, sm: 12 }, zIndex: 24, mt: 2, pb: 1 }}>
+            <Box
+              sx={{
+                position: 'sticky',
+                bottom: 0,
+                zIndex: 24,
+                mt: 2,
+                ml: { xs: -1.25, sm: -1.75 },
+                mr: { xs: -1.25, sm: -1.75 },
+              }}
+            >
               <Box
                 sx={{
-                  borderRadius: 3,
+                  borderRadius: '18px 18px 0 0',
                   border: '1px solid',
+                  borderBottom: 'none',
                   borderColor: 'divider',
                   bgcolor: 'background.paper',
-                  px: { xs: 1, sm: 1.5 },
-                  py: 1,
+                  px: { xs: 1.5, sm: 2 },
+                  py: 1.15,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -1738,18 +1792,49 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
                   size="small"
                   onClick={selectedListOpen ? handleCloseSelectedList : handleOpenSelectedList}
                   endIcon={selectedListOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  sx={{ textTransform: 'none', fontWeight: 800, px: 1.2 }}
+                  sx={{ textTransform: 'none', fontWeight: 800, px: 1.4, cursor: 'pointer' }}
                 >
                   {t('search.selectedCount', { count: selectedCount })}
                 </Button>
 
                 <Stack direction="row" spacing={1}>
-                  <Button size="small" variant="text" onClick={handleClearSelectedEntries} sx={{ textTransform: 'none', fontWeight: 700 }}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={handleClearSelectedEntries}
+                    sx={{ textTransform: 'none', fontWeight: 700, cursor: 'pointer' }}
+                  >
                     {t('tabs.cancel')}
                   </Button>
-                  <Button size="small" variant="contained" onClick={handleDownloadSelectedEntries} sx={{ textTransform: 'none', fontWeight: 800 }}>
-                    {t('search.downloadSelected')}
-                  </Button>
+
+                  <ButtonGroup
+                    variant="contained"
+                    disableElevation
+                    size="small"
+                    sx={{
+                      borderRadius: 3.5,
+                      overflow: 'hidden',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+                      '& .MuiButtonGroup-grouped': {
+                        minHeight: 34,
+                      },
+                    }}
+                  >
+                    <Button
+                      onClick={handleDownloadSelectedEntries}
+                      sx={{ textTransform: 'none', fontWeight: 800, px: 1.9, borderRadius: '14px 0 0 14px', cursor: 'pointer' }}
+                    >
+                      {t('search.downloadSelected')}
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={handleOpenSelectedDownloadOptions}
+                      aria-label={t('search.downloadSelectedOptionsAria')}
+                      sx={{ minWidth: 34, px: 0.8, borderRadius: '0 14px 14px 0', cursor: 'pointer' }}
+                    >
+                      <ChevronDown size={15} />
+                    </Button>
+                  </ButtonGroup>
                 </Stack>
               </Box>
             </Box>
@@ -1810,6 +1895,25 @@ export default function SearchPage({ onOpenDownloader, onOpenInNewTab, onOpenMul
               </MenuItem>
             )
           })}
+        </Menu>
+
+        <Menu
+          anchorEl={selectedDownloadAnchorEl}
+          open={selectedDownloadOptionsOpen}
+          onClose={handleCloseSelectedDownloadOptions}
+          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          slotProps={{ paper: { sx: { width: 240, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
+        >
+          <MenuItem
+            onClick={handleDownloadSelectedEntriesInNewTab}
+            sx={{ py: 1.5, borderRadius: 2, mx: 1 }}
+          >
+            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.25 }}>
+              <ExternalLink size={16} />
+              <Typography variant="body2" fontWeight={700}>{t('search.downloadSelectedInNewTab')}</Typography>
+            </Box>
+          </MenuItem>
         </Menu>
 
         <Menu

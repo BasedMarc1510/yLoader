@@ -45,6 +45,7 @@ export default function App() {
     navigateActiveTab,
     openDownloaderInTab,
     openDownloaderInNewTab,
+    openHomeMultiInTab,
     openHomeMultiInNewTab,
     selectRelativeTab,
     handleRequestCloseTab,
@@ -88,6 +89,7 @@ export default function App() {
         <SearchPage
           onOpenDownloader={(serviceKey, rawUrl, options) => openDownloaderInTab(tab.id, serviceKey, rawUrl, options)}
           onOpenInNewTab={(serviceKey, rawUrl) => openDownloaderInNewTab(serviceKey, rawUrl)}
+          onOpenMultiInTab={(urls) => openHomeMultiInTab(tab.id, urls)}
           onOpenMultiInNewTab={(urls) => openHomeMultiInNewTab(urls)}
           tabsReady={tabsReady}
           runtimeState={tab.runtime?.search}
@@ -123,6 +125,7 @@ export default function App() {
     navigateTab,
     openDownloaderInTab,
     openDownloaderInNewTab,
+    openHomeMultiInTab,
     openHomeMultiInNewTab,
     tabsReady,
   ])

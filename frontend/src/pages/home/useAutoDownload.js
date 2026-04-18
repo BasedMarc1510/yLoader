@@ -15,6 +15,10 @@ import {
   pickVideoFormatByMaxHeight,
 } from './formatUtils'
 import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
+import {
+  buildSuggestedDownloadFilename,
+  resolveElectronDownloadDestination,
+} from '../../utils/electronDownloadDestination'
 
 function parseSseStructuredPayload(value) {
   if (value == null) return null
@@ -186,6 +190,7 @@ export function useAutoDownload({
     let completed = false
     let ended = false
     let failed = false
+    let abortedByUser = false
     let explicitErrorMessage = ''
 
     const applyProgress = (rawPercent) => {
@@ -208,6 +213,26 @@ export function useAutoDownload({
       ])
 
       const isAudio = autoDownloadFormat === 'mp3'
+      const suggestedFilename = buildSuggestedDownloadFilename(
+        String(noembedData?.title || '').trim() || target,
+        isAudio ? 'mp3' : 'mp4',
+      )
+      const preferredDirectory = autoSettings.useFixedDownloadPath
+        ? String(autoSettings.fixedDownloadPath || '').trim()
+        : ''
+
+      const electronDestination = await resolveElectronDownloadDestination({
+        apiBase: API_BASE,
+        downloadType: isAudio ? 'audio' : 'video',
+        suggestedFilename,
+        preferredDirectory,
+      })
+
+      if (electronDestination.enabled && electronDestination.canceled) {
+        abortedByUser = true
+        return
+      }
+
       const payload = {
         url: normalized,
         service: serviceKey || GENERIC_SERVICE_KEY,
@@ -233,6 +258,12 @@ export function useAutoDownload({
               enabled: Boolean(autoSettings.embedCoverArt),
               source: 'video',
             }
+          : undefined,
+        electronSavePath: electronDestination.enabled
+          ? (electronDestination.electronSavePath || undefined)
+          : undefined,
+        electronTargetDirectory: electronDestination.enabled
+          ? (electronDestination.electronTargetDirectory || undefined)
           : undefined,
       }
 
@@ -303,20 +334,26 @@ export function useAutoDownload({
 
           try {
             const data = structuredPayload || JSON.parse(dataStr)
+            const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+            const isElectronRuntime = Boolean(runtime?.isElectron)
+            const savePath = String(data?.savePath || '').trim()
             const filename = String(data?.filename || '').trim()
+              || (savePath ? String(savePath.split(/[\\/]/).pop() || '').trim() : '')
             const relativeUrl = String(data?.url || '').trim()
-            if (!filename || !relativeUrl) {
+            if (!filename) {
               clearInput()
               showNotification(t('home.autoDownloadCompletedNoFilename'), 'success')
               return
             }
 
-            const a = document.createElement('a')
-            a.href = `${API_BASE}${relativeUrl}`
-            a.download = filename
-            document.body.appendChild(a)
-            a.click()
-            a.remove()
+            if (!isElectronRuntime && relativeUrl) {
+              const a = document.createElement('a')
+              a.href = `${API_BASE}${relativeUrl}`
+              a.download = filename
+              document.body.appendChild(a)
+              a.click()
+              a.remove()
+            }
 
             clearInput()
             showNotification(t('home.autoDownloadCompleted', { filename }), 'success')
@@ -361,7 +398,7 @@ export function useAutoDownload({
       showNotification(message, 'error')
     } finally {
       inFlightRef.current = false
-      if (!completed && !explicitErrorMessage && (failed || !ended)) {
+      if (!completed && !explicitErrorMessage && !abortedByUser && (failed || !ended)) {
         setFetchError({ url: target, message: t('downloader.errorDownloadFailed') })
       }
       setAutoDownloadInFlight(false)

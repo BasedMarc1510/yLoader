@@ -1,6 +1,10 @@
 import React from 'react'
 import { getApiBase, normalizeUrlForNoembed, resolveServiceKey } from '../../../utils/metadata'
 import { formatYtDlpErrorMessage } from '../../../utils/ytDlpErrorPresentation'
+import {
+  buildSuggestedDownloadFilename,
+  resolveElectronDownloadDestination,
+} from '../../../utils/electronDownloadDestination'
 
 export default function useStreamDownload({
   i18nT,
@@ -103,6 +107,13 @@ export default function useStreamDownload({
         : undefined
 
       const scopedFilename = type === 'video' ? videoFilenameValue : audioFilenameValue
+      const suggestedExtension = type === 'video'
+        ? String(videoContainer || 'mp4')
+        : String(audioContainer || 'mp3')
+      const suggestedFilename = buildSuggestedDownloadFilename(
+        scopedFilename || titleValue || videoTitle || 'download',
+        suggestedExtension,
+      )
 
       const payload = {
         url: normalized,
@@ -150,6 +161,21 @@ export default function useStreamDownload({
             removals: videoCutsData.removals ?? [],
           }
           : undefined,
+      }
+
+      const electronDestination = await resolveElectronDownloadDestination({
+        apiBase,
+        downloadType: type,
+        suggestedFilename,
+      })
+
+      if (electronDestination.enabled) {
+        if (electronDestination.canceled) {
+          return
+        }
+
+        payload.electronSavePath = electronDestination.electronSavePath || undefined
+        payload.electronTargetDirectory = electronDestination.electronTargetDirectory || undefined
       }
 
       const response = await fetch(`${apiBase}/api/download/stream`, {
@@ -205,25 +231,32 @@ export default function useStreamDownload({
         if (eventName === 'complete') {
           try {
             const data = JSON.parse(dataStr)
-            if (data.filename && data.url) {
-              completed = true
-              setDownloadProgress(100)
-              setDownloadStage('complete')
+            const filename = String(data?.filename || '').trim()
+            const relativeUrl = String(data?.url || '').trim()
+            const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+            const isElectronRuntime = Boolean(runtime?.isElectron)
 
+            if (!filename) return
+
+            completed = true
+            setDownloadProgress(100)
+            setDownloadStage('complete')
+
+            if (!isElectronRuntime && relativeUrl) {
               const a = document.createElement('a')
-              a.href = `${apiBase}${data.url}`
-              a.download = data.filename
+              a.href = `${apiBase}${relativeUrl}`
+              a.download = filename
               document.body.appendChild(a)
               a.click()
               a.remove()
-
-              setTimeout(() => {
-                setDownloading(false)
-                setDownloadProgress(0)
-                setDownloadStage('')
-                setActiveDownloadType('')
-              }, 1200)
             }
+
+            setTimeout(() => {
+              setDownloading(false)
+              setDownloadProgress(0)
+              setDownloadStage('')
+              setActiveDownloadType('')
+            }, 1200)
           } catch {
             // ignore malformed completion payload
           }

@@ -1147,6 +1147,30 @@ function registerDownloadsIpcHandlers() {
     }
   })
 
+  ipcMain.handle('downloads:pick-save-path', async (_event, payload = {}) => {
+    const initialDirectory = normalizeDownloadDirectoryPath(
+      payload?.initialDirectory,
+      getSystemDownloadsDir(),
+    )
+    const suggestedName = sanitizeDownloadFilename(payload?.suggestedName || 'download')
+    const resolvedDirectory = resolvePreferredDownloadDirectory(initialDirectory)
+    const defaultPath = path.join(resolvedDirectory || getSystemDownloadsDir(), suggestedName)
+    const ownerWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+
+    const result = await dialog.showSaveDialog(ownerWindow, {
+      defaultPath,
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true, path: '' }
+    }
+
+    return {
+      canceled: false,
+      path: String(result.filePath || ''),
+    }
+  })
+
   ipcMain.handle('downloads:pick-file', async (_event, payload = {}) => {
     const initialPath = String(payload?.initialPath || '').trim()
     const defaultPath = normalizeDownloadDirectoryPath(initialPath, getSystemDownloadsDir())
