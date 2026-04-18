@@ -9,9 +9,11 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const ROOT_DIR = path.resolve(__dirname, '..')
 const BACKEND_DIR = path.join(ROOT_DIR, 'backend')
+const SHARED_DIR = path.join(ROOT_DIR, 'shared')
 const TOOLS_DIR = path.join(ROOT_DIR, '.tools')
 const STAGE_DIR = path.join(ROOT_DIR, '.electron-build')
 const STAGE_BACKEND_DIR = path.join(STAGE_DIR, 'backend')
+const STAGE_SHARED_DIR = path.join(STAGE_DIR, 'shared')
 const STAGE_TOOLS_DIR = path.join(STAGE_DIR, 'tools')
 const SQLITE_SMOKE_FILE = path.join(STAGE_BACKEND_DIR, '.sqlite3-electron-smoke.cjs')
 const ICONS_SCRIPT = path.join(ROOT_DIR, 'scripts', 'generate-icons.mjs')
@@ -117,9 +119,12 @@ function isMagickAvailable() {
 function stageBackendFiles() {
   fs.rmSync(STAGE_DIR, { recursive: true, force: true })
   fs.mkdirSync(STAGE_BACKEND_DIR, { recursive: true })
+  fs.mkdirSync(STAGE_SHARED_DIR, { recursive: true })
 
   fs.copyFileSync(path.join(BACKEND_DIR, 'package.json'), path.join(STAGE_BACKEND_DIR, 'package.json'))
+  fs.copyFileSync(path.join(BACKEND_DIR, 'package-lock.json'), path.join(STAGE_BACKEND_DIR, 'package-lock.json'))
   fs.copyFileSync(path.join(BACKEND_DIR, 'server.js'), path.join(STAGE_BACKEND_DIR, 'server.js'))
+  fs.cpSync(SHARED_DIR, STAGE_SHARED_DIR, { recursive: true })
 }
 
 function stageToolBinaries() {
@@ -241,7 +246,7 @@ async function main() {
   stageBackendFiles()
 
   info('Installing backend production dependencies into Electron stage...')
-  await runCommand(NPM_CMD, npmArgs(['install', '--omit=dev', '--no-audit', '--no-fund']), {
+  await runCommand(NPM_CMD, npmArgs(['ci', '--omit=dev', '--no-audit', '--no-fund']), {
     cwd: STAGE_BACKEND_DIR,
     prefix: 'backend:install',
   })
@@ -280,12 +285,13 @@ async function main() {
     await verifySqliteInElectronRuntime('backend:sqlite-check:post-rebuild')
   }
 
+  // Keep the packaged app minimal: do not ship temporary smoke-check scripts.
+  fs.rmSync(SQLITE_SMOKE_FILE, { force: true })
+
   info('Running electron-builder...')
   await runCommand(process.execPath, [ELECTRON_BUILDER_CLI, ...builderArgs], {
     prefix: 'builder',
   })
-
-  fs.rmSync(SQLITE_SMOKE_FILE, { force: true })
 }
 
 main().catch((error) => {

@@ -3,7 +3,6 @@ import { Box, Button, Skeleton, useTheme } from '@mui/material'
 import { Image as ImageIcon, Music2, Video } from 'lucide-react'
 import { useNotification } from '../../providers/NotificationProvider'
 import { useI18n } from '../../providers/I18nProvider'
-import { shouldSuggestCookieSettings } from '../../utils/ytDlpErrorPresentation'
 import { openSettingsModal } from '../../pages/home/settingsBridge'
 import AudioTabContent from './options-tabs/AudioTabContent'
 import OverwriteConfirmDialog from './options-tabs/OverwriteConfirmDialog'
@@ -95,6 +94,10 @@ export default function OptionsTabs({
   const overwriteConfirmResolverRef = React.useRef(null)
   const [overwriteDialogData, setOverwriteDialogData] = React.useState(null)
 
+  const openCookieSettings = React.useCallback(() => {
+    openSettingsModal('yt-dlp', 'cookies')
+  }, [])
+
   const resolveOverwriteDialog = React.useCallback((action = 'cancel') => {
     const resolver = overwriteConfirmResolverRef.current
     overwriteConfirmResolverRef.current = null
@@ -162,6 +165,7 @@ export default function OptionsTabs({
     audioDownloadTargetSettings: data.audioDownloadTargetSettings,
     videoDownloadTargetSettings: data.videoDownloadTargetSettings,
     confirmOverwriteInApp,
+    onOpenCookieSettings: openCookieSettings,
   })
 
   const interactionsDisabled = download.downloading || loadingState
@@ -184,14 +188,6 @@ export default function OptionsTabs({
         : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',
     },
   }), [isDark])
-  const showCookieSettingsHint = React.useMemo(
-    () => shouldSuggestCookieSettings(download.downloadError, { i18nT }),
-    [download.downloadError, i18nT]
-  )
-
-  const openCookieSettings = React.useCallback(() => {
-    openSettingsModal('yt-dlp', 'cookies')
-  }, [])
 
   const [hasAutostarted, setHasAutostarted] = React.useState(false)
 
@@ -405,9 +401,6 @@ export default function OptionsTabs({
             handleDownload={download.handleDownload}
             downloadProgress={download.downloadProgress}
             downloadStage={download.downloadStage}
-            downloadError={download.downloadError}
-            showCookieSettingsHint={showCookieSettingsHint}
-            onOpenCookieSettings={openCookieSettings}
             showNotification={showNotification}
           />
         )}
@@ -437,9 +430,6 @@ export default function OptionsTabs({
             handleDownload={download.handleDownload}
             downloadProgress={download.downloadProgress}
             downloadStage={download.downloadStage}
-            downloadError={download.downloadError}
-            showCookieSettingsHint={showCookieSettingsHint}
-            onOpenCookieSettings={openCookieSettings}
             showNotification={showNotification}
           />
         )}

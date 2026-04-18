@@ -1,0 +1,16 @@
+# Build from repository root, but only send the directories needed by Dockerfiles.
+**
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+!shared/
+!shared/**
+!.dockerignore
+
+# Exclude generated artifacts inside included directories.
+backend/node_modules
+backend/downloads
+frontend/node_modules
+frontend/dist
+frontend/.vite

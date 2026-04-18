@@ -34,6 +34,20 @@ docker compose up -d --build --remove-orphans
 
 The backend Docker image downloads `ffmpeg`/`ffprobe` and `yt-dlp` directly from GitHub Releases during build, so no host-level tool setup is required.
 
+For Docker Hub publishing, set image names before building (for example in a root `.env` file):
+
+```bash
+YLOADER_BACKEND_IMAGE=yourdockerhubuser/yloader-backend:latest
+YLOADER_FRONTEND_IMAGE=yourdockerhubuser/yloader-frontend:latest
+```
+
+Then build and push:
+
+```bash
+docker compose build backend frontend
+docker compose push backend frontend
+```
+
 ### Default URLs
 
 | Mode | Frontend | Backend | Health |
@@ -128,6 +142,7 @@ npm run docker:start:plain
 npm run docker:start:fresh
 npm run docker:logs
 npm run docker:stop
+npm run docker:push
 ```
 
 ```bash

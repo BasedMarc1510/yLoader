@@ -5,7 +5,7 @@ FROM node:20-bookworm-slim
 ARG TARGETARCH
 
 # App setup
-WORKDIR /app
+WORKDIR /app/backend
 ENV NODE_ENV=production
 ENV DOWNLOAD_DIR=/downloads
 ENV YT_DLP_PATH=/usr/local/bin/yt-dlp
@@ -27,20 +27,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 			 esac \
 		&& FFMPEG_ASSET="ffmpeg-${FFMPEG_SUFFIX}" \
 		&& FFPROBE_ASSET="ffprobe-${FFMPEG_SUFFIX}" \
-		&& curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YT_DLP_ASSET}" -o /usr/local/bin/yt-dlp \
-		&& curl -fsSL "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/${FFMPEG_ASSET}" -o /usr/local/bin/ffmpeg \
-		&& curl -fsSL "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/${FFPROBE_ASSET}" -o /usr/local/bin/ffprobe \
+		&& curl -fL --retry 6 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 300 "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YT_DLP_ASSET}" -o /usr/local/bin/yt-dlp \
+		&& curl -fL --retry 6 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 300 "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/${FFMPEG_ASSET}" -o /usr/local/bin/ffmpeg \
+		&& curl -fL --retry 6 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 300 "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/${FFPROBE_ASSET}" -o /usr/local/bin/ffprobe \
 		&& chmod +x /usr/local/bin/yt-dlp \
 		&& chmod +x /usr/local/bin/ffmpeg \
 		&& chmod +x /usr/local/bin/ffprobe \
-		&& /usr/local/bin/yt-dlp --version
+		&& /usr/local/bin/yt-dlp --version \
+		&& apt-get purge -y --auto-remove curl
 
 # Install Node dependencies
-COPY package*.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+COPY backend/package*.json ./
+RUN npm ci --omit=dev --no-audit --no-fund \
+		&& npm cache clean --force
 
 # Copy application source
-COPY server.js ./
+COPY backend/server.js ./
+COPY shared /app/shared
 
 # Ensure directories exist (bind-mounts will override at runtime)
 RUN mkdir -p /downloads /app/data

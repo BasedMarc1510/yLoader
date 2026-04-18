@@ -50,6 +50,7 @@
 .yl-tabbar.is-electron .yl-tab-hit,
 .yl-tabbar.is-electron .yl-tab-close,
 .yl-tabbar.is-electron .yl-add-btn,
+.yl-tabbar.is-electron .yl-notification-btn,
 .yl-tabbar.is-electron .yl-scroll-controls,
 .yl-tabbar.is-electron .yl-scroll-btn,
 .yl-tabbar.is-electron .yl-window-controls,
@@ -80,7 +81,7 @@
 }
 
 .yl-tabbar.has-electron-controls .yl-tabbar-inner {
-  padding-right: 132px;
+  padding-right: 176px;
 }
 
 .yl-tabstrip-wrap {

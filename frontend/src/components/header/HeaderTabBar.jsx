@@ -12,6 +12,7 @@ import {
 import { getRouteIconKey, getRouteTitle } from '../../utils/tabRoutes'
 import { useTabDrag } from './useTabDrag'
 import RouteIcon from './RouteIcon'
+import NotificationBellButton from './NotificationBellButton'
 import WindowControls from './WindowControls'
 import TabScrollControls from './TabScrollControls'
 import TabContextMenu from './TabContextMenu'
@@ -526,6 +527,14 @@ export default function HeaderTabBar({
           disableRipple={isElectron}
           t={t}
         />
+
+        {!showCustomWindowControls && (
+          <NotificationBellButton
+            className="yl-notification-btn"
+            disableRipple={isElectron}
+            iconSize={16}
+          />
+        )}
       </Box>
 
       <WindowControls

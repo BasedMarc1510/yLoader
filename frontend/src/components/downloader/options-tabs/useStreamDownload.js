@@ -1,6 +1,9 @@
 import React from 'react'
 import { getApiBase, normalizeUrlForNoembed, resolveServiceKey } from '../../../utils/metadata'
-import { formatYtDlpErrorMessage } from '../../../utils/ytDlpErrorPresentation'
+import {
+  formatYtDlpErrorMessage,
+  shouldSuggestCookieSettings,
+} from '../../../utils/ytDlpErrorPresentation'
 import {
   buildSuggestedDownloadFilename,
   resolveElectronDownloadDestination,
@@ -113,11 +116,11 @@ export default function useStreamDownload({
   audioDownloadTargetSettings,
   videoDownloadTargetSettings,
   confirmOverwriteInApp,
+  onOpenCookieSettings,
 }) {
   const [downloading, setDownloading] = React.useState(false)
   const [downloadProgress, setDownloadProgress] = React.useState(0)
   const [downloadStage, setDownloadStage] = React.useState('')
-  const [downloadError, setDownloadError] = React.useState(null)
   const [activeDownloadType, setActiveDownloadType] = React.useState('')
 
   const resolvedDownloadTitle = React.useMemo(() => {
@@ -162,6 +165,43 @@ export default function useStreamDownload({
     }
   }, [onDownloadStateChange])
 
+  const notifyDownloadError = React.useCallback((message, options = {}) => {
+    const normalizedMessage = String(message || '').trim()
+    if (!normalizedMessage) return
+
+    const actions = Array.isArray(options?.actions)
+      ? [...options.actions]
+      : []
+
+    if (
+      shouldSuggestCookieSettings(normalizedMessage, { i18nT })
+      && typeof onOpenCookieSettings === 'function'
+    ) {
+      const cookieActionLabel = i18nT('downloader.cookieSettingsAction')
+      const hasCookieAction = actions.some(
+        (action) => String(action?.label || '').trim() === String(cookieActionLabel || '').trim()
+      )
+
+      if (!hasCookieAction) {
+        actions.push({
+          id: 'open-cookie-settings',
+          label: cookieActionLabel,
+          onClick: onOpenCookieSettings,
+          autoClose: false,
+        })
+      }
+    }
+
+    showNotification(normalizedMessage, 'error', {
+      duration: Number.isFinite(Number(options?.duration))
+        ? Number(options.duration)
+        : 7000,
+      persistent: Boolean(options?.persistent),
+      startTimerOnFocus: options?.startTimerOnFocus !== false,
+      actions,
+    })
+  }, [i18nT, onOpenCookieSettings, showNotification])
+
   const handleDownload = React.useCallback(async (type) => {
     if (downloading) return
 
@@ -191,12 +231,12 @@ export default function useStreamDownload({
       && (effectiveCoverSource !== 'video' || hasVideoThumbnail)
 
     if (type === 'audio' && coverEmbedEnabled && effectiveCoverSource === 'video' && !hasVideoThumbnail) {
-      setDownloadError(i18nT('downloader.errorVideoThumbUnavailable'))
+      notifyDownloadError(i18nT('downloader.errorVideoThumbUnavailable'), { persistent: true })
       return
     }
 
     if (type === 'audio' && coverEmbedEnabled && effectiveCoverSource === 'upload' && !effectiveCoverUpload?.dataUrl) {
-      setDownloadError(i18nT('downloader.errorSelectCover'))
+      notifyDownloadError(i18nT('downloader.errorSelectCover'), { persistent: true })
       return
     }
 
@@ -204,7 +244,6 @@ export default function useStreamDownload({
     setDownloading(true)
     setDownloadProgress(0)
     setDownloadStage('starting')
-    setDownloadError(null)
 
     let completed = false
     let finalized = false
@@ -284,16 +323,14 @@ export default function useStreamDownload({
 
         if (!resolvedFilename) {
           const message = i18nT('downloader.errorFilePathRequired')
-          setDownloadError(message)
-          showNotification(message, 'error')
+          notifyDownloadError(message, { persistent: true })
           return
         }
 
         const directoryToValidate = String(getPathDirectory(resolvedPathValue) || preferredDirectory).trim()
         if (!directoryToValidate) {
           const message = i18nT('downloader.errorDownloadPathInvalid', { path: resolvedPathValue })
-          setDownloadError(message)
-          showNotification(message, 'error')
+          notifyDownloadError(message, { persistent: true })
           return
         }
 
@@ -303,14 +340,12 @@ export default function useStreamDownload({
             const validation = await runtime.downloads.validateDirectory(directoryToValidate)
             if (!validation?.valid) {
               const message = resolvePathValidationMessage(i18nT, validation, directoryToValidate)
-              setDownloadError(message)
-              showNotification(message, 'error')
+              notifyDownloadError(message, { persistent: true })
               return
             }
           } catch {
             const message = i18nT('downloader.errorDownloadPathInvalid', { path: directoryToValidate })
-            setDownloadError(message)
-            showNotification(message, 'error')
+            notifyDownloadError(message, { persistent: true })
             return
           }
         }
@@ -407,8 +442,7 @@ export default function useStreamDownload({
 
           if (overwriteTargetExists && !overwriteTargetIsFile) {
             const message = i18nT('downloader.errorDownloadPathInvalid', { path: overwriteTargetPath })
-            setDownloadError(message)
-            showNotification(message, 'error')
+            notifyDownloadError(message, { persistent: true })
             return
           }
 
@@ -474,8 +508,7 @@ export default function useStreamDownload({
             fallbackKey: 'downloader.errorDownloadFailed',
             includeRawForUnknown: true,
           })
-          setDownloadError(msg)
-          showNotification(msg, 'error')
+          notifyDownloadError(msg)
           return
         }
 
@@ -531,8 +564,7 @@ export default function useStreamDownload({
           finalized = true
           if (dataStr.trim() === 'failed' && !completed) {
             const msg = i18nT('downloader.errorDownloadFailed')
-            setDownloadError(msg)
-            showNotification(msg, 'error')
+            notifyDownloadError(msg)
           }
         }
       }
@@ -608,8 +640,7 @@ export default function useStreamDownload({
         fallbackKey: 'downloader.errorDownloadFailed',
         includeRawForUnknown: true,
       })
-      setDownloadError(msg)
-      showNotification(msg, 'error')
+      notifyDownloadError(msg)
     } finally {
       if (!completed) {
         setDownloading(false)
@@ -642,7 +673,7 @@ export default function useStreamDownload({
     artistValue,
     videoAuthor,
     albumValue,
-    showNotification,
+    notifyDownloadError,
     audioDownloadTargetSettings,
     videoDownloadTargetSettings,
     confirmOverwriteInApp,
@@ -652,8 +683,6 @@ export default function useStreamDownload({
     downloading,
     downloadProgress,
     downloadStage,
-    downloadError,
-    setDownloadError,
     handleDownload,
   }
 }

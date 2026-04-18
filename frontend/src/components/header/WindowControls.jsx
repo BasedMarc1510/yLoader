@@ -2,6 +2,7 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import { Box, IconButton } from '@mui/material'
 import { Minus, Square, Copy, X } from 'lucide-react'
+import NotificationBellButton from './NotificationBellButton'
 
 export default function WindowControls({
   show,
@@ -16,6 +17,12 @@ export default function WindowControls({
 
   const controls = (
     <Box className="yl-window-controls" style={styleVars} role="group" aria-label={t('tabs.windowControlsAria')}>
+      <NotificationBellButton
+        className="yl-window-btn yl-window-btn-notification"
+        disableRipple
+        iconSize={14}
+      />
+
       <IconButton
         size="small"
         className="yl-window-btn"

@@ -342,7 +342,10 @@ export function useAutoDownload({
             const relativeUrl = String(data?.url || '').trim()
             if (!filename) {
               clearInput()
-              showNotification(t('home.autoDownloadCompletedNoFilename'), 'success')
+              showNotification(t('home.autoDownloadCompletedNoFilename'), 'success', {
+                duration: 7000,
+                startTimerOnFocus: true,
+              })
               return
             }
 
@@ -356,10 +359,34 @@ export function useAutoDownload({
             }
 
             clearInput()
-            showNotification(t('home.autoDownloadCompleted', { filename }), 'success')
+            if (isElectronRuntime && savePath && typeof runtime?.downloads?.revealFile === 'function') {
+              showNotification(t('home.autoDownloadCompleted', { filename }), 'success', {
+                duration: 8000,
+                startTimerOnFocus: true,
+                actions: [
+                  {
+                    id: 'auto-download-reveal',
+                    label: t('home.openDownloadedFile'),
+                    onClick: async () => {
+                      await runtime.downloads.revealFile(savePath)
+                    },
+                    autoClose: true,
+                  },
+                ],
+              })
+              return
+            }
+
+            showNotification(t('home.autoDownloadCompleted', { filename }), 'success', {
+              duration: 8000,
+              startTimerOnFocus: true,
+            })
           } catch {
             clearInput()
-            showNotification(t('home.autoDownloadCompletedNoFilename'), 'success')
+            showNotification(t('home.autoDownloadCompletedNoFilename'), 'success', {
+              duration: 7000,
+              startTimerOnFocus: true,
+            })
             // ignore malformed complete payload
           }
           return

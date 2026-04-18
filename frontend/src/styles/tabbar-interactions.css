@@ -279,6 +279,32 @@
   display: flex;
 }
 
+.yl-notification-btn {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  border: 1px solid color-mix(in srgb, var(--yl-border, transparent) 70%, transparent);
+  border-radius: 8px !important;
+  background: transparent;
+  color: var(--yl-muted-foreground, inherit);
+  display: grid;
+  place-items: center;
+  cursor: pointer !important;
+  padding: 0 !important;
+  margin: 0 8px 0 2px !important;
+  transition: none !important;
+}
+
+.yl-notification-btn:hover {
+  background: var(--yl-accent, transparent);
+  color: var(--yl-foreground, inherit);
+}
+
+.yl-notification-btn .MuiBadge-badge {
+  transform: scale(0.9) translate(50%, -50%);
+}
+
 .yl-scroll-btn {
   width: 28px !important;
   height: 28px !important;
@@ -328,6 +354,10 @@
   cursor: default !important;
   overflow: hidden;
   transition: none !important;
+}
+
+.yl-window-btn.yl-window-btn-notification {
+  cursor: pointer !important;
 }
 
 .yl-window-btn .MuiTouchRipple-root,

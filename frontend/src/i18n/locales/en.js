@@ -129,6 +129,7 @@ const en = {
     invalidUrlNotification: 'Please enter a valid link.',
     autoDownloadCompleted: 'Auto download completed: {filename}',
     autoDownloadCompletedNoFilename: 'Auto download completed.',
+    openDownloadedFile: 'Show in folder',
     quickActions: {
       openAria: 'Open quick actions',
       multiDownload: 'Multi-download',
@@ -343,6 +344,13 @@ const en = {
     no: 'No',
   },
   notifications: {
+    title: 'Notifications',
+    openCenterAria: 'Open notifications',
+    closeCenterAria: 'Close notifications',
+    markAllRead: 'Mark all as read',
+    clearAll: 'Clear all',
+    empty: 'No notifications yet.',
+    dismissAria: 'Dismiss notification',
     showMore: 'Read more',
     showLess: 'Show less',
   },

@@ -129,6 +129,7 @@ const de = {
     invalidUrlNotification: 'Bitte gib einen gültigen Link ein.',
     autoDownloadCompleted: 'Auto-Download abgeschlossen: {filename}',
     autoDownloadCompletedNoFilename: 'Auto-Download abgeschlossen.',
+    openDownloadedFile: 'Im Ordner anzeigen',
     quickActions: {
       openAria: 'Schnellaktionen öffnen',
       multiDownload: 'Multi-Download',
@@ -343,6 +344,13 @@ const de = {
     no: 'Nein',
   },
   notifications: {
+    title: 'Benachrichtigungen',
+    openCenterAria: 'Benachrichtigungen öffnen',
+    closeCenterAria: 'Benachrichtigungen schließen',
+    markAllRead: 'Alle als gelesen markieren',
+    clearAll: 'Alle löschen',
+    empty: 'Noch keine Benachrichtigungen.',
+    dismissAria: 'Benachrichtigung schließen',
     showMore: 'Mehr anzeigen',
     showLess: 'Weniger anzeigen',
   },

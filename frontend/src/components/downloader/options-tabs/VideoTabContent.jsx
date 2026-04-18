@@ -39,9 +39,6 @@ export default function VideoTabContent({
   handleDownload,
   downloadProgress,
   downloadStage,
-  downloadError,
-  showCookieSettingsHint,
-  onOpenCookieSettings,
   showNotification,
 }) {
   const isDark = theme.palette.mode === 'dark'
@@ -297,7 +294,7 @@ export default function VideoTabContent({
           <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
             {downloading ? (
               <>
-                <CircularProgress size={22} sx={{ color: downloadButtonTextColor }} thickness={5} />
+                <CircularProgress size={22} color="inherit" sx={{ color: 'inherit' }} thickness={5} />
                 <Typography sx={{ fontSize: '1.125rem', fontWeight: 700 }}>
                   {getDownloadProgressLabel(i18nT, downloadStage, downloadProgress)}
                 </Typography>
@@ -311,31 +308,6 @@ export default function VideoTabContent({
           </Box>
         </Button>
       </Box>
-
-      {downloadError && (
-        <Box sx={{ mt: 1, textAlign: 'center' }}>
-          <Typography sx={{ color: 'error.main', fontSize: '0.875rem' }}>
-            {downloadError}
-          </Typography>
-
-          {showCookieSettingsHint && (
-            <Button
-              size="small"
-              variant="text"
-              onClick={() => onOpenCookieSettings?.()}
-              sx={{
-                mt: 0.25,
-                textTransform: 'none',
-                fontWeight: 700,
-                minWidth: 0,
-                px: 0.75,
-              }}
-            >
-              {i18nT('downloader.cookieSettingsAction')}
-            </Button>
-          )}
-        </Box>
-      )}
     </Box>
   )
 }

@@ -1,274 +1,270 @@
-import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react'
-import { Box, Paper, Typography, IconButton, Collapse, Button, useTheme, keyframes } from '@mui/material'
-import { X, AlertCircle, CheckCircle, Info, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { Box, useTheme } from '@mui/material'
 import { useI18n } from './I18nProvider'
+import NotificationCenterPopover from './notification/NotificationCenterPopover'
+import NotificationToast from './notification/NotificationToast'
+import {
+  CLEANUP_INTERVAL_MS,
+  HISTORY_STORAGE_KEY,
+  createNotificationId,
+  loadStoredEntries,
+  normalizeActions,
+  normalizeDuration,
+  normalizeMessage,
+  normalizeSeverity,
+  pruneEntries,
+  toStoredEntry,
+} from './notification/utils'
 
-// Context
 const NotificationContext = createContext({
-    showNotification: () => { },
+  showNotification: () => '',
+  unreadCount: 0,
+  isNotificationCenterOpen: false,
+  openNotificationCenter: () => {},
+  closeNotificationCenter: () => {},
+  dismissNotification: () => {},
+  removeNotification: () => {},
+  clearNotifications: () => {},
 })
 
 export const useNotification = () => useContext(NotificationContext)
 
-// Keyframe for subtle slide in
-const slideIn = keyframes`
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
-`
-
-// Individual Notification Component
-const NotificationItem = ({
-    id,
-    message,
-    severity,
-    onClose,
-    duration = 5000,
-    actionLabel = '',
-    onAction = null,
-    actionAutoClose = true,
-}) => {
-    const theme = useTheme()
-    const { t } = useI18n()
-    const isDark = theme.palette.mode === 'dark'
-
-    // Pause detection
-    const [isPaused, setIsPaused] = useState(false)
-    const [isExpanded, setIsExpanded] = useState(false)
-    const [isExiting, setIsExiting] = useState(false) // For smooth exit handling if needed manually
-
-    // Timer ref
-    const timerRef = useRef(null)
-    const remainingTime = useRef(duration)
-    const startTime = useRef(Date.now())
-
-    // Start timer function
-    const startTimer = useCallback(() => {
-        timerRef.current = setTimeout(() => {
-            onClose(id)
-        }, remainingTime.current)
-        startTime.current = Date.now()
-    }, [id, onClose])
-
-    // Pause timer function
-    const pauseTimer = useCallback(() => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current)
-            timerRef.current = null // clear
-            const elapsed = Date.now() - startTime.current
-            remainingTime.current = Math.max(0, remainingTime.current - elapsed)
-        }
-    }, [])
-
-    // Initial timer start
-    useEffect(() => {
-        startTimer()
-        return () => {
-            if (timerRef.current) clearTimeout(timerRef.current)
-        }
-    }, [startTimer])
-
-    // Handlers for hover
-    const handleMouseEnter = () => {
-        setIsPaused(true)
-        pauseTimer()
-    }
-
-    const handleMouseLeave = () => {
-        setIsPaused(false)
-        startTimer()
-    }
-
-    // Icons based on severity
-    const getIcon = () => {
-        switch (severity) {
-            case 'error': return <AlertCircle size={20} color="#e53935" />
-            case 'warning': return <AlertTriangle size={20} color="#fb8c00" />
-            case 'success': return <CheckCircle size={20} color="#43a047" /> // User disabled success, but kept for completeness/future
-            default: return <Info size={20} color="#0288d1" />
-        }
-    }
-
-    // Styles
-    const bgColor = isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.98)'
-    const borderColor = isDark ? '#333' : '#e0e0e0'
-    const textColor = isDark ? '#fff' : '#1a1a1a'
-
-    // Check if message is long
-    const isLong = message.length > 60
-    const hasAction = Boolean(actionLabel && typeof onAction === 'function')
-
-    const handleActionClick = async () => {
-        if (!hasAction) return
-        try {
-            await onAction()
-        } catch {
-            // ignore action callback errors to keep notification system resilient
-        }
-        if (actionAutoClose) {
-            onClose(id)
-        }
-    }
-
-    return (
-        <Collapse in={true} unmountOnExit sx={{ mb: 1.5 }}>
-            <Paper
-                elevation={4}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                sx={{
-                    width: 320,
-                    bgcolor: bgColor,
-                    border: `1px solid ${borderColor}`,
-                    borderRadius: 2,
-                    position: 'relative',
-                    overflow: 'hidden',
-                    transition: 'all 0.3s ease',
-                    animation: `${slideIn} 0.3s cubic-bezier(0.2, 0, 0, 1)`,
-                    backdropFilter: 'blur(8px)',
-                    boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 24px rgba(0,0,0,0.12)',
-                }}
-            >
-                <Box sx={{ p: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-                    <Box sx={{ mt: 0.25, flexShrink: 0 }}>
-                        {getIcon()}
-                    </Box>
-
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography
-                            variant="body2"
-                            sx={{
-                                color: textColor,
-                                fontWeight: 500,
-                                fontSize: '0.9rem',
-                                lineHeight: 1.5,
-                                // Line clamping if not expanded
-                                ...(!isExpanded && {
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
-                                })
-                            }}
-                        >
-                            {message}
-                        </Typography>
-
-                        {isLong && (
-                            <Box
-                                component="span"
-                                onClick={() => setIsExpanded(!isExpanded)}
-                                sx={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 0.5,
-                                    mt: 0.5,
-                                    cursor: 'pointer',
-                                    color: isDark ? '#999' : '#666',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600,
-                                    '&:hover': { color: textColor }
-                                }}
-                            >
-                                {isExpanded ? (
-                                    <>{t('notifications.showLess')} <ChevronUp size={14} /></>
-                                ) : (
-                                    <>{t('notifications.showMore')} <ChevronDown size={14} /></>
-                                )}
-                            </Box>
-                        )}
-
-                        {hasAction && (
-                            <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={handleActionClick}
-                                sx={{
-                                    mt: 1,
-                                    minHeight: 28,
-                                    borderRadius: 999,
-                                    textTransform: 'none',
-                                    fontWeight: 700,
-                                    fontSize: '0.75rem',
-                                    borderColor: isDark ? '#5f5f5f' : '#c7c7c7',
-                                    color: textColor,
-                                    '&:hover': {
-                                        borderColor: isDark ? '#8a8a8a' : '#9f9f9f',
-                                        bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-                                    },
-                                }}
-                            >
-                                {actionLabel}
-                            </Button>
-                        )}
-                    </Box>
-
-                    <IconButton size="small" onClick={() => onClose(id)} sx={{ mt: -0.5, mr: -0.5, color: isDark ? '#666' : '#999', '&:hover': { color: textColor, bgcolor: isDark ? '#333' : '#f0f0f0' } }}>
-                        <X size={16} />
-                    </IconButton>
-                </Box>
-
-                {/* Progress timer bar (optional, nice touch for best practice) */}
-                {/* <Box sx={{ height: 2, bgcolor: borderColor, width: '100%' }}>
-            <Box 
-              sx={{ 
-                height: '100%', 
-                bgcolor: severity === 'error' ? '#e53935' : (severity === 'warning' ? '#fb8c00' : brandColor), 
-                width: isPaused ? '100%' : '0%', // This is complex to animate perfectly with pause without CSS var manipulation, simplifying for now to just show clean UI
-                transition: isPaused ? 'none' : `width ${duration}ms linear`
-              }} 
-            />
-        </Box> */}
-            </Paper>
-        </Collapse>
-    )
-}
-
-// Global Provider
 export default function NotificationProvider({ children }) {
-    const [notifications, setNotifications] = useState([])
+  const { t, language } = useI18n()
+  const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
 
-    const showNotification = useCallback((message, severity = 'info', options = {}) => {
-        const id = Date.now().toString() + Math.random().toString(36).substr(2, 9)
-        setNotifications((prev) => [...prev, {
-            id,
-            message,
-            severity,
-            duration: Number.isFinite(Number(options?.duration)) ? Math.max(1000, Number(options.duration)) : 5000,
-            actionLabel: String(options?.actionLabel || '').trim(),
-            onAction: typeof options?.onAction === 'function' ? options.onAction : null,
-            actionAutoClose: options?.actionAutoClose !== false,
-        }])
-    }, [])
+  const [entries, setEntries] = useState(() => loadStoredEntries())
+  const [centerAnchorEl, setCenterAnchorEl] = useState(null)
+  const [isWindowFocused, setIsWindowFocused] = useState(() => {
+    if (typeof document === 'undefined') return true
+    return document.visibilityState === 'visible' && document.hasFocus()
+  })
 
-    const removeNotification = useCallback((id) => {
-        setNotifications((prev) => prev.filter((n) => n.id !== id))
-    }, [])
+  const entriesRef = useRef(entries)
+  useEffect(() => {
+    entriesRef.current = entries
+  }, [entries])
 
-    return (
-        <NotificationContext.Provider value={{ showNotification }}>
-            {children}
-            <Box
-                sx={{
-                    position: 'fixed',
-                    bottom: 24,
-                    right: 24,
-                    zIndex: 9999,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-end',
-                    pointerEvents: 'none', // Allow clicking through empty space
-                    '& > *': { pointerEvents: 'auto' } // Re-enable clicks on notifications
-                }}
-            >
-                {notifications.map((n) => (
-                    <NotificationItem
-                        key={n.id}
-                        {...n}
-                        onClose={removeNotification}
-                    />
-                ))}
-            </Box>
-        </NotificationContext.Provider>
-    )
+  const markAllNotificationsRead = useCallback(() => {
+    setEntries((previous) => {
+      let changed = false
+      const next = previous.map((entry) => {
+        if (entry.read) return entry
+        changed = true
+        return { ...entry, read: true }
+      })
+      return changed ? next : previous
+    })
+  }, [])
+
+  const clearNotifications = useCallback(() => {
+    setEntries([])
+  }, [])
+
+  const dismissNotification = useCallback((id) => {
+    const targetId = String(id || '').trim()
+    if (!targetId) return
+
+    setEntries((previous) => previous.map((entry) => {
+      if (entry.id !== targetId) return entry
+      if (entry.status === 'dismissed' && entry.read) return entry
+      return {
+        ...entry,
+        status: 'dismissed',
+        read: true,
+      }
+    }))
+  }, [])
+
+  const removeNotification = useCallback((id) => {
+    const targetId = String(id || '').trim()
+    if (!targetId) return
+    setEntries((previous) => previous.filter((entry) => entry.id !== targetId))
+  }, [])
+
+  const openNotificationCenter = useCallback((anchorEl) => {
+    if (!anchorEl) return
+    setCenterAnchorEl(anchorEl)
+    markAllNotificationsRead()
+  }, [markAllNotificationsRead])
+
+  const closeNotificationCenter = useCallback(() => {
+    setCenterAnchorEl(null)
+  }, [])
+
+  const isNotificationCenterOpen = Boolean(centerAnchorEl)
+
+  const showNotification = useCallback((message, severity = 'info', options = {}) => {
+    const normalizedMessage = normalizeMessage(message)
+    if (!normalizedMessage) return ''
+
+    const duration = normalizeDuration(options?.duration)
+    const persistent = Boolean(options?.persistent) || duration <= 0
+
+    const entry = {
+      id: createNotificationId(),
+      message: normalizedMessage,
+      severity: normalizeSeverity(severity),
+      createdAt: Date.now(),
+      read: isNotificationCenterOpen,
+      status: 'active',
+      duration: persistent ? 0 : duration,
+      persistent,
+      startTimerOnFocus: Boolean(options?.startTimerOnFocus),
+      actions: normalizeActions(options),
+    }
+
+    setEntries((previous) => pruneEntries([entry, ...previous]))
+    return entry.id
+  }, [isNotificationCenterOpen])
+
+  const handleNotificationAction = useCallback(async (notificationId, actionId) => {
+    const entry = entriesRef.current.find((item) => item.id === notificationId)
+    const action = entry?.actions?.find((item) => item.id === actionId)
+    if (!action || typeof action.onClick !== 'function') return
+
+    try {
+      await action.onClick()
+    } catch {
+      // Keep the notification system resilient if action handlers fail.
+    }
+
+    if (action.autoClose !== false) {
+      dismissNotification(notificationId)
+    }
+  }, [dismissNotification])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined
+
+    const updateWindowFocus = () => {
+      setIsWindowFocused(document.visibilityState === 'visible' && document.hasFocus())
+    }
+
+    updateWindowFocus()
+    window.addEventListener('focus', updateWindowFocus)
+    window.addEventListener('blur', updateWindowFocus)
+    document.addEventListener('visibilitychange', updateWindowFocus)
+
+    return () => {
+      window.removeEventListener('focus', updateWindowFocus)
+      window.removeEventListener('blur', updateWindowFocus)
+      document.removeEventListener('visibilitychange', updateWindowFocus)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const interval = window.setInterval(() => {
+      setEntries((previous) => pruneEntries(previous))
+    }, CLEANUP_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    try {
+      const serialized = pruneEntries(entries).map((entry) => toStoredEntry(entry))
+      window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(serialized))
+    } catch {
+      // Ignore storage quota and serialization errors.
+    }
+  }, [entries])
+
+  const activeNotifications = useMemo(
+    () => entries.filter((entry) => entry.status === 'active'),
+    [entries]
+  )
+
+  const sortedHistory = useMemo(
+    () => [...entries].sort((a, b) => b.createdAt - a.createdAt),
+    [entries]
+  )
+
+  const unreadCount = useMemo(
+    () => entries.reduce((count, entry) => (entry.read ? count : count + 1), 0),
+    [entries]
+  )
+
+  const contextValue = useMemo(() => ({
+    showNotification,
+    unreadCount,
+    isNotificationCenterOpen,
+    openNotificationCenter,
+    closeNotificationCenter,
+    dismissNotification,
+    removeNotification,
+    clearNotifications,
+  }), [
+    showNotification,
+    unreadCount,
+    isNotificationCenterOpen,
+    openNotificationCenter,
+    closeNotificationCenter,
+    dismissNotification,
+    removeNotification,
+    clearNotifications,
+  ])
+
+  return (
+    <NotificationContext.Provider value={contextValue}>
+      {children}
+
+      <NotificationCenterPopover
+        open={isNotificationCenterOpen}
+        anchorEl={centerAnchorEl}
+        onClose={closeNotificationCenter}
+        isDark={isDark}
+        t={t}
+        language={language}
+        sortedHistory={sortedHistory}
+        unreadCount={unreadCount}
+        onMarkAllRead={markAllNotificationsRead}
+        onClearAll={clearNotifications}
+        onRemoveNotification={removeNotification}
+        onAction={handleNotificationAction}
+      />
+
+      <Box
+        sx={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 1900,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: 1.2,
+          pointerEvents: 'none',
+          '& > *': { pointerEvents: 'auto' },
+        }}
+      >
+        {activeNotifications.map((entry) => (
+          <NotificationToast
+            key={entry.id}
+            entry={entry}
+            isWindowFocused={isWindowFocused}
+            isNotificationCenterOpen={isNotificationCenterOpen}
+            onDismiss={dismissNotification}
+            onAction={handleNotificationAction}
+            t={t}
+          />
+        ))}
+      </Box>
+    </NotificationContext.Provider>
+  )
 }

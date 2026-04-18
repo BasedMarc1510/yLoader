@@ -1,7 +1,9 @@
 services:
   backend:
+    image: ${YLOADER_BACKEND_IMAGE:-yloader-backend}
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: yloader-backend
     restart: unless-stopped
     ports:
@@ -17,8 +19,10 @@ services:
       - ./downloads:/downloads
       - ./backend-data:/app/data
   frontend:
+    image: ${YLOADER_FRONTEND_IMAGE:-yloader-frontend}
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: yloader-web
     restart: unless-stopped
     ports:
