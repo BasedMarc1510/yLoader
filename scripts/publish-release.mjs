@@ -123,7 +123,7 @@ function assertCleanGitWorktree() {
   if (status) {
     throw new Error('Git working tree is not clean. Commit or stash your changes first.')
   }
-    shell: useShell,
+}
 
 function assertTagDoesNotExist(tagName) {
   const localTag = run('git', ['tag', '--list', tagName], { capture: true }).stdout.trim()
