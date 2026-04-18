@@ -11,7 +11,6 @@ const ROOT_DIR = path.resolve(__dirname, '..')
 const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads')
 const BACKEND_DATA_DIR = path.join(ROOT_DIR, 'backend-data')
 const FRONTEND_PORT = Number.parseInt(String(process.env.YLOADER_FRONTEND_PORT || '8080'), 10) || 8080
-const BACKEND_PORT = Number.parseInt(String(process.env.YLOADER_BACKEND_PORT || '8081'), 10) || 8081
 
 function info(message) {
   process.stdout.write(`[yloader] ${message}\n`)
@@ -141,7 +140,7 @@ async function main() {
   await runCommand('docker', ['compose', 'up', '-d', '--build', '--remove-orphans'])
 
   info('Waiting for containers to become reachable...')
-  const backendReady = await waitForHttp(`http://127.0.0.1:${BACKEND_PORT}/health`, 90000)
+  const backendReady = await waitForHttp(`http://127.0.0.1:${FRONTEND_PORT}/health`, 90000)
   const frontendReady = await waitForHttp(`http://127.0.0.1:${FRONTEND_PORT}`, 90000)
 
   if (!backendReady) {
@@ -153,18 +152,16 @@ async function main() {
 
   process.stdout.write('\n')
   info('Docker stack is running.')
-  process.stdout.write(`  Frontend: http://localhost:${FRONTEND_PORT}\n`)
-  process.stdout.write(`  Backend : http://localhost:${BACKEND_PORT}\n`)
-  process.stdout.write(`  Health  : http://localhost:${BACKEND_PORT}/health\n`)
+  process.stdout.write(`  App     : http://localhost:${FRONTEND_PORT}\n`)
+  process.stdout.write(`  API     : http://localhost:${FRONTEND_PORT}/api\n`)
+  process.stdout.write(`  Health  : http://localhost:${FRONTEND_PORT}/health\n`)
 
   const lanAddresses = getReachableIpv4Addresses()
   if (lanAddresses.length > 0) {
     process.stdout.write('  LAN URLs:\n')
     for (const address of lanAddresses) {
-      process.stdout.write(`    - Frontend: http://${address}:${FRONTEND_PORT}\n`)
-      if (BACKEND_PORT !== FRONTEND_PORT) {
-        process.stdout.write(`    - Backend : http://${address}:${BACKEND_PORT}\n`)
-      }
+      process.stdout.write(`    - App   : http://${address}:${FRONTEND_PORT}\n`)
+      process.stdout.write(`    - Health: http://${address}:${FRONTEND_PORT}/health\n`)
     }
   }
 

@@ -47,8 +47,9 @@ For Docker Hub publishing, set image names before building (for example in a roo
 ```bash
 YLOADER_IMAGE=yourdockerhubuser/yloader:latest
 YLOADER_FRONTEND_PORT=8080
-YLOADER_BACKEND_PORT=8081
 ```
+
+In Docker mode, frontend and API are served from the same host port.
 
 Then build and push:
 
@@ -63,7 +64,7 @@ docker compose push app
 | --- | --- | --- | --- |
 | Local | `http://localhost:5173` | `http://localhost:4000` | `http://localhost:4000/health` |
 | Local Electron (dev) | Electron window (`http://localhost:5173`) | `http://localhost:4000` | `http://localhost:4000/health` |
-| Docker | `http://localhost:8080` | `http://localhost:8081` | `http://localhost:8081/health` |
+| Docker | `http://localhost:8080` | `http://localhost:8080` | `http://localhost:8080/health` |
 
 ## What You Get
 
@@ -142,6 +143,8 @@ If you hit bot-check/login restrictions, configure one of these cookie options i
 
 - `downloads/` stores downloaded media
 - `backend-data/` stores SQLite data and updater state
+- `docker compose up -d --build --remove-orphans` updates/recreates the app container while keeping those folders untouched.
+- Avoid `docker compose down -v` unless you explicitly want to remove persisted data.
 
 ## Useful Commands
 

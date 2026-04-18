@@ -8,7 +8,6 @@ services:
     restart: unless-stopped
     ports:
       - "${YLOADER_FRONTEND_PORT:-8080}:4000"
-      - "${YLOADER_BACKEND_PORT:-8081}:4000"
     environment:
       - DOWNLOAD_DIR=/downloads
       - DB_PATH=/app/data/metadata.db
