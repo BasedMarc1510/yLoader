@@ -10,7 +10,7 @@ All-in-one, local-first yt-dlp frontend for people who want one tool that can ru
 
 yLoader is built for fast daily use: clean UI, advanced media controls, and feature parity across web, Docker, and Electron runtimes.
 
-![yLoader Home](https://raw.githubusercontent.com/BasedMarc1510/yLoader/main/docs/images/yloader-home.png)
+<img width="1157" height="717" alt="image1" src="https://github.com/user-attachments/assets/9d3abc5c-d565-48b9-a59e-0e735f326eaa" />
 
 ## Recommended: Electron Desktop App
 
