@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, splitVendorChunkPlugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 function rewriteLegacyDownloaderUrlQuery() {
@@ -37,7 +37,7 @@ function rewriteLegacyDownloaderUrlQuery() {
 // https://vitejs.dev/config/
 export default defineConfig({
   base: './',
-  plugins: [react(), rewriteLegacyDownloaderUrlQuery()],
+  plugins: [react(), rewriteLegacyDownloaderUrlQuery(), splitVendorChunkPlugin()],
   server: {
     host: true,
     port: 5173,
@@ -52,38 +52,5 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     chunkSizeWarningLimit: 900,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return undefined
-
-          if (id.includes('react-dom') || id.includes('react/') || id.includes('scheduler')) {
-            return 'vendor-react'
-          }
-
-          if (id.includes('@mui/') || id.includes('@emotion/')) {
-            return 'vendor-mui'
-          }
-
-          if (id.includes('react-router') || id.includes('@remix-run/router')) {
-            return 'vendor-router'
-          }
-
-          if (id.includes('lucide-react') || id.includes('@icons-pack/react-simple-icons')) {
-            return 'vendor-icons'
-          }
-
-          if (id.includes('cropperjs') || id.includes('react-cropper') || id.includes('qrcode')) {
-            return 'vendor-media'
-          }
-
-          if (id.includes('simplebar-react') || id.includes('simplebar-core')) {
-            return 'vendor-ui-utils'
-          }
-
-          return 'vendor'
-        },
-      },
-    },
   }
 })

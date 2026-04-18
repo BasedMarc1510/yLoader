@@ -47,7 +47,7 @@ For Docker Hub publishing, set image names before building (for example in a roo
 ```bash
 YLOADER_IMAGE=yourdockerhubuser/yloader:latest
 YLOADER_FRONTEND_PORT=8080
-YLOADER_BACKEND_PORT=4000
+YLOADER_BACKEND_PORT=8081
 ```
 
 Then build and push:
@@ -63,7 +63,7 @@ docker compose push app
 | --- | --- | --- | --- |
 | Local | `http://localhost:5173` | `http://localhost:4000` | `http://localhost:4000/health` |
 | Local Electron (dev) | Electron window (`http://localhost:5173`) | `http://localhost:4000` | `http://localhost:4000/health` |
-| Docker | `http://localhost:8080` | `http://localhost:4000` | `http://localhost:4000/health` |
+| Docker | `http://localhost:8080` | `http://localhost:8081` | `http://localhost:8081/health` |
 
 ## What You Get
 

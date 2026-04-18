@@ -767,16 +767,18 @@ export default function SettingsModal({
     applyResetToCurrentSection()
   }, [applyResetToCurrentSection])
 
-  const isAnyUpdateRunning = isAppUpdateDownloading || updating || ffmpegUpdating || ytInfo.updateInProgress || ffmpegInfo.updateInProgress
+  // Only block dialog closing while a user-triggered in-modal update is actively running.
+  // Background status polling flags should not trap the user in the modal.
+  const isCloseBlocked = isAppUpdateDownloading || updating || ffmpegUpdating
 
   const handleDialogClose = React.useCallback(() => {
     if (resetConfirmOpen) {
       setResetConfirmOpen(false)
       return
     }
-    if (isAnyUpdateRunning) return
+    if (isCloseBlocked) return
     onClose?.()
-  }, [isAnyUpdateRunning, onClose, resetConfirmOpen])
+  }, [isCloseBlocked, onClose, resetConfirmOpen])
 
   const selectSx = {
     fontSize: 13,
@@ -797,7 +799,7 @@ export default function SettingsModal({
     <Dialog
       open={open}
       onClose={handleDialogClose}
-      disableEscapeKeyDown={isAnyUpdateRunning}
+      disableEscapeKeyDown={isCloseBlocked}
       fullWidth
       maxWidth="md"
       PaperProps={{
@@ -835,7 +837,7 @@ export default function SettingsModal({
               <Tooltip title={t('settings.close')}>
                 <IconButton
                   onClick={handleDialogClose}
-                  disabled={isAnyUpdateRunning}
+                  disabled={isCloseBlocked}
                   size="small"
                   aria-label={t('settings.closeAria')}
                   sx={{

@@ -11,7 +11,7 @@ const ROOT_DIR = path.resolve(__dirname, '..')
 const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads')
 const BACKEND_DATA_DIR = path.join(ROOT_DIR, 'backend-data')
 const FRONTEND_PORT = Number.parseInt(String(process.env.YLOADER_FRONTEND_PORT || '8080'), 10) || 8080
-const BACKEND_PORT = Number.parseInt(String(process.env.YLOADER_BACKEND_PORT || '4000'), 10) || 4000
+const BACKEND_PORT = Number.parseInt(String(process.env.YLOADER_BACKEND_PORT || '8081'), 10) || 8081
 
 function info(message) {
   process.stdout.write(`[yloader] ${message}\n`)
