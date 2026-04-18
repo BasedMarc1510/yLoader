@@ -5,6 +5,30 @@ import {
   buildSuggestedDownloadFilename,
   resolveElectronDownloadDestination,
 } from '../../../utils/electronDownloadDestination'
+import {
+  getPathDirectory,
+  getPathFilename,
+  resolveFullPathValue,
+} from '../../../utils/downloadPathInput'
+
+function resolvePathValidationMessage(i18nT, validationResult, fallbackPath = '') {
+  const resolvedPath = String(validationResult?.path || fallbackPath || '').trim()
+  const exists = Boolean(validationResult?.exists)
+  const isDirectory = Boolean(validationResult?.isDirectory)
+  const writable = Boolean(validationResult?.writable)
+
+  if (!exists) {
+    return i18nT('downloader.errorDownloadPathMissing', { path: resolvedPath })
+  }
+  if (!isDirectory) {
+    return i18nT('downloader.errorDownloadPathNotDirectory', { path: resolvedPath })
+  }
+  if (!writable) {
+    return i18nT('downloader.errorDownloadPathNotWritable', { path: resolvedPath })
+  }
+
+  return i18nT('downloader.errorDownloadPathInvalid', { path: resolvedPath })
+}
 
 export default function useStreamDownload({
   i18nT,
@@ -29,6 +53,8 @@ export default function useStreamDownload({
   coverEmbedEnabled,
   coverSource,
   coverUpload,
+  audioDownloadTargetSettings,
+  videoDownloadTargetSettings,
 }) {
   const [downloading, setDownloading] = React.useState(false)
   const [downloadProgress, setDownloadProgress] = React.useState(0)
@@ -114,6 +140,67 @@ export default function useStreamDownload({
         scopedFilename || titleValue || videoTitle || 'download',
         suggestedExtension,
       )
+      const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+      const isElectronRuntime = Boolean(runtime?.isElectron)
+      const resolvedDownloadTargetSettings = type === 'video'
+        ? videoDownloadTargetSettings
+        : audioDownloadTargetSettings
+      const preferredDirectory = String(
+        resolvedDownloadTargetSettings?.directoryPath || runtime?.downloadsPath || ''
+      ).trim()
+      const usesFixedPathMode = Boolean(
+        isElectronRuntime
+        && resolvedDownloadTargetSettings
+        && resolvedDownloadTargetSettings.alwaysAsk === false
+      )
+
+      let manualElectronSavePath = ''
+
+      if (usesFixedPathMode) {
+        const fallbackBaseName = scopedFilename || titleValue || videoTitle || 'download'
+        const resolvedPathValue = resolveFullPathValue({
+          inputValue: scopedFilename,
+          defaultDirectory: preferredDirectory,
+          fallbackBaseName,
+          extension: suggestedExtension,
+        })
+        const resolvedFilename = String(getPathFilename(resolvedPathValue) || '').trim()
+
+        if (!resolvedFilename) {
+          const message = i18nT('downloader.errorFilePathRequired')
+          setDownloadError(message)
+          showNotification(message, 'error')
+          return
+        }
+
+        const directoryToValidate = String(getPathDirectory(resolvedPathValue) || preferredDirectory).trim()
+        if (!directoryToValidate) {
+          const message = i18nT('downloader.errorDownloadPathInvalid', { path: resolvedPathValue })
+          setDownloadError(message)
+          showNotification(message, 'error')
+          return
+        }
+
+        const canValidateDirectory = typeof runtime?.downloads?.validateDirectory === 'function'
+        if (canValidateDirectory) {
+          try {
+            const validation = await runtime.downloads.validateDirectory(directoryToValidate)
+            if (!validation?.valid) {
+              const message = resolvePathValidationMessage(i18nT, validation, directoryToValidate)
+              setDownloadError(message)
+              showNotification(message, 'error')
+              return
+            }
+          } catch {
+            const message = i18nT('downloader.errorDownloadPathInvalid', { path: directoryToValidate })
+            setDownloadError(message)
+            showNotification(message, 'error')
+            return
+          }
+        }
+
+        manualElectronSavePath = resolvedPathValue
+      }
 
       const payload = {
         url: normalized,
@@ -167,6 +254,8 @@ export default function useStreamDownload({
         apiBase,
         downloadType: type,
         suggestedFilename,
+        preferredDirectory,
+        targetSettings: resolvedDownloadTargetSettings,
       })
 
       if (electronDestination.enabled) {
@@ -174,8 +263,13 @@ export default function useStreamDownload({
           return
         }
 
-        payload.electronSavePath = electronDestination.electronSavePath || undefined
-        payload.electronTargetDirectory = electronDestination.electronTargetDirectory || undefined
+        if (usesFixedPathMode && manualElectronSavePath) {
+          payload.electronSavePath = manualElectronSavePath
+          payload.electronTargetDirectory = undefined
+        } else {
+          payload.electronSavePath = electronDestination.electronSavePath || undefined
+          payload.electronTargetDirectory = electronDestination.electronTargetDirectory || undefined
+        }
       }
 
       const response = await fetch(`${apiBase}/api/download/stream`, {
@@ -377,6 +471,8 @@ export default function useStreamDownload({
     videoAuthor,
     albumValue,
     showNotification,
+    audioDownloadTargetSettings,
+    videoDownloadTargetSettings,
   ])
 
   return {

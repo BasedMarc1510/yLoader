@@ -123,19 +123,33 @@ async function fetchDownloadSettings(apiBase) {
   return normalizeDownloadSettings(payload)
 }
 
+function normalizeTargetSettings(value) {
+  if (!value || typeof value !== 'object') return null
+
+  return {
+    directoryPath: String(value.directoryPath || '').trim(),
+    alwaysAsk: Boolean(value.alwaysAsk),
+  }
+}
+
 export async function resolveElectronDownloadDestination({
   apiBase,
   downloadType,
   suggestedFilename,
   preferredDirectory = '',
+  targetSettings = null,
 }) {
   const runtime = getRuntimeBridge()
   if (!runtime) {
     return { enabled: false, canceled: false, electronSavePath: '', electronTargetDirectory: '' }
   }
 
-  const settings = await fetchDownloadSettings(apiBase)
-  const target = resolveDownloadTargetSettings(settings, downloadType)
+  let target = normalizeTargetSettings(targetSettings)
+  if (!target) {
+    const settings = await fetchDownloadSettings(apiBase)
+    target = resolveDownloadTargetSettings(settings, downloadType)
+  }
+
   const configuredDirectory = String(preferredDirectory || '').trim()
     || String(target.directoryPath || '').trim()
     || String(runtime.downloadsPath || '').trim()

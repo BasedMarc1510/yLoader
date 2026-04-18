@@ -60,6 +60,8 @@ export default function OptionsTabs({
   const theme = useTheme()
   const { t: i18nT } = useI18n()
   const { showNotification } = useNotification()
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+  const isElectronRuntime = Boolean(runtime?.isElectron)
 
   const normalizedDisabledDownloadTypes = React.useMemo(
     () => normalizeDisabledDownloadTypes(disabledDownloadTypes),
@@ -110,6 +112,8 @@ export default function OptionsTabs({
     coverEmbedEnabled: data.coverEmbedEnabled,
     coverSource: data.coverSource,
     coverUpload: data.coverUpload,
+    audioDownloadTargetSettings: data.audioDownloadTargetSettings,
+    videoDownloadTargetSettings: data.videoDownloadTargetSettings,
   })
 
   const interactionsDisabled = download.downloading || loadingState
@@ -337,6 +341,9 @@ export default function OptionsTabs({
             audioFormats={data.audioFormats}
             maxAudioBitrateKbps={data.maxAudioBitrateKbps}
             loadingFormats={data.loadingFormats}
+            isElectronRuntime={isElectronRuntime}
+            downloadTargetSettings={data.audioDownloadTargetSettings}
+            videoTitle={videoTitle}
             filenameValue={data.audioFilenameValue}
             setFilenameValue={data.setAudioFilenameValue}
             audioContainer={data.audioContainer}
@@ -347,6 +354,7 @@ export default function OptionsTabs({
             downloadError={download.downloadError}
             showCookieSettingsHint={showCookieSettingsHint}
             onOpenCookieSettings={openCookieSettings}
+            showNotification={showNotification}
           />
         )}
 
@@ -365,6 +373,9 @@ export default function OptionsTabs({
             videoFormats={data.videoFormats}
             maxVideoHeight={data.maxVideoHeight}
             loadingFormats={data.loadingFormats}
+            isElectronRuntime={isElectronRuntime}
+            downloadTargetSettings={data.videoDownloadTargetSettings}
+            videoTitle={videoTitle}
             filenameValue={data.videoFilenameValue}
             setFilenameValue={data.setVideoFilenameValue}
             videoContainer={data.videoContainer}
@@ -375,6 +386,7 @@ export default function OptionsTabs({
             downloadError={download.downloadError}
             showCookieSettingsHint={showCookieSettingsHint}
             onOpenCookieSettings={openCookieSettings}
+            showNotification={showNotification}
           />
         )}
 

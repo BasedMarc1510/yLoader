@@ -1,6 +1,6 @@
 import React from 'react'
-import { Box, MenuItem, Select } from '@mui/material'
-import { Tag } from 'lucide-react'
+import { Box, CircularProgress, IconButton, MenuItem, Select } from '@mui/material'
+import { FolderOpen } from 'lucide-react'
 import { useI18n } from '../../providers/I18nProvider'
 
 export default function CombinedFilenameInput({
@@ -12,12 +12,24 @@ export default function CombinedFilenameInput({
     placeholder,
     isDark = true,
     disabled = false,
+    showPathPicker = false,
+    onPickPath,
+    pickPathDisabled = false,
+    pickPathLoading = false,
+    pickPathAriaLabel = '',
 }) {
     const { t } = useI18n()
     const resolvedPlaceholder = placeholder || t('downloader.filename')
+    const resolvedPickPathAriaLabel = pickPathAriaLabel || t('downloader.browseFilePath')
     const inputRef = React.useRef(null)
     const [showLeftFade, setShowLeftFade] = React.useState(false)
     const [showRightFade, setShowRightFade] = React.useState(false)
+
+    const handlePickPath = React.useCallback(() => {
+        if (typeof onPickPath === 'function') {
+            onPickPath()
+        }
+    }, [onPickPath])
 
     const inputBgColor = isDark ? '#1b1b1b' : '#ffffff'
     const leftFadeGradient = isDark
@@ -89,10 +101,6 @@ export default function CombinedFilenameInput({
                 height: '45px',
             }}
         >
-            <Box sx={{ pl: 2, display: 'flex', alignItems: 'center', color: isDark ? '#888888' : '#8e8e93' }}>
-                <Tag size={18} />
-            </Box>
-
             <Box
                 sx={{
                     position: 'relative',
@@ -128,7 +136,7 @@ export default function CombinedFilenameInput({
                         color: isDark ? '#ffffff' : '#1a1a1a',
                         fontSize: '15px',
                         fontWeight: 600,
-                        px: 1.5,
+                        px: 2,
                         minWidth: 0,
                         overflowX: 'auto',
                         '&::placeholder': {
@@ -165,6 +173,35 @@ export default function CombinedFilenameInput({
                     />
                 )}
             </Box>
+
+            {showPathPicker && (
+                <>
+                    <Box sx={{ width: '1px', height: '60%', bgcolor: isDark ? '#333333' : '#dfe0e2' }} />
+
+                    <IconButton
+                        onClick={handlePickPath}
+                        disabled={disabled || pickPathDisabled || pickPathLoading}
+                        aria-label={resolvedPickPathAriaLabel}
+                        size="small"
+                        sx={{
+                            borderRadius: 0,
+                            px: 1,
+                            height: '100%',
+                            color: isDark ? '#9a9a9a' : '#5e5e63',
+                            bgcolor: isDark ? '#232323' : '#f4f5f7',
+                            transition: 'background-color 0.2s ease, color 0.2s ease',
+                            '&:hover': {
+                                bgcolor: isDark ? '#2a2a2a' : '#ecedf0',
+                                color: isDark ? '#ffffff' : '#1a1a1a',
+                            },
+                        }}
+                    >
+                        {pickPathLoading
+                            ? <CircularProgress size={16} sx={{ color: 'inherit' }} />
+                            : <FolderOpen size={16} />}
+                    </IconButton>
+                </>
+            )}
 
             <Box sx={{ width: '1px', height: '60%', bgcolor: isDark ? '#333333' : '#dfe0e2' }} />
 

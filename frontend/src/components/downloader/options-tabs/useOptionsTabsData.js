@@ -11,6 +11,7 @@ import {
 import {
   DOWNLOAD_SETTINGS_DEFAULTS,
   normalizeDownloadSettings,
+  resolveDownloadTargetSettings,
 } from '../../../utils/downloadSettings'
 import { formatYtDlpErrorMessage } from '../../../utils/ytDlpErrorPresentation'
 
@@ -249,6 +250,16 @@ export default function useOptionsTabsData({
 
     setSelectedVideoFormat('best')
   }, [videoFormats, downloadSettings.maxVideoHeight, selectedVideoFormat])
+
+  const audioDownloadTargetSettings = React.useMemo(
+    () => resolveDownloadTargetSettings(downloadSettings, 'audio'),
+    [downloadSettings]
+  )
+
+  const videoDownloadTargetSettings = React.useMemo(
+    () => resolveDownloadTargetSettings(downloadSettings, 'video'),
+    [downloadSettings]
+  )
 
   const applyBackendThumbnails = React.useCallback((thumbnails) => {
     const valid = (thumbnails || []).filter((item) => item.width && item.height && item.width > 0 && item.height > 0)
@@ -522,6 +533,8 @@ export default function useOptionsTabsData({
     coverSource,
     coverUpload,
     coverUploadError,
+    audioDownloadTargetSettings,
+    videoDownloadTargetSettings,
     maxAudioBitrateKbps: downloadSettings.maxAudioBitrateKbps,
     maxVideoHeight: downloadSettings.maxVideoHeight,
 

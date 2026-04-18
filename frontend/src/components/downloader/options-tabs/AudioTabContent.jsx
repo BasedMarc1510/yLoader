@@ -17,6 +17,12 @@ import CollapsibleSection from './CollapsibleSection'
 import { getDownloadProgressLabel } from './downloadProgressLabel'
 import { buildAudioOptions } from './formatOptions'
 import { adjustColorBrightness, getContrastTextColor } from './styleUtils'
+import {
+  getPathDirectory,
+  getPathFilename,
+  resolveFullPathValue,
+  updatePathExtension,
+} from '../../../utils/downloadPathInput'
 
 export default function AudioTabContent({
   theme,
@@ -47,6 +53,9 @@ export default function AudioTabContent({
   audioFormats,
   maxAudioBitrateKbps,
   loadingFormats,
+  isElectronRuntime = false,
+  downloadTargetSettings = null,
+  videoTitle = '',
   filenameValue,
   setFilenameValue,
   audioContainer,
@@ -57,6 +66,7 @@ export default function AudioTabContent({
   downloadError,
   showCookieSettingsHint,
   onOpenCookieSettings,
+  showNotification,
 }) {
   const isDark = theme.palette.mode === 'dark'
   const textColor = isDark ? '#ffffff' : theme.palette.text.primary
@@ -67,6 +77,121 @@ export default function AudioTabContent({
   const progressOverlayColor = downloadButtonTextColor === '#111111'
     ? 'rgba(0,0,0,0.14)'
     : 'rgba(255,255,255,0.22)'
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+  const pathModeEnabled = Boolean(
+    isElectronRuntime
+    && downloadTargetSettings
+    && downloadTargetSettings.alwaysAsk === false
+  )
+  const defaultDirectory = String(downloadTargetSettings?.directoryPath || runtime?.downloadsPath || '').trim()
+  const canPickSavePath = Boolean(pathModeEnabled && runtime?.downloads?.pickSavePath)
+  const [pickingSavePath, setPickingSavePath] = React.useState(false)
+  const pathModeInitializedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!pathModeEnabled) {
+      pathModeInitializedRef.current = false
+      return
+    }
+
+    const sourceTitle = String(videoTitle || '').trim()
+    const currentValue = String(filenameValue || '').trim()
+    const shouldHydratePath = !pathModeInitializedRef.current
+      || (sourceTitle && currentValue === sourceTitle)
+
+    if (!shouldHydratePath) return
+
+    const resolvedPathValue = resolveFullPathValue({
+      inputValue: currentValue,
+      defaultDirectory,
+      fallbackBaseName: sourceTitle || titleValue || currentValue || 'download',
+      extension: audioContainer || 'mp3',
+    })
+
+    pathModeInitializedRef.current = true
+    if (resolvedPathValue !== filenameValue) {
+      setFilenameValue(resolvedPathValue)
+    }
+  }, [
+    pathModeEnabled,
+    filenameValue,
+    videoTitle,
+    titleValue,
+    defaultDirectory,
+    audioContainer,
+    setFilenameValue,
+  ])
+
+  const handleAudioContainerChange = React.useCallback((nextExtension) => {
+    setAudioContainer(nextExtension)
+    if (!pathModeEnabled) return
+
+    const nextPath = updatePathExtension(
+      filenameValue,
+      nextExtension,
+      String(videoTitle || titleValue || filenameValue || 'download'),
+    )
+    if (nextPath !== filenameValue) {
+      setFilenameValue(nextPath)
+    }
+  }, [
+    setAudioContainer,
+    pathModeEnabled,
+    filenameValue,
+    videoTitle,
+    titleValue,
+    setFilenameValue,
+  ])
+
+  const handlePickSavePath = React.useCallback(async () => {
+    if (!canPickSavePath || downloading || pickingSavePath) return
+
+    setPickingSavePath(true)
+    try {
+      const fallbackBaseName = String(videoTitle || titleValue || filenameValue || 'download').trim()
+      const resolvedCurrentPath = resolveFullPathValue({
+        inputValue: filenameValue,
+        defaultDirectory,
+        fallbackBaseName,
+        extension: audioContainer || 'mp3',
+      })
+      const initialDirectory = String(getPathDirectory(resolvedCurrentPath) || defaultDirectory).trim()
+      const suggestedName = String(getPathFilename(resolvedCurrentPath) || '').trim()
+
+      const result = await runtime.downloads.pickSavePath({
+        initialDirectory,
+        suggestedName,
+      })
+      if (!result || result.canceled || !result.path) return
+
+      const pickedPath = updatePathExtension(
+        String(result.path || '').trim(),
+        audioContainer || 'mp3',
+        fallbackBaseName,
+      )
+      if (pickedPath) {
+        setFilenameValue(pickedPath)
+      }
+    } catch (error) {
+      const message = i18nT('downloader.errorPickSavePath', { message: error?.message || error })
+      showNotification?.(message, 'error')
+    } finally {
+      setPickingSavePath(false)
+    }
+  }, [
+    canPickSavePath,
+    downloading,
+    pickingSavePath,
+    videoTitle,
+    titleValue,
+    filenameValue,
+    defaultDirectory,
+    audioContainer,
+    runtime,
+    setFilenameValue,
+    i18nT,
+    showNotification,
+  ])
 
   return (
     <Box>
@@ -193,14 +318,14 @@ export default function AudioTabContent({
         isDark={isDark}
         textColor={textColor}
         icon={<Tag size={18} />}
-        label={i18nT('downloader.filenameAndFormat')}
+        label={i18nT(pathModeEnabled ? 'downloader.filePathAndFormat' : 'downloader.filenameAndFormat')}
         theme={theme}
       >
         <CombinedFilenameInput
           value={filenameValue}
           onChange={setFilenameValue}
           extension={audioContainer}
-          onExtensionChange={setAudioContainer}
+          onExtensionChange={handleAudioContainerChange}
           extensions={[
             { value: 'mp3', label: 'mp3' },
             { value: 'm4a', label: 'm4a' },
@@ -209,9 +334,14 @@ export default function AudioTabContent({
             { value: 'flac', label: 'flac' },
             { value: 'opus', label: 'opus' },
           ]}
-          placeholder={i18nT('downloader.filename')}
+          placeholder={i18nT(pathModeEnabled ? 'downloader.filePath' : 'downloader.filename')}
           isDark={isDark}
           disabled={downloading}
+          showPathPicker={pathModeEnabled && canPickSavePath}
+          onPickPath={handlePickSavePath}
+          pickPathDisabled={downloading || !canPickSavePath}
+          pickPathLoading={pickingSavePath}
+          pickPathAriaLabel={i18nT('downloader.browseFilePath')}
         />
       </CollapsibleSection>
 

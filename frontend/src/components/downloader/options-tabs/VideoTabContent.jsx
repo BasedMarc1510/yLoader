@@ -8,6 +8,12 @@ import CollapsibleSection from './CollapsibleSection'
 import { getDownloadProgressLabel } from './downloadProgressLabel'
 import { buildVideoOptions } from './formatOptions'
 import { adjustColorBrightness, getContrastTextColor } from './styleUtils'
+import {
+  getPathDirectory,
+  getPathFilename,
+  resolveFullPathValue,
+  updatePathExtension,
+} from '../../../utils/downloadPathInput'
 
 export default function VideoTabContent({
   theme,
@@ -23,6 +29,9 @@ export default function VideoTabContent({
   videoFormats,
   maxVideoHeight,
   loadingFormats,
+  isElectronRuntime = false,
+  downloadTargetSettings = null,
+  videoTitle = '',
   filenameValue,
   setFilenameValue,
   videoContainer,
@@ -33,6 +42,7 @@ export default function VideoTabContent({
   downloadError,
   showCookieSettingsHint,
   onOpenCookieSettings,
+  showNotification,
 }) {
   const isDark = theme.palette.mode === 'dark'
   const textColor = isDark ? '#ffffff' : theme.palette.text.primary
@@ -43,6 +53,118 @@ export default function VideoTabContent({
   const progressOverlayColor = downloadButtonTextColor === '#111111'
     ? 'rgba(0,0,0,0.14)'
     : 'rgba(255,255,255,0.22)'
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+  const pathModeEnabled = Boolean(
+    isElectronRuntime
+    && downloadTargetSettings
+    && downloadTargetSettings.alwaysAsk === false
+  )
+  const defaultDirectory = String(downloadTargetSettings?.directoryPath || runtime?.downloadsPath || '').trim()
+  const canPickSavePath = Boolean(pathModeEnabled && runtime?.downloads?.pickSavePath)
+  const [pickingSavePath, setPickingSavePath] = React.useState(false)
+  const pathModeInitializedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!pathModeEnabled) {
+      pathModeInitializedRef.current = false
+      return
+    }
+
+    const sourceTitle = String(videoTitle || '').trim()
+    const currentValue = String(filenameValue || '').trim()
+    const shouldHydratePath = !pathModeInitializedRef.current
+      || (sourceTitle && currentValue === sourceTitle)
+
+    if (!shouldHydratePath) return
+
+    const resolvedPathValue = resolveFullPathValue({
+      inputValue: currentValue,
+      defaultDirectory,
+      fallbackBaseName: sourceTitle || currentValue || 'download',
+      extension: videoContainer || 'mp4',
+    })
+
+    pathModeInitializedRef.current = true
+    if (resolvedPathValue !== filenameValue) {
+      setFilenameValue(resolvedPathValue)
+    }
+  }, [
+    pathModeEnabled,
+    filenameValue,
+    videoTitle,
+    defaultDirectory,
+    videoContainer,
+    setFilenameValue,
+  ])
+
+  const handleVideoContainerChange = React.useCallback((nextExtension) => {
+    setVideoContainer(nextExtension)
+    if (!pathModeEnabled) return
+
+    const nextPath = updatePathExtension(
+      filenameValue,
+      nextExtension,
+      String(videoTitle || filenameValue || 'download'),
+    )
+    if (nextPath !== filenameValue) {
+      setFilenameValue(nextPath)
+    }
+  }, [
+    setVideoContainer,
+    pathModeEnabled,
+    filenameValue,
+    videoTitle,
+    setFilenameValue,
+  ])
+
+  const handlePickSavePath = React.useCallback(async () => {
+    if (!canPickSavePath || downloading || pickingSavePath) return
+
+    setPickingSavePath(true)
+    try {
+      const fallbackBaseName = String(videoTitle || filenameValue || 'download').trim()
+      const resolvedCurrentPath = resolveFullPathValue({
+        inputValue: filenameValue,
+        defaultDirectory,
+        fallbackBaseName,
+        extension: videoContainer || 'mp4',
+      })
+      const initialDirectory = String(getPathDirectory(resolvedCurrentPath) || defaultDirectory).trim()
+      const suggestedName = String(getPathFilename(resolvedCurrentPath) || '').trim()
+
+      const result = await runtime.downloads.pickSavePath({
+        initialDirectory,
+        suggestedName,
+      })
+      if (!result || result.canceled || !result.path) return
+
+      const pickedPath = updatePathExtension(
+        String(result.path || '').trim(),
+        videoContainer || 'mp4',
+        fallbackBaseName,
+      )
+      if (pickedPath) {
+        setFilenameValue(pickedPath)
+      }
+    } catch (error) {
+      const message = i18nT('downloader.errorPickSavePath', { message: error?.message || error })
+      showNotification?.(message, 'error')
+    } finally {
+      setPickingSavePath(false)
+    }
+  }, [
+    canPickSavePath,
+    downloading,
+    pickingSavePath,
+    videoTitle,
+    filenameValue,
+    defaultDirectory,
+    videoContainer,
+    runtime,
+    setFilenameValue,
+    i18nT,
+    showNotification,
+  ])
 
   return (
     <Box>
@@ -99,22 +221,27 @@ export default function VideoTabContent({
         isDark={isDark}
         textColor={textColor}
         icon={<Tag size={18} />}
-        label={i18nT('downloader.filenameAndFormat')}
+        label={i18nT(pathModeEnabled ? 'downloader.filePathAndFormat' : 'downloader.filenameAndFormat')}
         theme={theme}
       >
         <CombinedFilenameInput
           value={filenameValue}
           onChange={setFilenameValue}
           extension={videoContainer}
-          onExtensionChange={setVideoContainer}
+          onExtensionChange={handleVideoContainerChange}
           extensions={[
             { value: 'mp4', label: 'mp4' },
             { value: 'webm', label: 'webm' },
             { value: 'mkv', label: 'mkv' },
           ]}
-          placeholder={i18nT('downloader.filename')}
+          placeholder={i18nT(pathModeEnabled ? 'downloader.filePath' : 'downloader.filename')}
           isDark={isDark}
           disabled={downloading}
+          showPathPicker={pathModeEnabled && canPickSavePath}
+          onPickPath={handlePickSavePath}
+          pickPathDisabled={downloading || !canPickSavePath}
+          pickPathLoading={pickingSavePath}
+          pickPathAriaLabel={i18nT('downloader.browseFilePath')}
         />
       </CollapsibleSection>
 
