@@ -1699,6 +1699,53 @@ function sanitizeFilename(str, maxLen = 200) {
   return sanitized
 }
 
+const AUDIO_METADATA_PLACEHOLDER_VALUES = new Set([
+  'n/a',
+  'na',
+  'none',
+  'null',
+  'undefined',
+  '-',
+])
+
+function sanitizeMetadataValue(value, maxLen = 220) {
+  const sanitized = String(value ?? '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, maxLen)
+
+  if (!sanitized) return ''
+  if (AUDIO_METADATA_PLACEHOLDER_VALUES.has(sanitized.toLowerCase())) return ''
+  return sanitized
+}
+
+function sanitizeYtDlpMetadataLiteral(value, maxLen = 220) {
+  const normalized = sanitizeMetadataValue(value, maxLen)
+  if (!normalized) return ''
+
+  return normalized
+    .replace(/[:%]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeAudioMetadataPayload(rawMetadata, fallbackMetadata = {}) {
+  const metadata = (rawMetadata && typeof rawMetadata === 'object') ? rawMetadata : {}
+  const fallback = (fallbackMetadata && typeof fallbackMetadata === 'object') ? fallbackMetadata : {}
+
+  const title = sanitizeMetadataValue(metadata.title) || sanitizeMetadataValue(fallback.title)
+  const artist = sanitizeMetadataValue(metadata.artist) || sanitizeMetadataValue(fallback.artist)
+  const album = sanitizeMetadataValue(metadata.album) || sanitizeMetadataValue(fallback.album)
+
+  return {
+    title,
+    artist,
+    album,
+    hasAny: Boolean(title || artist || album),
+  }
+}
+
 function toAsciiFilename(value, fallback = 'download') {
   const ascii = String(value || '')
     .normalize('NFKD')
@@ -4573,12 +4620,15 @@ app.post('/api/download/stream', async (req, res) => {
     format: rawContainer,
     audioFormat: rawAudioFormat,
     videoFormat: rawVideoFormat,
-    metadata,
+    metadata: rawMetadata,
     cover,
     duration,
     service,
+    videoTitle: rawVideoTitle,
+    videoAuthor: rawVideoAuthor,
     electronSavePath: rawElectronSavePath,
     electronTargetDirectory: rawElectronTargetDirectory,
+    electronAllowOverwrite: rawElectronAllowOverwrite,
   } = req.body || {}
 
   const url = String(rawUrl || '').trim()
@@ -4588,6 +4638,7 @@ app.post('/api/download/stream', async (req, res) => {
   const videoFormat = String(rawVideoFormat || '').trim()
   const electronSavePath = normalizeDownloadDirectoryPath(rawElectronSavePath, '')
   const electronTargetDirectory = normalizeDownloadDirectoryPath(rawElectronTargetDirectory, '')
+  const electronAllowOverwrite = rawElectronAllowOverwrite === true
   const useElectronDirectTarget = Boolean(
     YLOADER_RUNTIME_TARGET === 'electron'
     && (electronSavePath || electronTargetDirectory)
@@ -4611,6 +4662,28 @@ app.post('/api/download/stream', async (req, res) => {
   if (type !== 'audio' && type !== 'video') {
     return res.status(400).json({ error: 'Invalid type. Must be audio or video' })
   }
+
+  const normalizedVideoTitle = sanitizeMetadataValue(rawVideoTitle)
+  const normalizedVideoAuthor = sanitizeMetadataValue(rawVideoAuthor)
+  const normalizedMetadata = type === 'audio'
+    ? normalizeAudioMetadataPayload(rawMetadata, {
+      title: normalizedVideoTitle,
+      artist: normalizedVideoAuthor,
+      album: '',
+    })
+    : {
+      title: '',
+      artist: '',
+      album: '',
+      hasAny: false,
+    }
+  const metadataPayloadForCache = normalizedMetadata.hasAny
+    ? {
+      title: normalizedMetadata.title,
+      artist: normalizedMetadata.artist,
+      album: normalizedMetadata.album,
+    }
+    : null
 
   const requestedAudioContainer = type === 'audio'
     ? normalizeAudioContainer(container || effectiveDownloadSettings.defaultAudioContainer)
@@ -4740,8 +4813,8 @@ app.post('/api/download/stream', async (req, res) => {
         videoFormat: normalizedVideoFormatId || '',
         maxAudioBitrateKbps,
         maxVideoHeight,
-        videoTitle: req.body.videoTitle || null,
-        metadata: metadata || null,
+        videoTitle: normalizedVideoTitle || null,
+        metadata: metadataPayloadForCache,
         cover: {
           enabled: coverEnabled,
           source: coverSource,
@@ -4781,7 +4854,7 @@ app.post('/api/download/stream', async (req, res) => {
       }
       formatArgs.push('-x', '--audio-format', audioFormatArg)
       if (coverEnabled && coverSource === 'video') {
-        formatArgs.push('--embed-thumbnail', '--convert-thumbnails', 'jpg', '--write-thumbnail')
+        formatArgs.push('--embed-thumbnail')
       }
     } else if (type === 'video') {
       ext = requestedVideoContainer || 'mp4'
@@ -4815,8 +4888,8 @@ app.post('/api/download/stream', async (req, res) => {
       }
     }
 
-    // Use metadata title if available, otherwise fallback to videoTitle passed in payload, or generic
-    const targetTitle = metadata?.title || req.body.videoTitle || `download_${downloadHash}`
+    // Prefer explicit metadata title, then normalized video title fallback, then generic.
+    const targetTitle = normalizedMetadata.title || normalizedVideoTitle || `download_${downloadHash}`
     const finalBaseFilename = sanitizeFilename(targetTitle) || `download_${downloadHash}`
 
     if (!useElectronDirectTarget) {
@@ -4908,6 +4981,16 @@ app.post('/api/download/stream', async (req, res) => {
           tempOutputBaseName = uniqueBaseName
           directTargetSavePath = uniqueTargetPath
         }
+
+        if (directTargetSavePath && fs.existsSync(directTargetSavePath)) {
+          const existingTargetStat = fs.statSync(directTargetSavePath)
+          if (!existingTargetStat.isFile()) {
+            throw new Error('Target path exists but is not a file')
+          }
+          if (!electronAllowOverwrite) {
+            throw new Error('Target file already exists. Replace was not confirmed.')
+          }
+        }
       } else {
         // Create a temporary directory for this download to avoid naming conflicts and quoting issues.
         const tempDirName = `temp_${downloadHash}`
@@ -4920,7 +5003,7 @@ app.post('/api/download/stream', async (req, res) => {
       console.error('Failed to prepare output directory:', err)
       activeDownloads.delete(downloadHash)
       notifyDownloadSlotsChanged()
-      send('error', 'Failed to prepare download destination')
+      send('error', String(err?.message || 'Failed to prepare download destination'))
       send('end', 'failed')
       safeEnd()
       return
@@ -4940,19 +5023,18 @@ app.post('/api/download/stream', async (req, res) => {
       url
     ])
 
-    // Add metadata if provided (for audio)
-    // Use --parse-metadata with meta_ prefix to set custom metadata values
-    // and --embed-metadata to write them into the audio file
-    if (type === 'audio' && metadata) {
-      const hasMetadata = metadata.title || metadata.artist || metadata.album
-      if (hasMetadata) {
-        // Use parse-metadata to override the default metadata fields
-        if (metadata.title) args.push('--parse-metadata', `${metadata.title}:%(meta_title)s`)
-        if (metadata.artist) args.push('--parse-metadata', `${metadata.artist}:%(meta_artist)s`)
-        if (metadata.album) args.push('--parse-metadata', `${metadata.album}:%(meta_album)s`)
-        // embed-metadata is required to write the metadata into the file
-        args.push('--embed-metadata')
-      }
+    // Add metadata for audio downloads.
+    // Preferred path: dedicated ffmpeg post-processing (more robust for special chars).
+    // Fallback when ffmpeg is unavailable: sanitized yt-dlp parse-metadata arguments.
+    if (type === 'audio' && normalizedMetadata.hasAny && !HAS_FFMPEG) {
+      const parseTitle = sanitizeYtDlpMetadataLiteral(normalizedMetadata.title)
+      const parseArtist = sanitizeYtDlpMetadataLiteral(normalizedMetadata.artist)
+      const parseAlbum = sanitizeYtDlpMetadataLiteral(normalizedMetadata.album)
+
+      if (parseTitle) args.push('--parse-metadata', `${parseTitle}:%(meta_title)s`)
+      if (parseArtist) args.push('--parse-metadata', `${parseArtist}:%(meta_artist)s`)
+      if (parseAlbum) args.push('--parse-metadata', `${parseAlbum}:%(meta_album)s`)
+      args.push('--embed-metadata')
     }
 
     console.log('===============================================')
@@ -4964,11 +5046,11 @@ app.post('/api/download/stream', async (req, res) => {
     if (useElectronDirectTarget) {
       console.log('  Direct target hint:', directTargetSavePath || '(none)')
     }
-    if (type === 'audio' && metadata) {
+    if (type === 'audio' && normalizedMetadata.hasAny) {
       console.log('  Metadata:')
-      console.log('    Title:', metadata.title || '(none)')
-      console.log('    Artist:', metadata.artist || '(none)')
-      console.log('    Album:', metadata.album || '(none)')
+      console.log('    Title:', normalizedMetadata.title || '(none)')
+      console.log('    Artist:', normalizedMetadata.artist || '(none)')
+      console.log('    Album:', normalizedMetadata.album || '(none)')
     }
     console.log('===============================================')
 
@@ -5105,6 +5187,7 @@ app.post('/api/download/stream', async (req, res) => {
 
       let finalFile = null
       let finalPath = ''
+      let processingFailureMessage = ''
 
       // Check if we have a file in temp dir
       try {
@@ -5182,6 +5265,49 @@ app.post('/api/download/stream', async (req, res) => {
               }
             }
 
+            if (type === 'audio' && normalizedMetadata.hasAny && HAS_FFMPEG) {
+              postProcessSteps.push(async (stepIndex) => {
+                try {
+                  const previousSourcePath = sourcePath
+                  const withMetadataPath = path.join(tempDir, `${tempOutputBaseName}_with_metadata_${downloadHash}${ext}`)
+                  transientFiles.add(withMetadataPath)
+                  const metadataDuration = mediaDuration || await getMediaDurationSeconds(sourcePath)
+                  const metadataArgs = [
+                    '-y',
+                    '-i', sourcePath,
+                    '-map', '0',
+                    '-c', 'copy',
+                    '-map_metadata', '0',
+                  ]
+
+                  if (normalizedMetadata.title) metadataArgs.push('-metadata', `title=${normalizedMetadata.title}`)
+                  if (normalizedMetadata.artist) metadataArgs.push('-metadata', `artist=${normalizedMetadata.artist}`)
+                  if (normalizedMetadata.album) metadataArgs.push('-metadata', `album=${normalizedMetadata.album}`)
+                  if (String(ext || '').toLowerCase() === '.mp3') {
+                    metadataArgs.push('-id3v2_version', '3')
+                  }
+
+                  metadataArgs.push(withMetadataPath)
+
+                  emitPostProcessProgress(stepIndex, 0)
+                  await runFfmpegWithProgress(metadataArgs, {
+                    durationSeconds: metadataDuration,
+                    onProgress: (progress) => emitPostProcessProgress(stepIndex, progress),
+                  })
+
+                  if (fs.existsSync(withMetadataPath)) {
+                    sourcePath = withMetadataPath
+                    if (previousSourcePath && previousSourcePath !== sourcePath) {
+                      transientFiles.add(previousSourcePath)
+                    }
+                  }
+                } catch (metadataErr) {
+                  console.error('Failed to embed custom metadata:', metadataErr)
+                  send('message', 'Metadata embedding failed, continuing with source metadata')
+                }
+              })
+            }
+
             if (type === 'audio' && coverEnabled && coverSource === 'upload' && coverUpload) {
               postProcessSteps.push(async (stepIndex) => {
                 try {
@@ -5248,6 +5374,13 @@ app.post('/api/download/stream', async (req, res) => {
               if (path.resolve(sourcePath) !== path.resolve(normalizedRequestedDest)) {
                 console.log(`Moving ${sourcePath} to ${normalizedRequestedDest}`)
                 if (fs.existsSync(normalizedRequestedDest)) {
+                  const existingTargetStat = fs.statSync(normalizedRequestedDest)
+                  if (!existingTargetStat.isFile()) {
+                    throw new Error('Target path exists but is not a file')
+                  }
+                  if (!electronAllowOverwrite) {
+                    throw new Error('Target file already exists. Replace was not confirmed.')
+                  }
                   fs.unlinkSync(normalizedRequestedDest)
                 }
                 fs.renameSync(sourcePath, normalizedRequestedDest)
@@ -5279,8 +5412,8 @@ app.post('/api/download/stream', async (req, res) => {
                   videoFormat: normalizedVideoFormatId || '',
                   maxAudioBitrateKbps,
                   maxVideoHeight,
-                  videoTitle: req.body.videoTitle || null,
-                  metadata: metadata || null,
+                  videoTitle: normalizedVideoTitle || null,
+                  metadata: metadataPayloadForCache,
                   cover: {
                     enabled: coverEnabled,
                     source: coverSource,
@@ -5337,6 +5470,7 @@ app.post('/api/download/stream', async (req, res) => {
         }
       } catch (err) {
         console.error('File move/cleanup error:', err)
+        processingFailureMessage = String(err?.message || 'Failed to finalize download file')
       }
 
       if (tempDirIsTemporary) {
@@ -5366,8 +5500,10 @@ app.post('/api/download/stream', async (req, res) => {
         send('end', 'done')
       } else {
         if (code === 0) {
-          console.error('Download reported success but content file not found in output directory')
-          send('error', 'Download reported success but file not found')
+          const fallbackMessage = 'Download reported success but file not found'
+          const failureMessage = processingFailureMessage || fallbackMessage
+          console.error('Download reported success but completion failed:', failureMessage)
+          send('error', failureMessage)
           send('end', 'failed')
         } else {
           const rawErrorText = errorOutput.length > 0

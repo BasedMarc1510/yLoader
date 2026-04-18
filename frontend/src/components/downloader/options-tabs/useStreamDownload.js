@@ -11,6 +11,61 @@ import {
   resolveFullPathValue,
 } from '../../../utils/downloadPathInput'
 
+const METADATA_PLACEHOLDER_VALUES = new Set([
+  'n/a',
+  'na',
+  'none',
+  'null',
+  'undefined',
+  '-',
+])
+
+function sanitizeMetadataValue(value, maxLen = 180) {
+  const normalized = String(value ?? '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen)
+
+  if (!normalized) return ''
+
+  const lowered = normalized.toLowerCase()
+  if (METADATA_PLACEHOLDER_VALUES.has(lowered)) return ''
+
+  return normalized
+}
+
+function buildAudioMetadataPayload({
+  titleValue,
+  artistValue,
+  albumValue,
+  fallbackTitle,
+  fallbackArtist,
+}) {
+  const title = sanitizeMetadataValue(titleValue, 220) || sanitizeMetadataValue(fallbackTitle, 220)
+  const artist = sanitizeMetadataValue(artistValue, 220) || sanitizeMetadataValue(fallbackArtist, 220)
+  const album = sanitizeMetadataValue(albumValue, 220)
+
+  return {
+    title,
+    artist,
+    album,
+    hasAny: Boolean(title || artist || album),
+  }
+}
+
+function resolveExpectedElectronSavePath(rawPath, extension, fallbackBaseName = 'download') {
+  const input = String(rawPath || '').trim()
+  if (!input) return ''
+
+  return resolveFullPathValue({
+    inputValue: input,
+    defaultDirectory: getPathDirectory(input),
+    fallbackBaseName,
+    extension,
+  })
+}
+
 function resolvePathValidationMessage(i18nT, validationResult, fallbackPath = '') {
   const resolvedPath = String(validationResult?.path || fallbackPath || '').trim()
   const exists = Boolean(validationResult?.exists)
@@ -68,7 +123,22 @@ export default function useStreamDownload({
     const typeScopedFilename = activeDownloadType === 'video'
       ? videoFilenameValue
       : audioFilenameValue
-    return String(typeScopedFilename || titleValue || videoTitle || '').trim().slice(0, 180)
+
+    const scopedRawValue = String(typeScopedFilename || '').trim()
+    const scopedLooksLikePath = /[\\/]/.test(scopedRawValue)
+    const scopedFileName = scopedLooksLikePath
+      ? String(getPathFilename(scopedRawValue) || '').trim()
+      : scopedRawValue
+
+    const cleanScopedTitle = sanitizeMetadataValue(
+      scopedFileName.replace(/\.[^/.\\]+$/, ''),
+      180,
+    )
+    const fallbackTitle = sanitizeMetadataValue(titleValue || videoTitle || '', 180)
+
+    return scopedLooksLikePath
+      ? fallbackTitle
+      : (cleanScopedTitle || fallbackTitle)
   }, [activeDownloadType, audioFilenameValue, videoFilenameValue, titleValue, videoTitle])
 
   React.useEffect(() => {
@@ -168,8 +238,21 @@ export default function useStreamDownload({
       const suggestedExtension = type === 'video'
         ? String(videoContainer || 'mp4')
         : String(audioContainer || 'mp3')
-      const suggestedFilename = buildSuggestedDownloadFilename(
+      const normalizedVideoTitle = sanitizeMetadataValue(
         scopedFilename || titleValue || videoTitle || 'download',
+        220,
+      ) || 'download'
+      const audioMetadataPayload = type === 'audio'
+        ? buildAudioMetadataPayload({
+          titleValue,
+          artistValue,
+          albumValue,
+          fallbackTitle: normalizedVideoTitle,
+          fallbackArtist: videoAuthor,
+        })
+        : null
+      const suggestedFilename = buildSuggestedDownloadFilename(
+        normalizedVideoTitle,
         suggestedExtension,
       )
       const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
@@ -239,16 +322,19 @@ export default function useStreamDownload({
         service: resolveServiceKey(serviceKey, normalized),
         type,
         duration: durationSeconds,
-        videoTitle: scopedFilename || titleValue || videoTitle,
+        videoTitle: normalizedVideoTitle,
+        videoAuthor: sanitizeMetadataValue(videoAuthor, 220),
         format: type === 'video' ? videoContainer : (type === 'audio' ? audioContainer : undefined),
         audioFormat: type === 'audio' ? selectedAudioFormat : undefined,
         videoFormat: type === 'video' ? selectedVideoFormat : undefined,
         metadata: type === 'audio'
-          ? {
-            title: titleValue || videoTitle,
-            artist: artistValue || videoAuthor,
-            album: albumValue,
-          }
+          ? (audioMetadataPayload?.hasAny
+            ? {
+              title: audioMetadataPayload.title,
+              artist: audioMetadataPayload.artist,
+              album: audioMetadataPayload.album,
+            }
+            : undefined)
           : undefined,
         cover: type === 'audio'
           ? {
@@ -297,6 +383,41 @@ export default function useStreamDownload({
         } else {
           payload.electronSavePath = electronDestination.electronSavePath || undefined
           payload.electronTargetDirectory = electronDestination.electronTargetDirectory || undefined
+        }
+
+        const overwriteTargetPath = payload.electronSavePath
+          ? resolveExpectedElectronSavePath(
+            payload.electronSavePath,
+            suggestedExtension,
+            normalizedVideoTitle,
+          )
+          : ''
+
+        if (overwriteTargetPath && typeof runtime?.downloads?.confirmOverwrite === 'function') {
+          const overwriteFilename = String(getPathFilename(overwriteTargetPath) || '').trim() || overwriteTargetPath
+          let overwriteResult = null
+          try {
+            overwriteResult = await runtime.downloads.confirmOverwrite({
+              path: overwriteTargetPath,
+              title: i18nT('downloader.confirmOverwriteTitle'),
+              message: i18nT('downloader.confirmOverwriteMessage', { filename: overwriteFilename }),
+              detail: i18nT('downloader.confirmOverwriteDetail'),
+              replaceLabel: i18nT('downloader.confirmOverwriteReplace'),
+              keepLabel: i18nT('downloader.confirmOverwriteKeep'),
+              cancelLabel: i18nT('downloader.confirmOverwriteCancel'),
+            })
+          } catch {
+            overwriteResult = { action: 'cancel' }
+          }
+
+          const overwriteAction = String(overwriteResult?.action || '').trim().toLowerCase()
+          const allowOverwrite = overwriteAction === 'replace'
+
+          if (!allowOverwrite) {
+            return
+          }
+
+          payload.electronAllowOverwrite = true
         }
       }
 
