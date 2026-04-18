@@ -54,19 +54,25 @@ In Docker mode, frontend and API are served from the same host port.
 If you want to run directly from Docker Hub (without Compose), publish a host port explicitly:
 
 ```bash
-docker pull yloader/yloader:v2026.1.0-beta
+docker pull yloader/yloader:latest
 docker run -d --name yloader \
-  -p 8080:4000 \
+  -p 8080:8080 \
   -v yloader_downloads:/downloads \
   -v yloader_data:/app/data \
-  yloader/yloader:v2026.1.0-beta
+  yloader/yloader:latest
 ```
 
 Then open `http://localhost:8080`.
 
-If you start the container without `-p ...:4000`, the backend still runs inside the container but no host port is exposed, so the frontend is not reachable from your browser.
+If you start the container without `-p ...:8080`, the backend still runs inside the container but no host port is exposed, so the frontend is not reachable from your browser.
 
-For pre-releases, use an explicit tag (`v...-beta`, `v...-rc`) instead of the floating default tag.
+`latest` tracks the newest pushed release tag (including `-beta`/`-rc`). If you need a pinned image, use an explicit version tag.
+
+Example explicit pre-release pull:
+
+```bash
+docker pull yloader/yloader:2026.1.1-beta
+```
 
 Then build and push:
 
@@ -257,7 +263,7 @@ Publish flow:
 
 1. Push a release tag like `v2026.1.1`.
 2. GitHub Actions runs **Docker Build and Publish** automatically.
-3. Stable tags (without `-beta`/`-rc`) also update the `latest` tag.
+3. Every `v*` tag updates `latest` and also publishes the explicit version tag (`v2026.1.2-beta` and `2026.1.2-beta`).
 
 Manual flow:
 

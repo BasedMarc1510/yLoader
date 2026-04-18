@@ -21,7 +21,7 @@ ARG TARGETARCH
 # App setup
 WORKDIR /app/backend
 ENV NODE_ENV=production
-ENV PORT=4000
+ENV PORT=8080
 ENV DOWNLOAD_DIR=/downloads
 ENV DB_PATH=/app/data/metadata.db
 ENV FRONTEND_DIST_DIR=/app/frontend/dist
@@ -84,5 +84,5 @@ COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 # Ensure directories exist (bind-mounts will override at runtime)
 RUN mkdir -p /downloads /app/data /app/frontend/dist
 
-EXPOSE 4000
+EXPOSE 8080
 CMD ["npm", "start"]
