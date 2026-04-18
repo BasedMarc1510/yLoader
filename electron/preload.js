@@ -49,21 +49,6 @@ const downloads = {
     initialDirectory: String(options?.initialDirectory || ''),
     suggestedName: String(options?.suggestedName || ''),
   }),
-  confirmOverwrite: (options = {}) => {
-    const normalized = (typeof options === 'string')
-      ? { path: options }
-      : (options && typeof options === 'object' ? options : {})
-
-    return ipcRenderer.invoke('downloads:confirm-overwrite', {
-      path: String(normalized.path || ''),
-      title: String(normalized.title || ''),
-      message: String(normalized.message || ''),
-      detail: String(normalized.detail || ''),
-      replaceLabel: String(normalized.replaceLabel || ''),
-      keepLabel: String(normalized.keepLabel || ''),
-      cancelLabel: String(normalized.cancelLabel || ''),
-    })
-  },
   pickFile: (initialPath = '') => ipcRenderer.invoke('downloads:pick-file', {
     initialPath: String(initialPath || ''),
   }),

@@ -6,6 +6,7 @@ import { useI18n } from '../../providers/I18nProvider'
 import { shouldSuggestCookieSettings } from '../../utils/ytDlpErrorPresentation'
 import { openSettingsModal } from '../../pages/home/settingsBridge'
 import AudioTabContent from './options-tabs/AudioTabContent'
+import OverwriteConfirmDialog from './options-tabs/OverwriteConfirmDialog'
 import ThumbnailTabContent from './options-tabs/ThumbnailTabContent'
 import useOptionsTabsData from './options-tabs/useOptionsTabsData'
 import useStreamDownload from './options-tabs/useStreamDownload'
@@ -91,6 +92,48 @@ export default function OptionsTabs({
     disabledDownloadTypes: normalizedDisabledDownloadTypes,
   })
 
+  const overwriteConfirmResolverRef = React.useRef(null)
+  const [overwriteDialogData, setOverwriteDialogData] = React.useState(null)
+
+  const resolveOverwriteDialog = React.useCallback((action = 'cancel') => {
+    const resolver = overwriteConfirmResolverRef.current
+    overwriteConfirmResolverRef.current = null
+    setOverwriteDialogData(null)
+
+    if (typeof resolver === 'function') {
+      resolver(action)
+    }
+  }, [])
+
+  const confirmOverwriteInApp = React.useCallback((dialogOptions = {}) => {
+    const normalizedOptions = dialogOptions && typeof dialogOptions === 'object'
+      ? dialogOptions
+      : {}
+
+    return new Promise((resolve) => {
+      if (typeof overwriteConfirmResolverRef.current === 'function') {
+        overwriteConfirmResolverRef.current('cancel')
+      }
+
+      overwriteConfirmResolverRef.current = resolve
+      setOverwriteDialogData({
+        title: String(normalizedOptions.title || i18nT('downloader.confirmOverwriteTitle')),
+        message: String(normalizedOptions.message || ''),
+        detail: String(normalizedOptions.detail || ''),
+        replaceLabel: String(normalizedOptions.replaceLabel || i18nT('downloader.confirmOverwriteReplace')),
+        keepLabel: String(normalizedOptions.keepLabel || i18nT('downloader.confirmOverwriteKeep')),
+        cancelLabel: String(normalizedOptions.cancelLabel || i18nT('downloader.confirmOverwriteCancel')),
+      })
+    })
+  }, [i18nT])
+
+  React.useEffect(() => () => {
+    if (typeof overwriteConfirmResolverRef.current === 'function') {
+      overwriteConfirmResolverRef.current('cancel')
+      overwriteConfirmResolverRef.current = null
+    }
+  }, [])
+
   const download = useStreamDownload({
     i18nT,
     showNotification,
@@ -118,6 +161,7 @@ export default function OptionsTabs({
     hasVideoThumbnail: data.hasVideoThumbnail,
     audioDownloadTargetSettings: data.audioDownloadTargetSettings,
     videoDownloadTargetSettings: data.videoDownloadTargetSettings,
+    confirmOverwriteInApp,
   })
 
   const interactionsDisabled = download.downloading || loadingState
@@ -418,6 +462,19 @@ export default function OptionsTabs({
           />
         )}
       </Box>
+
+      <OverwriteConfirmDialog
+        open={Boolean(overwriteDialogData)}
+        title={overwriteDialogData?.title || i18nT('downloader.confirmOverwriteTitle')}
+        message={overwriteDialogData?.message || ''}
+        detail={overwriteDialogData?.detail || ''}
+        replaceLabel={overwriteDialogData?.replaceLabel || i18nT('downloader.confirmOverwriteReplace')}
+        keepLabel={overwriteDialogData?.keepLabel || i18nT('downloader.confirmOverwriteKeep')}
+        cancelLabel={overwriteDialogData?.cancelLabel || i18nT('downloader.confirmOverwriteCancel')}
+        onReplace={() => resolveOverwriteDialog('replace')}
+        onKeep={() => resolveOverwriteDialog('keep')}
+        onCancel={() => resolveOverwriteDialog('cancel')}
+      />
     </Box>
   )
 }

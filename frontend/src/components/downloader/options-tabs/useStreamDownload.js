@@ -112,6 +112,7 @@ export default function useStreamDownload({
   hasVideoThumbnail,
   audioDownloadTargetSettings,
   videoDownloadTargetSettings,
+  confirmOverwriteInApp,
 }) {
   const [downloading, setDownloading] = React.useState(false)
   const [downloadProgress, setDownloadProgress] = React.useState(0)
@@ -393,31 +394,51 @@ export default function useStreamDownload({
           )
           : ''
 
-        if (overwriteTargetPath && typeof runtime?.downloads?.confirmOverwrite === 'function') {
-          const overwriteFilename = String(getPathFilename(overwriteTargetPath) || '').trim() || overwriteTargetPath
-          let overwriteResult = null
+        if (overwriteTargetPath && typeof runtime?.downloads?.validateFile === 'function') {
+          let overwriteValidation = null
           try {
-            overwriteResult = await runtime.downloads.confirmOverwrite({
-              path: overwriteTargetPath,
-              title: i18nT('downloader.confirmOverwriteTitle'),
-              message: i18nT('downloader.confirmOverwriteMessage', { filename: overwriteFilename }),
-              detail: i18nT('downloader.confirmOverwriteDetail'),
-              replaceLabel: i18nT('downloader.confirmOverwriteReplace'),
-              keepLabel: i18nT('downloader.confirmOverwriteKeep'),
-              cancelLabel: i18nT('downloader.confirmOverwriteCancel'),
-            })
+            overwriteValidation = await runtime.downloads.validateFile(overwriteTargetPath)
           } catch {
-            overwriteResult = { action: 'cancel' }
+            overwriteValidation = null
           }
 
-          const overwriteAction = String(overwriteResult?.action || '').trim().toLowerCase()
-          const allowOverwrite = overwriteAction === 'replace'
+          const overwriteTargetExists = Boolean(overwriteValidation?.exists)
+          const overwriteTargetIsFile = Boolean(overwriteValidation?.isFile)
 
-          if (!allowOverwrite) {
+          if (overwriteTargetExists && !overwriteTargetIsFile) {
+            const message = i18nT('downloader.errorDownloadPathInvalid', { path: overwriteTargetPath })
+            setDownloadError(message)
+            showNotification(message, 'error')
             return
           }
 
-          payload.electronAllowOverwrite = true
+          if (overwriteTargetExists && overwriteTargetIsFile) {
+            const overwriteFilename = String(getPathFilename(overwriteTargetPath) || '').trim() || overwriteTargetPath
+            let overwriteAction = 'cancel'
+
+            if (typeof confirmOverwriteInApp === 'function') {
+              try {
+                const overwriteResult = await confirmOverwriteInApp({
+                  path: overwriteTargetPath,
+                  title: i18nT('downloader.confirmOverwriteTitle'),
+                  message: i18nT('downloader.confirmOverwriteMessage', { filename: overwriteFilename }),
+                  detail: i18nT('downloader.confirmOverwriteDetail'),
+                  replaceLabel: i18nT('downloader.confirmOverwriteReplace'),
+                  keepLabel: i18nT('downloader.confirmOverwriteKeep'),
+                  cancelLabel: i18nT('downloader.confirmOverwriteCancel'),
+                })
+                overwriteAction = String(overwriteResult || '').trim().toLowerCase()
+              } catch {
+                overwriteAction = 'cancel'
+              }
+            }
+
+            if (overwriteAction !== 'replace') {
+              return
+            }
+
+            payload.electronAllowOverwrite = true
+          }
         }
       }
 
@@ -624,6 +645,7 @@ export default function useStreamDownload({
     showNotification,
     audioDownloadTargetSettings,
     videoDownloadTargetSettings,
+    confirmOverwriteInApp,
   ])
 
   return {
