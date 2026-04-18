@@ -14,7 +14,6 @@ import { useTabDrag } from './useTabDrag'
 import RouteIcon from './RouteIcon'
 import NotificationBellButton from './NotificationBellButton'
 import WindowControls from './WindowControls'
-import TabScrollControls from './TabScrollControls'
 import TabContextMenu from './TabContextMenu'
 import { clampProgress, getTabDomId, getPanelDomId } from './tabBarUtils'
 export default function HeaderTabBar({
@@ -46,7 +45,6 @@ export default function HeaderTabBar({
   const showCustomWindowControls = isElectron && !isMacElectron
   const [isWindowMaximized, setIsWindowMaximized] = React.useState(false)
   const scrollContainerRef = React.useRef(null)
-  const [showScrollButtons, setShowScrollButtons] = React.useState(false)
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
   const [tabWidth, setTabWidth] = React.useState(TAB_MAX_WIDTH)
@@ -150,7 +148,6 @@ export default function HeaderTabBar({
     if (!element) return
     const { scrollLeft, scrollWidth, clientWidth } = element
     const hasOverflow = scrollWidth > clientWidth + 1
-    setShowScrollButtons(hasOverflow)
     setCanScrollLeft(hasOverflow && scrollLeft > 0)
     setCanScrollRight(hasOverflow && scrollLeft < scrollWidth - clientWidth - 1)
   }, [])
@@ -251,13 +248,6 @@ export default function HeaderTabBar({
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
     container.scrollLeft += event.deltaY
     event.preventDefault()
-  }, [])
-
-  const scroll = React.useCallback((direction) => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    const amount = Math.max(180, Math.round(container.clientWidth * 0.6))
-    container.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
   }, [])
 
   const focusTabById = React.useCallback((tabId) => {
@@ -519,21 +509,14 @@ export default function HeaderTabBar({
           </Box>
         </Box>
 
-        <TabScrollControls
-          show={showScrollButtons}
-          canScrollLeft={canScrollLeft}
-          canScrollRight={canScrollRight}
-          onScroll={scroll}
-          disableRipple={isElectron}
-          t={t}
-        />
-
         {!showCustomWindowControls && (
-          <NotificationBellButton
-            className="yl-notification-btn"
-            disableRipple={isElectron}
-            iconSize={16}
-          />
+          <Box className="yl-tabbar-right-actions">
+            <NotificationBellButton
+              className="yl-notification-btn"
+              disableRipple={isElectron}
+              iconSize={16}
+            />
+          </Box>
         )}
       </Box>
 

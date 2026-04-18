@@ -155,6 +155,7 @@ export default function OptionsTabs({
     durationSeconds: normalizedDurationSeconds,
     videoTitle,
     videoAuthor,
+    videoThumbnail,
     audioFilenameValue: data.audioFilenameValue,
     videoFilenameValue: data.videoFilenameValue,
     titleValue: data.titleValue,

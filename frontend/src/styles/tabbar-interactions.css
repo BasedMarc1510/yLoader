@@ -280,29 +280,53 @@
 }
 
 .yl-notification-btn {
-  width: 30px !important;
-  height: 30px !important;
-  min-width: 30px !important;
-  min-height: 30px !important;
-  border: 1px solid color-mix(in srgb, var(--yl-border, transparent) 70%, transparent);
-  border-radius: 8px !important;
-  background: transparent;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  border: 1px solid color-mix(in srgb, var(--yl-border, transparent) 72%, transparent);
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--yl-card, transparent) 54%, transparent);
   color: var(--yl-muted-foreground, inherit);
   display: grid;
   place-items: center;
   cursor: pointer !important;
   padding: 0 !important;
-  margin: 0 8px 0 2px !important;
-  transition: none !important;
+  margin: 0 !important;
+  align-self: center;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.08);
+  transition: background-color 140ms ease, color 140ms ease, transform 140ms ease !important;
 }
 
 .yl-notification-btn:hover {
-  background: var(--yl-accent, transparent);
+  background: color-mix(in srgb, var(--yl-accent, transparent) 74%, transparent);
   color: var(--yl-foreground, inherit);
+  transform: translateY(-1px);
+}
+
+.yl-notification-btn:active {
+  transform: translateY(0);
+}
+
+.yl-tabbar:not(.is-electron) .yl-notification-btn {
+  transition: background-color 140ms ease, color 140ms ease !important;
+}
+
+.yl-tabbar:not(.is-electron) .yl-notification-btn:hover,
+.yl-tabbar:not(.is-electron) .yl-notification-btn:active {
+  transform: none;
 }
 
 .yl-notification-btn .MuiBadge-badge {
   transform: scale(0.9) translate(50%, -50%);
+}
+
+.yl-tabbar-right-actions {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 10px 0 8px;
+  margin-left: 6px;
 }
 
 .yl-scroll-btn {

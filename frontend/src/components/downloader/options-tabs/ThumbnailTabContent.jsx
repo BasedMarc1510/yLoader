@@ -30,6 +30,18 @@ export default function ThumbnailTabContent({
   )
   const apiBase = getApiBase()
   const selectedThumb = thumbOptions.find((option) => option.value === selectedThumbValue) || null
+  const [renderedDimensions, setRenderedDimensions] = React.useState(null)
+
+  React.useEffect(() => {
+    setRenderedDimensions(null)
+  }, [selectedThumb?.url])
+
+  const selectedThumbWidth = Number(renderedDimensions?.width || selectedThumb?.width || 0)
+  const selectedThumbHeight = Number(renderedDimensions?.height || selectedThumb?.height || 0)
+  const hasSelectedThumbDimensions = Number.isFinite(selectedThumbWidth)
+    && Number.isFinite(selectedThumbHeight)
+    && selectedThumbWidth > 0
+    && selectedThumbHeight > 0
 
   const handleDownloadThumb = () => {
     if (!selectedThumb) return
@@ -97,7 +109,25 @@ export default function ThumbnailTabContent({
             />
           </Box>
         ) : selectedThumb ? (
-          <Box component="img" src={selectedThumb.url} alt={videoTitle || i18nT('downloader.thumbnailAltFallback')} sx={{ width: '100%', display: 'block' }} />
+          <Box
+            component="img"
+            src={selectedThumb.url}
+            alt={videoTitle || i18nT('downloader.thumbnailAltFallback')}
+            onLoad={(event) => {
+              const width = Math.round(Number(event.currentTarget?.naturalWidth || 0))
+              const height = Math.round(Number(event.currentTarget?.naturalHeight || 0))
+              if (!(width > 0 && height > 0)) {
+                setRenderedDimensions(null)
+                return
+              }
+
+              setRenderedDimensions({ width, height })
+            }}
+            onError={() => {
+              setRenderedDimensions(null)
+            }}
+            sx={{ width: '100%', display: 'block' }}
+          />
         ) : (
           <Box sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="body2" sx={{ color: textColor }}>
@@ -121,7 +151,9 @@ export default function ThumbnailTabContent({
               fontWeight: 600,
             }}
           >
-            {selectedThumb.width}x{selectedThumb.height}
+            {hasSelectedThumbDimensions
+              ? `${selectedThumbWidth}x${selectedThumbHeight}`
+              : i18nT('downloader.thumbnailSizeUnknown')}
           </Box>
         )}
       </Box>

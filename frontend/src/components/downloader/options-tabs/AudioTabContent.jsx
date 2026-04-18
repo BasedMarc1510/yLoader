@@ -14,6 +14,7 @@ import CustomSelect from '../CustomSelect'
 import MetadataInput from '../MetadataInput'
 import AudioCoverSection from './AudioCoverSection'
 import CollapsibleSection from './CollapsibleSection'
+import SectionLoadingState from './SectionLoadingState'
 import { getDownloadProgressLabel } from './downloadProgressLabel'
 import { buildAudioOptions } from './formatOptions'
 import { adjustColorBrightness, getContrastTextColor } from './styleUtils'
@@ -92,10 +93,9 @@ export default function AudioTabContent({
   const canPickSavePath = Boolean(pathModeEnabled && runtime?.downloads?.pickSavePath)
   const [pickingSavePath, setPickingSavePath] = React.useState(false)
   const pathModeInitializedRef = React.useRef(false)
-  const cutControlsDisabled = downloading || durationLoading || durationUnavailable
-  const cutStatusLabel = durationLoading
-    ? i18nT('downloader.loadingDuration')
-    : (durationUnavailable ? i18nT('downloader.durationUnavailable') : '')
+  const showCutLoader = durationLoading
+  const showCutUnavailable = !durationLoading && durationUnavailable
+  const showBitrateLoader = loadingFormats
 
   React.useEffect(() => {
     if (!pathModeEnabled) {
@@ -255,30 +255,34 @@ export default function AudioTabContent({
         label={i18nT('downloader.cutAudio')}
         theme={theme}
       >
-        {cutStatusLabel && (
+        {showCutLoader ? (
+          <SectionLoadingState
+            text={i18nT('downloader.loadingDuration')}
+            isDark={isDark}
+          />
+        ) : showCutUnavailable ? (
           <Typography
             variant="caption"
             sx={{
               display: 'block',
-              mb: 1,
+              py: 1,
               color: isDark ? '#a7adbb' : '#5e6675',
               fontWeight: 600,
             }}
           >
-            {cutStatusLabel}
+            {i18nT('downloader.durationUnavailable')}
           </Typography>
-        )}
-        <Box sx={{ opacity: cutControlsDisabled ? 0.58 : 1, transition: 'opacity 180ms ease' }}>
+        ) : (
           <AudioCutSection
             duration={durationSeconds}
             brandColor={brandColor}
             isDark={isDark}
-            disabled={cutControlsDisabled}
+            disabled={downloading}
             kind="audio"
             onChange={setAudioCutsData}
             mediaType="audio"
           />
-        </Box>
+        )}
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -327,17 +331,24 @@ export default function AudioTabContent({
         label={i18nT('downloader.audioBitrate')}
         theme={theme}
       >
-        <CustomSelect
-          value={selectedAudioFormat}
-          onChange={setSelectedAudioFormat}
-          options={[
-            { value: 'best', label: i18nT('downloader.bestQuality'), description: undefined },
-            ...buildAudioOptions(audioFormats, maxAudioBitrateKbps),
-          ]}
-          label={i18nT('downloader.quality')}
-          isDark={isDark}
-          disabled={loadingFormats || downloading}
-        />
+        {showBitrateLoader ? (
+          <SectionLoadingState
+            text={i18nT('downloader.loadingFormats')}
+            isDark={isDark}
+          />
+        ) : (
+          <CustomSelect
+            value={selectedAudioFormat}
+            onChange={setSelectedAudioFormat}
+            options={[
+              { value: 'best', label: i18nT('downloader.bestQuality'), description: undefined },
+              ...buildAudioOptions(audioFormats, maxAudioBitrateKbps),
+            ]}
+            label={i18nT('downloader.quality')}
+            isDark={isDark}
+            disabled={downloading}
+          />
+        )}
       </CollapsibleSection>
 
       <CollapsibleSection

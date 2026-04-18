@@ -38,13 +38,17 @@ db.serialize(() => {
     format_id TEXT,
     filename TEXT,
     service TEXT,
-    source_url TEXT
+    source_url TEXT,
+    thumbnail_url TEXT
   )`);
   // Try to add column if missing (for existing DBs)
   db.run(`ALTER TABLE downloads ADD COLUMN service TEXT`, (err) => {
     // ignore error if column exists
   });
   db.run(`ALTER TABLE downloads ADD COLUMN source_url TEXT`, (err) => {
+    // ignore error if column exists
+  });
+  db.run(`ALTER TABLE downloads ADD COLUMN thumbnail_url TEXT`, (err) => {
     // ignore error if column exists
   });
   db.run(`CREATE TABLE IF NOT EXISTS settings (
@@ -89,6 +93,7 @@ const DEFAULT_SYSTEM_DOWNLOADS_DIR = getDefaultSystemDownloadsDir()
 const ALLOWED_AUDIO_CONTAINERS = new Set(['mp3', 'm4a', 'wav', 'ogg', 'flac', 'opus'])
 const ALLOWED_VIDEO_CONTAINERS = new Set(['mp4', 'webm', 'mkv'])
 const ALLOWED_IMAGE_CONTAINERS = new Set(['jpg', 'png', 'webp'])
+const ALLOWED_DOWNLOAD_TYPES = new Set(['audio', 'video', 'thumbnail'])
 const STREAM_MEDIA_FILE_EXTENSIONS = new Set(['.mp3', '.mp4', '.mkv', '.webm', '.m4a', '.ogg', '.wav', '.flac', '.opus'])
 const FORMAT_ID_REGEX = /^[A-Za-z0-9_.,:+\-\/=~*]+$/
 const MAX_PROXY_IMAGE_SIZE_BYTES = 15 * 1024 * 1024
@@ -1222,7 +1227,7 @@ app.get('/api/search', async (req, res) => {
 })
 
 app.get('/api/downloads', (req, res) => {
-  const { q, service } = req.query;
+  const { q, service, type } = req.query;
   let sql = `SELECT * FROM downloads WHERE 1=1`;
   const params = [];
 
@@ -1245,6 +1250,15 @@ app.get('/api/downloads', (req, res) => {
       params.push(normalizedService);
     }
   }
+  if (type) {
+    const normalizedType = String(type || '').trim().toLowerCase()
+    if (!ALLOWED_DOWNLOAD_TYPES.has(normalizedType)) {
+      return res.json([])
+    }
+
+    sql += ` AND download_type = ?`;
+    params.push(normalizedType)
+  }
 
   sql += ` ORDER BY timestamp DESC`;
 
@@ -1254,8 +1268,12 @@ app.get('/api/downloads', (req, res) => {
     // Check file existence for each row
     const result = rows.map(row => {
       const filePath = path.join(DOWNLOADS_DIR, row.filename || '');
+      const thumbnailUrlRaw = String(row.thumbnail_url || '').trim()
+      const thumbnailUrl = isValidHttpUrl(thumbnailUrlRaw) ? thumbnailUrlRaw : null
+
       return {
         ...row,
+        thumbnail_url: thumbnailUrl,
         cached: fs.existsSync(filePath)
       };
     });
@@ -4424,8 +4442,8 @@ app.get('/api/proxy-image', async (req, res) => {
       const service = resolveServiceKey(videoId ? 'youtube' : null, rawUrl)
 
       const pageUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : null
-      const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      stmt.run(videoId, filenameRaw || 'thumbnail', 0, timestamp, 'thumbnail', targetFormat || extStr || 'jpg', finalFilename, service, pageUrl)
+      const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      stmt.run(videoId, filenameRaw || 'thumbnail', 0, timestamp, 'thumbnail', targetFormat || extStr || 'jpg', finalFilename, service, pageUrl, rawUrl)
       stmt.finalize()
     } catch (dbErr) {
       console.error('DB Insert Error (Proxy):', dbErr)
@@ -4591,8 +4609,8 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
       const timestamp = new Date().toISOString()
       const resolvedSourceUrl = isValidHttpUrl(sourceUrl) ? sourceUrl : thumbnailUrl
       const resolvedService = resolveServiceKey(requestedService, resolvedSourceUrl)
-      const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      stmt.run(null, targetTitle || 'thumbnail', 0, timestamp, 'thumbnail', outputContainer, finalFilename, resolvedService, resolvedSourceUrl)
+      const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      stmt.run(null, targetTitle || 'thumbnail', 0, timestamp, 'thumbnail', outputContainer, finalFilename, resolvedService, resolvedSourceUrl, thumbnailUrl)
       stmt.finalize()
     } catch (dbErr) {
       console.error('DB Insert Error (Thumbnail Stream):', dbErr)
@@ -4634,6 +4652,7 @@ app.post('/api/download/stream', async (req, res) => {
     cover,
     duration,
     service,
+    thumbnailUrl: rawThumbnailUrl,
     videoTitle: rawVideoTitle,
     videoAuthor: rawVideoAuthor,
     electronSavePath: rawElectronSavePath,
@@ -4649,6 +4668,7 @@ app.post('/api/download/stream', async (req, res) => {
   const electronSavePath = normalizeDownloadDirectoryPath(rawElectronSavePath, '')
   const electronTargetDirectory = normalizeDownloadDirectoryPath(rawElectronTargetDirectory, '')
   const electronAllowOverwrite = rawElectronAllowOverwrite === true
+  const thumbnailUrl = String(rawThumbnailUrl || '').trim()
   const useElectronDirectTarget = Boolean(
     YLOADER_RUNTIME_TARGET === 'electron'
     && (electronSavePath || electronTargetDirectory)
@@ -4668,6 +4688,9 @@ app.post('/api/download/stream', async (req, res) => {
   }
   if (!isValidHttpUrl(url)) {
     return res.status(400).json({ error: 'Invalid url' })
+  }
+  if (thumbnailUrl && !isValidHttpUrl(thumbnailUrl)) {
+    return res.status(400).json({ error: 'Invalid thumbnailUrl' })
   }
   if (type !== 'audio' && type !== 'video') {
     return res.status(400).json({ error: 'Invalid type. Must be audio or video' })
@@ -5469,8 +5492,8 @@ app.post('/api/download/stream', async (req, res) => {
 
               const svc = resolveServiceKey(service, url)
 
-              const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-              stmt.run(videoId, targetTitle, duration || 0, timestamp, type, formatId, finalFile, svc, url)
+              const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+              stmt.run(videoId, targetTitle, duration || 0, timestamp, type, formatId, finalFile, svc, url, thumbnailUrl || null)
               stmt.finalize()
               console.log('Metadata saved to DB for:', finalFile)
             } catch (dbErr) {

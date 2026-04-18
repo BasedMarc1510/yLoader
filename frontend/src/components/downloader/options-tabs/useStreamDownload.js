@@ -38,6 +38,13 @@ function sanitizeMetadataValue(value, maxLen = 180) {
   return normalized
 }
 
+function sanitizeHttpUrl(value, maxLen = 4096) {
+  const normalized = String(value || '').trim().slice(0, maxLen)
+  if (!normalized) return ''
+  if (!/^https?:\/\//i.test(normalized)) return ''
+  return normalized
+}
+
 function buildAudioMetadataPayload({
   titleValue,
   artistValue,
@@ -97,6 +104,7 @@ export default function useStreamDownload({
   durationSeconds,
   videoTitle,
   videoAuthor,
+  videoThumbnail,
   audioFilenameValue,
   videoFilenameValue,
   titleValue,
@@ -284,6 +292,7 @@ export default function useStreamDownload({
         scopedFilename || titleValue || videoTitle || 'download',
         220,
       ) || 'download'
+      const normalizedVideoThumbnailUrl = sanitizeHttpUrl(videoThumbnail)
       const audioMetadataPayload = type === 'audio'
         ? buildAudioMetadataPayload({
           titleValue,
@@ -362,6 +371,7 @@ export default function useStreamDownload({
         duration: hasDurationSeconds ? numericDurationSeconds : null,
         videoTitle: normalizedVideoTitle,
         videoAuthor: sanitizeMetadataValue(videoAuthor, 220),
+        thumbnailUrl: normalizedVideoThumbnailUrl || undefined,
         format: type === 'video' ? videoContainer : (type === 'audio' ? audioContainer : undefined),
         audioFormat: type === 'audio' ? selectedAudioFormat : undefined,
         videoFormat: type === 'video' ? selectedVideoFormat : undefined,
@@ -664,6 +674,7 @@ export default function useStreamDownload({
     videoCutsData,
     durationSeconds,
     serviceKey,
+    videoThumbnail,
     audioFilenameValue,
     videoFilenameValue,
     titleValue,

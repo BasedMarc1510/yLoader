@@ -10,6 +10,8 @@ import buildServices from './downloader/buildServices'
 import { FADE_MS, HOLD_MS } from './downloader/constants'
 import { openSettingsModal } from './home/settingsBridge'
 
+const MIN_DURATION_LOADING_MS = 380
+
 function normalizeDurationSeconds(value) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return null
@@ -90,12 +92,26 @@ export default function Downloader({
 
   const startDurationFetch = React.useCallback((targetUrl, requestId) => {
     void (async () => {
+      const startedAt = Date.now()
+      const settleDurationState = (updater) => {
+        const elapsedMs = Date.now() - startedAt
+        const remainingMs = Math.max(0, MIN_DURATION_LOADING_MS - elapsedMs)
+        if (remainingMs <= 0) {
+          updateMetaForRequest(requestId, targetUrl, updater)
+          return
+        }
+
+        setTimeout(() => {
+          updateMetaForRequest(requestId, targetUrl, updater)
+        }, remainingMs)
+      }
+
       try {
         const payload = await fetchDuration(targetUrl)
         const durationSeconds = normalizeDurationSeconds(payload?.duration)
         const durationLabel = String(payload?.durationString || '').trim() || null
 
-        updateMetaForRequest(requestId, targetUrl, (prevMeta) => ({
+        settleDurationState((prevMeta) => ({
           ...prevMeta,
           duration: durationLabel || prevMeta.duration || null,
           durationSeconds: durationSeconds ?? prevMeta.durationSeconds ?? null,
@@ -104,7 +120,7 @@ export default function Downloader({
         }))
       } catch {
         // Duration is optional for initial usability; resolve loading state silently.
-        updateMetaForRequest(requestId, targetUrl, (prevMeta) => ({
+        settleDurationState((prevMeta) => ({
           ...prevMeta,
           durationLoading: false,
           durationResolved: true,

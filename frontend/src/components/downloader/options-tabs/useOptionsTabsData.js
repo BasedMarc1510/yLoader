@@ -36,6 +36,60 @@ function normalizeDisabledDownloadTypes(values) {
   return result
 }
 
+function normalizeThumbnailDimension(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  const rounded = Math.round(numeric)
+  return rounded > 0 ? rounded : 0
+}
+
+function probeImageDimensions(url, timeoutMs = 9000) {
+  return new Promise((resolve) => {
+    if (typeof Image === 'undefined') {
+      resolve(null)
+      return
+    }
+
+    const image = new Image()
+    let settled = false
+    let timeoutId = null
+
+    const finalize = (payload) => {
+      if (settled) return
+      settled = true
+
+      if (timeoutId != null) {
+        clearTimeout(timeoutId)
+      }
+
+      image.onload = null
+      image.onerror = null
+      resolve(payload)
+    }
+
+    image.onload = () => {
+      const width = normalizeThumbnailDimension(image.naturalWidth)
+      const height = normalizeThumbnailDimension(image.naturalHeight)
+      if (!(width > 0 && height > 0)) {
+        finalize(null)
+        return
+      }
+
+      finalize({ width, height })
+    }
+
+    image.onerror = () => {
+      finalize(null)
+    }
+
+    timeoutId = setTimeout(() => {
+      finalize(null)
+    }, timeoutMs)
+
+    image.src = url
+  })
+}
+
 export default function useOptionsTabsData({
   i18nT,
   videoTitle,
@@ -93,6 +147,8 @@ export default function useOptionsTabsData({
   const [loadingThumbs, setLoadingThumbs] = React.useState(false)
   const [thumbsResolvedUrl, setThumbsResolvedUrl] = React.useState('')
   const [thumbnailEndpointAvailable, setThumbnailEndpointAvailable] = React.useState(true)
+  const thumbnailProbeRequestRef = React.useRef(0)
+  const thumbnailProbeCacheRef = React.useRef(new Map())
 
   const [audioCutsData, setAudioCutsData] = React.useState(null)
   const [videoCutsData, setVideoCutsData] = React.useState(null)
@@ -331,11 +387,8 @@ export default function useOptionsTabsData({
     [downloadSettings]
   )
 
-  const applyBackendThumbnails = React.useCallback((thumbnails) => {
-    const entries = Array.isArray(thumbnails) ? thumbnails : []
-    const seen = new Set()
-    const seenUrls = new Set()
-    const opts = []
+  const buildThumbnailLabel = React.useCallback((id, width, height) => {
+    const normalizedId = String(id || '').trim().toLowerCase()
     const friendlyMap = {
       maxresdefault: i18nT('downloader.maxResolution'),
       sddefault: i18nT('downloader.sd'),
@@ -343,6 +396,68 @@ export default function useOptionsTabsData({
       mqdefault: i18nT('downloader.mq'),
       default: i18nT('downloader.default'),
     }
+
+    const friendly = normalizedId ? friendlyMap[normalizedId] : ''
+    if (width > 0 && height > 0) {
+      return friendly ? `${friendly} (${width}x${height})` : `${width}x${height}`
+    }
+
+    return friendly || i18nT('downloader.originalThumb')
+  }, [i18nT])
+
+  const resolveThumbOptionDimensions = React.useCallback(async (options) => {
+    const list = Array.isArray(options) ? options : []
+    if (list.length === 0) return
+    if (typeof Image === 'undefined') return
+
+    const requestId = thumbnailProbeRequestRef.current + 1
+    thumbnailProbeRequestRef.current = requestId
+    const cache = thumbnailProbeCacheRef.current
+    const resolvedByUrl = new Map()
+
+    await Promise.all(list.map(async (option) => {
+      const url = String(option?.url || '').trim()
+      if (!url) return
+
+      const cached = cache.get(url)
+      if (cached?.width > 0 && cached?.height > 0) {
+        resolvedByUrl.set(url, cached)
+        return
+      }
+
+      const probed = await probeImageDimensions(url)
+      if (!(probed?.width > 0 && probed?.height > 0)) return
+
+      cache.set(url, probed)
+      resolvedByUrl.set(url, probed)
+    }))
+
+    if (thumbnailProbeRequestRef.current !== requestId) return
+    if (resolvedByUrl.size === 0) return
+
+    setThumbOptions((previous) => previous.map((option) => {
+      const url = String(option?.url || '').trim()
+      const resolved = resolvedByUrl.get(url)
+      if (!(resolved?.width > 0 && resolved?.height > 0)) return option
+
+      if (option.width === resolved.width && option.height === resolved.height) {
+        return option
+      }
+
+      return {
+        ...option,
+        width: resolved.width,
+        height: resolved.height,
+        label: buildThumbnailLabel(option.id, resolved.width, resolved.height),
+      }
+    }))
+  }, [buildThumbnailLabel])
+
+  const applyBackendThumbnails = React.useCallback((thumbnails) => {
+    const entries = Array.isArray(thumbnails) ? thumbnails : []
+    const seen = new Set()
+    const seenUrls = new Set()
+    const opts = []
 
     for (const item of entries) {
       const url = String(item?.url || '').trim()
@@ -362,16 +477,12 @@ export default function useOptionsTabsData({
       seen.add(key)
       seenUrls.add(url)
 
-      const friendly = id ? friendlyMap[id] : ''
-      const label = width > 0 && height > 0
-        ? (friendly ? `${friendly} (${width}x${height})` : `${width}x${height}`)
-        : (friendly || i18nT('downloader.originalThumb'))
-
       opts.push({
         value: `${id || 'thumb'}-${width || 'x'}-${height || 'x'}-${opts.length}`,
-        label,
+        label: buildThumbnailLabel(id, width, height),
         description: undefined,
         url,
+        id,
         width,
         height,
       })
@@ -379,20 +490,29 @@ export default function useOptionsTabsData({
 
     if (opts.length > 0) {
       setThumbOptions(opts)
-      setSelectedThumbValue(opts[0]?.value || '')
+      setSelectedThumbValue((previous) => {
+        if (opts.some((option) => option.value === previous)) return previous
+        return opts[0]?.value || ''
+      })
+      void resolveThumbOptionDimensions(opts)
       return
     }
 
     setThumbOptions([])
     setSelectedThumbValue('')
-  }, [i18nT])
+  }, [buildThumbnailLabel, resolveThumbOptionDimensions])
 
   React.useEffect(() => {
+    thumbnailProbeRequestRef.current += 1
     setThumbOptions([])
     setSelectedThumbValue('')
     setLoadingThumbs(false)
     setThumbsResolvedUrl('')
   }, [videoUrl])
+
+  React.useEffect(() => () => {
+    thumbnailProbeRequestRef.current += 1
+  }, [])
 
   React.useEffect(() => {
     setAudioCutsData(null)
