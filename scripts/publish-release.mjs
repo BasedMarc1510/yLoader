@@ -36,10 +36,14 @@ function run(command, args = [], options = {}) {
     allowFailure = false,
   } = options
 
+  // On Windows, .cmd/.bat wrappers (like npm.cmd) require shell execution.
+  const useShell = IS_WINDOWS && /\.(?:cmd|bat)$/i.test(command)
+
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    shell: useShell,
   })
 
   if (result.error) {
@@ -119,7 +123,7 @@ function assertCleanGitWorktree() {
   if (status) {
     throw new Error('Git working tree is not clean. Commit or stash your changes first.')
   }
-}
+    shell: useShell,
 
 function assertTagDoesNotExist(tagName) {
   const localTag = run('git', ['tag', '--list', tagName], { capture: true }).stdout.trim()
