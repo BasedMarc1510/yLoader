@@ -51,6 +51,23 @@ YLOADER_FRONTEND_PORT=8080
 
 In Docker mode, frontend and API are served from the same host port.
 
+If you want to run directly from Docker Hub (without Compose), publish a host port explicitly:
+
+```bash
+docker pull yloader/yloader:v2026.1.0-beta
+docker run -d --name yloader \
+  -p 8080:4000 \
+  -v yloader_downloads:/downloads \
+  -v yloader_data:/app/data \
+  yloader/yloader:v2026.1.0-beta
+```
+
+Then open `http://localhost:8080`.
+
+If you start the container without `-p ...:4000`, the backend still runs inside the container but no host port is exposed, so the frontend is not reachable from your browser.
+
+For pre-releases, use an explicit tag (`v...-beta`, `v...-rc`) instead of the floating default tag.
+
 Then build and push:
 
 ```bash
@@ -219,6 +236,7 @@ git push origin v1.0.1
 ```
 
 Result: the same matrix build runs, and electron-builder uploads the platform artifacts to the matching GitHub Release.
+Result: the same matrix build runs, workflow artifacts are collected, and the publish job uploads platform artifacts to the matching GitHub Release.
 
 ### Manual publish from a tag
 

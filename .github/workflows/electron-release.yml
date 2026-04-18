@@ -40,10 +40,6 @@ jobs:
             buildArgs: --linux AppImage
             artifactPattern: release/*.AppImage
 
-    env:
-      # Publish only for tag pushes, or for manual runs on a v-tag ref with publish=true.
-      SHOULD_PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event.inputs.publish == 'true') }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -60,17 +56,6 @@ jobs:
       - name: Build packages
         run: npm run build:electron -- --publish never ${{ matrix.buildArgs }}
 
-      - name: Publish release assets
-        if: env.SHOULD_PUBLISH == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
-            ${{ matrix.artifactPattern }}
-            release/*.yml
-            release/*.blockmap
-          fail_on_unmatched_files: false
-
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -81,3 +66,40 @@ jobs:
             release/*.blockmap
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event.inputs.publish == 'true')
+
+    steps:
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+
+      - name: Publish assets via GitHub CLI
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          mapfile -d '' files < <(find release-assets -type f -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release assets were downloaded."
+            exit 1
+          fi
+
+          prerelease_args=()
+          if [[ "$TAG_NAME" == *-* ]]; then
+            prerelease_args+=(--prerelease)
+          fi
+
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes "${prerelease_args[@]}"
+          fi
+
+          gh release upload "$TAG_NAME" "${files[@]}" --clobber
