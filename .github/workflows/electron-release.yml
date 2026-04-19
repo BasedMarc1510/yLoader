@@ -62,7 +62,7 @@ jobs:
           name: ${{ matrix.name }}
           path: |
             ${{ matrix.artifactPattern }}
-            release/*.yml
+            release/latest*.yml
             release/*.blockmap
           if-no-files-found: error
           retention-days: 14
@@ -75,7 +75,7 @@ jobs:
 
     steps:
       - name: Download workflow artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           path: release-assets
 
@@ -88,9 +88,45 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -d '' files < <(find release-assets -type f -print0)
+          mapfile -d '' files < <(find release-assets -type f -print0 | sort -z)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No release assets were downloaded."
+            exit 1
+          fi
+
+          # Avoid duplicate release asset names across matrix artifacts
+          # (for example builder-debug.yml), which trigger HTTP 422 on upload.
+          declare -A seen_by_name
+          upload_files=()
+
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+
+            if [[ "$name" == "builder-debug.yml" ]]; then
+              echo "Skipping debug-only asset: $file"
+              continue
+            fi
+
+            if [[ -n "${seen_by_name[$name]+x}" ]]; then
+              first_file="${seen_by_name[$name]}"
+              first_hash="$(sha256sum "$first_file" | awk '{print $1}')"
+              this_hash="$(sha256sum "$file" | awk '{print $1}')"
+
+              if [[ "$first_hash" == "$this_hash" ]]; then
+                echo "Skipping duplicate asset '$name' (identical content): $file"
+              else
+                echo "::warning::Skipping duplicate asset '$name' with different content. Keeping $first_file and skipping $file"
+              fi
+
+              continue
+            fi
+
+            seen_by_name[$name]="$file"
+            upload_files+=("$file")
+          done
+
+          if [ "${#upload_files[@]}" -eq 0 ]; then
+            echo "No release assets remain after filtering duplicates."
             exit 1
           fi
 
@@ -103,4 +139,7 @@ jobs:
             gh release create "$TAG_NAME" --repo "$GH_REPO" --title "$TAG_NAME" --generate-notes "${prerelease_args[@]}"
           fi
 
-          gh release upload "$TAG_NAME" "${files[@]}" --repo "$GH_REPO" --clobber
+          for file in "${upload_files[@]}"; do
+            echo "Uploading $(basename "$file")"
+            gh release upload "$TAG_NAME" "$file" --repo "$GH_REPO" --clobber
+          done
