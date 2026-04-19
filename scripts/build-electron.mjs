@@ -10,16 +10,11 @@ const __dirname = path.dirname(__filename)
 const ROOT_DIR = path.resolve(__dirname, '..')
 const BACKEND_DIR = path.join(ROOT_DIR, 'backend')
 const SHARED_DIR = path.join(ROOT_DIR, 'shared')
-const TOOLS_DIR = path.join(ROOT_DIR, '.tools')
 const STAGE_DIR = path.join(ROOT_DIR, '.electron-build')
 const STAGE_BACKEND_DIR = path.join(STAGE_DIR, 'backend')
 const STAGE_SHARED_DIR = path.join(STAGE_DIR, 'shared')
-const STAGE_TOOLS_DIR = path.join(STAGE_DIR, 'tools')
 const SQLITE_SMOKE_FILE = path.join(STAGE_BACKEND_DIR, '.sqlite3-electron-smoke.cjs')
 const ICONS_SCRIPT = path.join(ROOT_DIR, 'scripts', 'generate-icons.mjs')
-const YTDLP_BINARY_NAME = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
-const FFMPEG_BINARY_NAME = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
-const FFPROBE_BINARY_NAME = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
 const REQUIRED_ICON_ASSETS = [
   path.join(ROOT_DIR, 'build', 'icons', 'icon.png'),
   path.join(ROOT_DIR, 'build', 'icons', 'icon.ico'),
@@ -127,52 +122,6 @@ function stageBackendFiles() {
   fs.cpSync(SHARED_DIR, STAGE_SHARED_DIR, { recursive: true })
 }
 
-function stageToolBinaries() {
-  if (!fs.existsSync(TOOLS_DIR)) {
-    throw new Error('Missing .tools directory. Preparation step did not produce local binaries.')
-  }
-
-  const ytdlpSource = path.join(TOOLS_DIR, 'yt-dlp-bin', YTDLP_BINARY_NAME)
-  const ffmpegSource = path.join(TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', FFMPEG_BINARY_NAME)
-  const ffprobeSource = path.join(TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', FFPROBE_BINARY_NAME)
-  const ffmpegMetadataSource = path.join(TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', '.yloader-ffmpeg-release.json')
-
-  if (!fs.existsSync(ytdlpSource)) {
-    throw new Error(`Missing yt-dlp runtime binary at ${ytdlpSource}.`)
-  }
-
-  if (!fs.existsSync(ffmpegSource)) {
-    throw new Error(`Missing ffmpeg runtime binary at ${ffmpegSource}.`)
-  }
-
-  const ytdlpTarget = path.join(STAGE_TOOLS_DIR, 'yt-dlp-bin', YTDLP_BINARY_NAME)
-  const ffmpegTarget = path.join(STAGE_TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', FFMPEG_BINARY_NAME)
-  const ffprobeTarget = path.join(STAGE_TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', FFPROBE_BINARY_NAME)
-  const ffmpegMetadataTarget = path.join(STAGE_TOOLS_DIR, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin', '.yloader-ffmpeg-release.json')
-
-  fs.mkdirSync(path.dirname(ytdlpTarget), { recursive: true })
-  fs.mkdirSync(path.dirname(ffmpegTarget), { recursive: true })
-
-  fs.copyFileSync(ytdlpSource, ytdlpTarget)
-  fs.copyFileSync(ffmpegSource, ffmpegTarget)
-
-  if (fs.existsSync(ffprobeSource)) {
-    fs.copyFileSync(ffprobeSource, ffprobeTarget)
-  }
-
-  if (fs.existsSync(ffmpegMetadataSource)) {
-    fs.copyFileSync(ffmpegMetadataSource, ffmpegMetadataTarget)
-  }
-
-  if (process.platform !== 'win32') {
-    fs.chmodSync(ytdlpTarget, 0o755)
-    fs.chmodSync(ffmpegTarget, 0o755)
-    if (fs.existsSync(ffprobeTarget)) {
-      fs.chmodSync(ffprobeTarget, 0o755)
-    }
-  }
-}
-
 function writeSqliteSmokeScript() {
   const script = [
     "const sqlite3 = require('sqlite3').verbose()",
@@ -225,8 +174,8 @@ async function main() {
     throw new Error('macOS artifacts must be built on macOS. Building --mac on this host can produce unusable apps.')
   }
 
-  info('Preparing local dependencies and tool binaries...')
-  await runCommand(process.execPath, ['scripts/start.mjs', '--prepare-only'], { prefix: 'prepare' })
+  info('Preparing local dependencies...')
+  await runCommand(process.execPath, ['scripts/start.mjs', '--prepare-only', '--skip-tools'], { prefix: 'prepare' })
 
   if (!forceIconGeneration && hasRequiredIconAssets()) {
     info('Using pre-generated icon assets.')
@@ -250,9 +199,6 @@ async function main() {
     cwd: STAGE_BACKEND_DIR,
     prefix: 'backend:install',
   })
-
-  info('Staging local yt-dlp/ffmpeg binaries...')
-  stageToolBinaries()
 
   writeSqliteSmokeScript()
 

@@ -41,6 +41,7 @@ const DEFAULT_YTDLP_CANDIDATES = IS_WINDOWS
   : ['yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp']
 const CLI_ARGS = new Set(process.argv.slice(2))
 const PREPARE_ONLY = CLI_ARGS.has('--prepare-only')
+const SKIP_TOOLS = CLI_ARGS.has('--skip-tools')
 
 function info(message) {
   process.stdout.write(`[yloader] ${message}\n`)
@@ -549,6 +550,10 @@ async function main() {
     throw new Error(`Node.js 18 or newer is required (current: ${process.versions.node}).`)
   }
 
+  if (SKIP_TOOLS && !PREPARE_ONLY) {
+    throw new Error('--skip-tools can only be used together with --prepare-only.')
+  }
+
   info('Preparing local development stack...')
 
   fs.mkdirSync(DOWNLOADS_DIR, { recursive: true })
@@ -563,8 +568,16 @@ async function main() {
   await ensureNodeDependencies(BACKEND_DIR, 'backend')
   await ensureNodeDependencies(FRONTEND_DIR, 'frontend')
 
-  const { ytDlpPath, suggestedUpdateMethod } = await ensureLocalYtDlp()
-  const ffmpegSetup = await ensureLocalFfmpeg()
+  let ytDlpPath = ''
+  let suggestedUpdateMethod = 'self'
+  let ffmpegSetup = null
+
+  if (!SKIP_TOOLS) {
+    const ytDlp = await ensureLocalYtDlp()
+    ytDlpPath = ytDlp.ytDlpPath
+    suggestedUpdateMethod = ytDlp.suggestedUpdateMethod || 'self'
+    ffmpegSetup = await ensureLocalFfmpeg()
+  }
 
   const sharedEnv = sanitizeEnv({
     ...ROOT_ENV,
@@ -582,18 +595,24 @@ async function main() {
     sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '0'
   }
 
-  sharedEnv.YT_DLP_PATH = ytDlpPath
-  sharedEnv.YT_DLP_UPDATE_METHOD = suggestedUpdateMethod || 'self'
-  sharedEnv.YT_DLP_MANAGED_BY_YLOADER = '1'
-  sharedEnv.FFMPEG_PATH = ffmpegSetup.ffmpegPath
-  sharedEnv.FFMPEG_MANAGED_BY_YLOADER = '1'
-  if (ffmpegSetup.ffprobePath) {
-    sharedEnv.FFPROBE_PATH = ffmpegSetup.ffprobePath
+  if (!SKIP_TOOLS) {
+    sharedEnv.YT_DLP_PATH = ytDlpPath
+    sharedEnv.YT_DLP_UPDATE_METHOD = suggestedUpdateMethod
+    sharedEnv.YT_DLP_MANAGED_BY_YLOADER = '1'
+    sharedEnv.FFMPEG_PATH = ffmpegSetup.ffmpegPath
+    sharedEnv.FFMPEG_MANAGED_BY_YLOADER = '1'
+    if (ffmpegSetup.ffprobePath) {
+      sharedEnv.FFPROBE_PATH = ffmpegSetup.ffprobePath
+    }
+    prependToPath(sharedEnv, ffmpegSetup.pathEntry)
   }
-  prependToPath(sharedEnv, ffmpegSetup.pathEntry)
 
   if (PREPARE_ONLY) {
-    info('Preparation completed. Local dependencies and tool binaries are ready.')
+    if (SKIP_TOOLS) {
+      info('Preparation completed. Local dependencies are ready (tool bootstrap skipped).')
+    } else {
+      info('Preparation completed. Local dependencies and tool binaries are ready.')
+    }
     return
   }
 

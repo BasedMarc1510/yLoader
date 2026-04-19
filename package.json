@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@electron/notarize": "^2.2.1",
-    "baseline-browser-mapping": "^2.10.19",
+    "baseline-browser-mapping": "^2.10.20",
     "electron": "^35.2.1",
     "electron-builder": "^24.13.3"
   },
@@ -70,10 +70,6 @@
       {
         "from": ".electron-build/shared",
         "to": "shared"
-      },
-      {
-        "from": ".electron-build/tools",
-        "to": "tools"
       }
     ],
     "win": {

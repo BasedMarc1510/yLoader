@@ -41,6 +41,23 @@ const appUpdater = {
   },
 }
 
+const dependencyBootstrap = {
+  getState: () => ipcRenderer.invoke('dependency-bootstrap:get-state'),
+  ensure: () => ipcRenderer.invoke('dependency-bootstrap:ensure'),
+  onEvent: (callback) => {
+    if (typeof callback !== 'function') return () => {}
+
+    const listener = (_event, payload) => {
+      callback(payload || {})
+    }
+
+    ipcRenderer.on('dependency-bootstrap:event', listener)
+    return () => {
+      ipcRenderer.removeListener('dependency-bootstrap:event', listener)
+    }
+  },
+}
+
 const downloads = {
   pickDirectory: (initialPath = '') => ipcRenderer.invoke('downloads:pick-directory', {
     initialPath: String(initialPath || ''),
@@ -83,5 +100,6 @@ contextBridge.exposeInMainWorld('yloaderRuntime', {
   downloadsPath,
   windowControls,
   appUpdater,
+  dependencyBootstrap,
   downloads,
 })

@@ -58,6 +58,7 @@ docker pull yloader/yloader
 ### Option 1: Electron Desktop App
 
 Download and run the installer for your operating system from the links above.
+On first launch, yLoader downloads the required runtime tools (yt-dlp and ffmpeg) and blocks downloads until setup is complete.
 
 ### Option 2: Docker Hub
 
@@ -102,6 +103,8 @@ cd yLoader
 npm install
 npm run start:electron
 ```
+
+The local Electron runtime also performs a first-run yt-dlp/ffmpeg setup inside the Electron user-data directory.
 
 For a fresh Electron reset (clears local settings/state plus local yt-dlp/ffmpeg cache before launch):
 

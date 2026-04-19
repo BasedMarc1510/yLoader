@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { Box, Toolbar } from '@mui/material'
 import Header from '../components/Header'
 import Sidebar, { drawerWidth as drawerWidthExpanded } from '../components/Sidebar'
+import ElectronDependencyBootstrapOverlay from '../components/ElectronDependencyBootstrapOverlay'
 
 import { useNotification } from '../providers/NotificationProvider'
 import { getApiBase } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
+import useElectronDependencyBootstrap from '../hooks/useElectronDependencyBootstrap'
 
 const drawerWidthCollapsed = 56
 const headerHeight = 49
@@ -30,6 +32,12 @@ export default function AppLayout({
 }) {
   const { showNotification } = useNotification()
   const { t } = useI18n()
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+  const isElectronRuntime = Boolean(runtime?.isElectron)
+  const {
+    state: dependencyBootstrapState,
+    isElectronBootstrapAvailable,
+  } = useElectronDependencyBootstrap()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -107,6 +115,11 @@ export default function AppLayout({
   const handleToggleCollapsed = () => setCollapsed((v) => !v)
 
   const sidebarWidth = collapsed ? drawerWidthCollapsed : drawerWidthExpanded
+  const showDependencyBootstrapOverlay = Boolean(
+    isElectronRuntime
+    && isElectronBootstrapAvailable
+    && dependencyBootstrapState.blocking
+  )
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -153,6 +166,11 @@ export default function AppLayout({
           {children}
         </Box>
       </Box>
+
+      <ElectronDependencyBootstrapOverlay
+        state={dependencyBootstrapState}
+        isVisible={showDependencyBootstrapOverlay}
+      />
     </Box>
   )
 }

@@ -380,6 +380,11 @@
   transition: none !important;
 }
 
+.yl-window-btn:not(.yl-window-btn-notification),
+.yl-window-btn:not(.yl-window-btn-notification) * {
+  cursor: default !important;
+}
+
 .yl-window-btn.yl-window-btn-notification {
   cursor: pointer !important;
 }

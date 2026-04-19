@@ -1,6 +1,8 @@
 import { spawn } from 'child_process'
 import { createRequire } from 'module'
 import fs from 'fs'
+import http from 'http'
+import net from 'net'
 import os from 'os'
 import path from 'path'
 import process from 'process'
@@ -170,6 +172,96 @@ async function waitForHttp(url, timeoutMs, options = {}) {
   return false
 }
 
+function requestHttpText(url, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    let settled = false
+
+    const finalize = (value) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+
+    let request = null
+    try {
+      request = http.get(url, {
+        timeout: timeoutMs,
+        headers: {
+          Accept: 'application/json',
+        },
+      }, (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          finalize({
+            ok: true,
+            statusCode: Number(response.statusCode || 0),
+            body,
+          })
+        })
+      })
+    } catch {
+      finalize({ ok: false, statusCode: 0, body: '' })
+      return
+    }
+
+    request.on('timeout', () => {
+      request.destroy(new Error('Request timed out'))
+    })
+
+    request.on('error', () => {
+      finalize({ ok: false, statusCode: 0, body: '' })
+    })
+  })
+}
+
+async function isYLoaderBackendRunning(healthUrl, timeoutMs = 1500) {
+  const probe = await requestHttpText(healthUrl, timeoutMs)
+  if (!probe.ok || !probe.body) return false
+
+  try {
+    const payload = JSON.parse(probe.body)
+    const checks = payload?.checks
+    return Boolean(
+      payload
+      && typeof payload.status === 'string'
+      && checks
+      && typeof checks === 'object'
+      && typeof checks.db === 'boolean'
+      && typeof checks.ytDlp === 'boolean'
+    )
+  } catch {
+    return false
+  }
+}
+
+function isPortInUse(port, host = '127.0.0.1', timeoutMs = 450) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    let settled = false
+
+    const finalize = (value) => {
+      if (settled) return
+      settled = true
+      try {
+        socket.destroy()
+      } catch {
+        // ignore teardown races
+      }
+      resolve(Boolean(value))
+    }
+
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => finalize(true))
+    socket.once('timeout', () => finalize(false))
+    socket.once('error', () => finalize(false))
+    socket.connect(port, host)
+  })
+}
+
 async function ensureElectronBinary() {
   if (fs.existsSync(ELECTRON_BINARY)) return
 
@@ -272,15 +364,14 @@ async function main() {
 
   if (CLEAR_RUNTIME_STATE) {
     info('Clear mode enabled. Verifying no existing local services are running...')
-    const backendRunning = await waitForHttp(backendHealthUrl, 1500, {
-      accept: (response) => response.ok,
-    })
-    const frontendRunning = await waitForHttp(frontendUrl, 1500, {
-      accept: (response) => response.ok || response.status < 500,
-    })
+    const backendRunning = await isYLoaderBackendRunning(backendHealthUrl, 1500)
+    if (backendRunning) {
+      throw new Error('Cannot clear runtime state while local yLoader backend service is running. Stop it first and re-run start:electron:clear.')
+    }
 
-    if (backendRunning || frontendRunning) {
-      throw new Error('Cannot clear runtime state while local backend/frontend services are running. Stop them first and re-run start:electron:clear.')
+    const frontendPortBusy = await isPortInUse(5173)
+    if (frontendPortBusy) {
+      info('Detected a process on :5173. Continuing clear because only the yLoader backend blocks runtime reset.')
     }
 
     const clearedAny = [

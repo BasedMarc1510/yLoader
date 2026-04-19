@@ -1,6 +1,7 @@
 const { app, BrowserWindow, shell, ipcMain, screen, session, dialog, Menu } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const { spawn } = require('child_process')
+const { Readable } = require('stream')
 const fs = require('fs')
 const path = require('path')
 
@@ -19,14 +20,28 @@ const STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 const APP_NAME = 'yLoader'
 const APP_ID = 'com.yloader.app'
 const APP_UPDATER_EVENT_CHANNEL = 'app-updater:event'
+const DEPENDENCY_BOOTSTRAP_EVENT_CHANNEL = 'dependency-bootstrap:event'
 const APP_REPOSITORY_URL = 'https://github.com/BasedMarc1510/yLoader'
 const ELECTRON_API_BASE = String(process.env.ELECTRON_API_BASE || 'http://127.0.0.1:4000').trim() || 'http://127.0.0.1:4000'
+const DEPENDENCY_BOOTSTRAP_RETRY_DELAY_MS = 30_000
 const DOWNLOAD_SETTINGS_CACHE_TTL_MS = 1500
 const DOWNLOAD_SETTINGS_REQUEST_TIMEOUT_MS = 2000
 const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
 const AUDIO_FILE_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.opus'])
 const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv'])
 const THUMBNAIL_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
+const YTDLP_DOWNLOAD_URLS = Object.freeze({
+  win32: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
+  linuxX64: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux',
+  linuxArm64: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64',
+  darwin: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos',
+})
+const FFMPEG_RELEASE_SOURCE = Object.freeze({ owner: 'eugeneware', repo: 'ffmpeg-static' })
+const FFMPEG_RELEASE_ASSET_MAP = Object.freeze({
+  win32: Object.freeze({ x64: 'win32-x64', arm64: 'win32-arm64' }),
+  linux: Object.freeze({ x64: 'linux-x64', arm64: 'linux-arm64' }),
+  darwin: Object.freeze({ x64: 'darwin-x64', arm64: 'darwin-arm64' }),
+})
 
 function appendDisabledChromiumFeatures(featureNames = []) {
   const existing = String(app.commandLine.getSwitchValue('disable-features') || '')
@@ -75,12 +90,16 @@ let shuttingDown = false
 let windowStateSaveTimer = null
 let windowIpcRegistered = false
 let updaterIpcRegistered = false
+let dependencyBootstrapIpcRegistered = false
 let updaterConfigured = false
 let isInstallingUpdate = false
 let downloadsIpcRegistered = false
 let downloadInterceptionRegistered = false
 let cachedDownloadSettings = null
 let cachedDownloadSettingsFetchedAt = 0
+let dependencyBootstrapPromise = null
+let dependencyBootstrapRetryTimer = null
+let runtimeServicesStarted = false
 
 const UPDATE_PROGRESS_EMPTY = Object.freeze({
   percent: 0,
@@ -101,6 +120,34 @@ const updateState = {
   manualDownloadOnly: false,
   releasePageUrl: `${APP_REPOSITORY_URL}/releases`,
   closeBlocked: false,
+}
+
+const dependencyBootstrapState = {
+  phase: 'idle',
+  blocking: false,
+  overallProgress: 0,
+  activeTask: '',
+  message: '',
+  error: '',
+  retryAt: 0,
+  startedAt: 0,
+  completedAt: 0,
+  tasks: {
+    ytdlp: {
+      status: 'pending',
+      progress: 0,
+      version: '',
+      path: '',
+      error: '',
+    },
+    ffmpeg: {
+      status: 'pending',
+      progress: 0,
+      version: '',
+      path: '',
+      error: '',
+    },
+  },
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -142,6 +189,716 @@ function streamWithPrefix(stream, prefix, target) {
       target.write(`[${prefix}] ${buffer}\n`)
     }
   })
+}
+
+function normalizeProgressFraction(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return Math.min(Math.max(numeric, 0), 1)
+}
+
+function createDefaultDependencyTaskState() {
+  return {
+    status: 'pending',
+    progress: 0,
+    version: '',
+    path: '',
+    error: '',
+  }
+}
+
+function getDependencyBootstrapSnapshot() {
+  return {
+    ...dependencyBootstrapState,
+    tasks: {
+      ytdlp: { ...dependencyBootstrapState.tasks.ytdlp },
+      ffmpeg: { ...dependencyBootstrapState.tasks.ffmpeg },
+    },
+  }
+}
+
+function recalculateDependencyBootstrapOverallProgress() {
+  const taskValues = [
+    dependencyBootstrapState.tasks.ytdlp,
+    dependencyBootstrapState.tasks.ffmpeg,
+  ]
+
+  const sum = taskValues.reduce((acc, item) => acc + normalizeProgressFraction(item.progress), 0)
+  dependencyBootstrapState.overallProgress = Math.round((sum / taskValues.length) * 100)
+}
+
+function emitDependencyBootstrapEvent(type, payload = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+
+  try {
+    mainWindow.webContents.send(DEPENDENCY_BOOTSTRAP_EVENT_CHANNEL, {
+      type,
+      payload,
+      state: getDependencyBootstrapSnapshot(),
+    })
+  } catch {
+    // ignore temporary dispatch errors during navigation
+  }
+}
+
+function patchDependencyBootstrapState(patch = {}, eventType = 'state-changed') {
+  if (!patch || typeof patch !== 'object') return
+  Object.assign(dependencyBootstrapState, patch)
+  recalculateDependencyBootstrapOverallProgress()
+  emitDependencyBootstrapEvent(eventType)
+}
+
+function patchDependencyTaskState(taskKey, patch = {}, eventType = 'state-changed') {
+  if (!taskKey || !dependencyBootstrapState.tasks[taskKey]) return
+  const current = dependencyBootstrapState.tasks[taskKey]
+  const next = {
+    ...current,
+    ...patch,
+  }
+
+  if (patch.progress !== undefined) {
+    next.progress = normalizeProgressFraction(patch.progress)
+  }
+
+  dependencyBootstrapState.tasks[taskKey] = next
+  recalculateDependencyBootstrapOverallProgress()
+  emitDependencyBootstrapEvent(eventType, { task: taskKey })
+}
+
+function resetDependencyBootstrapTasks() {
+  dependencyBootstrapState.tasks = {
+    ytdlp: createDefaultDependencyTaskState(),
+    ffmpeg: createDefaultDependencyTaskState(),
+  }
+  recalculateDependencyBootstrapOverallProgress()
+}
+
+function clearDependencyBootstrapRetryTimer() {
+  if (!dependencyBootstrapRetryTimer) return
+  clearTimeout(dependencyBootstrapRetryTimer)
+  dependencyBootstrapRetryTimer = null
+}
+
+function getGitHubHeaders() {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'yLoader-electron-bootstrap',
+  }
+
+  const token = String(process.env.GITHUB_API_TOKEN || '').trim()
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  return headers
+}
+
+function resolveRuntimeToolsRootPath() {
+  return path.join(app.getPath('userData'), 'runtime', 'tools')
+}
+
+function getRuntimeToolsPaths() {
+  const toolsRoot = resolveRuntimeToolsRootPath()
+  const ytdlpPath = path.join(toolsRoot, 'yt-dlp-bin', YTDLP_BINARY_NAME)
+  const ffmpegBinDir = path.join(toolsRoot, 'ffmpeg-bin', `${process.platform}-${process.arch}`, 'bin')
+  const ffmpegPath = path.join(ffmpegBinDir, FFMPEG_BINARY_NAME)
+  const ffprobePath = path.join(ffmpegBinDir, FFPROBE_BINARY_NAME)
+  const ffmpegMetadataPath = path.join(ffmpegBinDir, '.yloader-ffmpeg-release.json')
+
+  return {
+    toolsRoot,
+    ytdlpPath,
+    ffmpegBinDir,
+    ffmpegPath,
+    ffprobePath,
+    ffmpegMetadataPath,
+  }
+}
+
+function ensureDirectoryForFile(filePath) {
+  const target = String(filePath || '').trim()
+  if (!target) return
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+}
+
+function extractFirstLine(text) {
+  const input = String(text || '')
+  return input.split(/\r?\n/).find((line) => String(line || '').trim()) || ''
+}
+
+function runBinaryCommand(binaryPath, args = [], timeoutMs = 15_000) {
+  return new Promise((resolve, reject) => {
+    if (!isRegularFile(binaryPath)) {
+      reject(new Error(`Binary not found: ${binaryPath}`))
+      return
+    }
+
+    const child = spawn(binaryPath, args, {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let settled = false
+    let stdout = ''
+    let stderr = ''
+
+    const finish = (handler, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      handler(value)
+    }
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // ignore kill races
+      }
+      finish(reject, new Error(`Command timed out: ${path.basename(binaryPath)} ${args.join(' ')}`))
+    }, timeoutMs)
+    timer.unref?.()
+
+    child.stdout?.setEncoding('utf8')
+    child.stderr?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk
+    })
+
+    child.on('error', (error) => {
+      finish(reject, error)
+    })
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        finish(resolve, { stdout, stderr })
+        return
+      }
+
+      const output = String(stderr || stdout || '').trim()
+      const reason = output || `Exit code ${code}`
+      finish(reject, new Error(reason))
+    })
+  })
+}
+
+async function readBinaryVersion(binaryPath, args) {
+  const result = await runBinaryCommand(binaryPath, args)
+  const first = extractFirstLine(result.stdout) || extractFirstLine(result.stderr)
+  return String(first || '').trim()
+}
+
+function resolveYtDlpDownloadUrl() {
+  if (process.platform === 'win32') return YTDLP_DOWNLOAD_URLS.win32
+  if (process.platform === 'darwin') return YTDLP_DOWNLOAD_URLS.darwin
+
+  if (process.platform === 'linux') {
+    if (process.arch === 'x64') return YTDLP_DOWNLOAD_URLS.linuxX64
+    if (process.arch === 'arm64') return YTDLP_DOWNLOAD_URLS.linuxArm64
+  }
+
+  return ''
+}
+
+function getFfmpegAssetKey(platform = process.platform, arch = process.arch) {
+  const byPlatform = FFMPEG_RELEASE_ASSET_MAP[platform]
+  if (!byPlatform) return ''
+  return byPlatform[arch] || ''
+}
+
+async function fetchLatestGitHubRelease(owner, repo) {
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`, {
+    headers: getGitHubHeaders(),
+  })
+
+  if (!response.ok) {
+    throw new Error(`GitHub releases API returned ${response.status} for ${owner}/${repo}`)
+  }
+
+  const payload = await response.json()
+  if (!payload || typeof payload !== 'object') {
+    throw new Error(`GitHub releases API returned invalid payload for ${owner}/${repo}`)
+  }
+
+  return payload
+}
+
+function findReleaseAssetByName(release, name) {
+  const assets = Array.isArray(release?.assets) ? release.assets : []
+  return assets.find((asset) => String(asset?.name || '').trim() === name) || null
+}
+
+function safeRemoveFile(filePath) {
+  try {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+  } catch {
+    // ignore cleanup errors
+  }
+}
+
+async function downloadFileWithProgress({ url, destinationPath, onProgress }) {
+  const response = await fetch(url, { headers: getGitHubHeaders() })
+  if (!response.ok || !response.body) {
+    throw new Error(`Download failed with HTTP ${response.status} for ${url}`)
+  }
+
+  ensureDirectoryForFile(destinationPath)
+
+  const totalBytes = Math.max(0, Number(response.headers.get('content-length') || 0))
+  const tmpPath = `${destinationPath}.tmp`
+  safeRemoveFile(tmpPath)
+
+  const source = Readable.fromWeb(response.body)
+  const target = fs.createWriteStream(tmpPath)
+  let downloadedBytes = 0
+
+  if (typeof onProgress === 'function') {
+    onProgress({ downloadedBytes, totalBytes })
+  }
+
+  try {
+    for await (const chunk of source) {
+      downloadedBytes += chunk.length
+      if (!target.write(chunk)) {
+        await new Promise((resolve) => target.once('drain', resolve))
+      }
+
+      if (typeof onProgress === 'function') {
+        onProgress({ downloadedBytes, totalBytes })
+      }
+    }
+
+    await new Promise((resolve, reject) => {
+      target.end((error) => {
+        if (error) reject(error)
+        else resolve()
+      })
+    })
+
+    fs.renameSync(tmpPath, destinationPath)
+  } catch (error) {
+    try {
+      target.destroy()
+    } catch {
+      // ignore close races
+    }
+    safeRemoveFile(tmpPath)
+    throw error
+  }
+}
+
+async function verifyYtDlpDependency(paths) {
+  if (!isRegularFile(paths.ytdlpPath)) {
+    return { ok: false, version: '', path: paths.ytdlpPath }
+  }
+
+  try {
+    const version = await readBinaryVersion(paths.ytdlpPath, ['--version'])
+    return {
+      ok: Boolean(version),
+      version,
+      path: paths.ytdlpPath,
+    }
+  } catch {
+    return { ok: false, version: '', path: paths.ytdlpPath }
+  }
+}
+
+async function verifyFfmpegDependency(paths) {
+  if (!isRegularFile(paths.ffmpegPath) || !isRegularFile(paths.ffprobePath)) {
+    return {
+      ok: false,
+      version: '',
+      ffprobeVersion: '',
+      path: paths.ffmpegPath,
+    }
+  }
+
+  try {
+    const version = await readBinaryVersion(paths.ffmpegPath, ['-version'])
+    const ffprobeVersion = await readBinaryVersion(paths.ffprobePath, ['-version'])
+    return {
+      ok: Boolean(version && ffprobeVersion),
+      version,
+      ffprobeVersion,
+      path: paths.ffmpegPath,
+    }
+  } catch {
+    return {
+      ok: false,
+      version: '',
+      ffprobeVersion: '',
+      path: paths.ffmpegPath,
+    }
+  }
+}
+
+function writeFfmpegReleaseMetadata(paths, releaseInfo, resolvedVersion) {
+  const payload = {
+    releaseTag: String(releaseInfo?.releaseTag || '').trim(),
+    releaseName: String(releaseInfo?.releaseName || '').trim(),
+    version: String(resolvedVersion || '').trim(),
+    ffmpegAssetName: String(releaseInfo?.ffmpegAssetName || '').trim(),
+    ffprobeAssetName: String(releaseInfo?.ffprobeAssetName || '').trim(),
+    installedAt: Date.now(),
+  }
+
+  try {
+    ensureDirectoryForFile(paths.ffmpegMetadataPath)
+    fs.writeFileSync(paths.ffmpegMetadataPath, JSON.stringify(payload, null, 2))
+  } catch {
+    // metadata is optional for runtime operation
+  }
+}
+
+async function ensureYtDlpRuntimeDependency(paths) {
+  patchDependencyBootstrapState({
+    phase: 'checking',
+    blocking: true,
+    activeTask: 'ytdlp',
+    message: 'checking',
+  })
+  patchDependencyTaskState('ytdlp', {
+    status: 'checking',
+    progress: 0.05,
+    error: '',
+  })
+
+  const existing = await verifyYtDlpDependency(paths)
+  if (existing.ok) {
+    patchDependencyTaskState('ytdlp', {
+      status: 'ready',
+      progress: 1,
+      version: existing.version,
+      path: existing.path,
+      error: '',
+    })
+    return existing
+  }
+
+  const downloadUrl = resolveYtDlpDownloadUrl()
+  if (!downloadUrl) {
+    throw new Error(`Unsupported platform for yt-dlp bootstrap: ${process.platform}/${process.arch}`)
+  }
+
+  patchDependencyBootstrapState({
+    phase: 'downloading',
+    blocking: true,
+    activeTask: 'ytdlp',
+    message: 'downloading',
+  })
+  patchDependencyTaskState('ytdlp', {
+    status: 'downloading',
+    progress: 0.1,
+    error: '',
+  })
+
+  await downloadFileWithProgress({
+    url: downloadUrl,
+    destinationPath: paths.ytdlpPath,
+    onProgress: ({ downloadedBytes, totalBytes }) => {
+      const ratio = totalBytes > 0 ? (downloadedBytes / totalBytes) : 0
+      patchDependencyTaskState('ytdlp', {
+        progress: 0.1 + normalizeProgressFraction(ratio) * 0.8,
+      })
+    },
+  })
+
+  if (!IS_WINDOWS) {
+    fs.chmodSync(paths.ytdlpPath, 0o755)
+  }
+
+  patchDependencyBootstrapState({
+    phase: 'installing',
+    blocking: true,
+    activeTask: 'ytdlp',
+    message: 'installing',
+  })
+  patchDependencyTaskState('ytdlp', {
+    status: 'installing',
+    progress: 0.95,
+    error: '',
+  })
+
+  const verified = await verifyYtDlpDependency(paths)
+  if (!verified.ok) {
+    throw new Error('yt-dlp installation completed but validation failed')
+  }
+
+  patchDependencyTaskState('ytdlp', {
+    status: 'ready',
+    progress: 1,
+    version: verified.version,
+    path: verified.path,
+    error: '',
+  })
+
+  return verified
+}
+
+async function fetchLatestFfmpegReleaseAssets() {
+  const assetKey = getFfmpegAssetKey(process.platform, process.arch)
+  if (!assetKey) {
+    throw new Error(`Unsupported platform for ffmpeg bootstrap: ${process.platform}/${process.arch}`)
+  }
+
+  const release = await fetchLatestGitHubRelease(FFMPEG_RELEASE_SOURCE.owner, FFMPEG_RELEASE_SOURCE.repo)
+  const ffmpegAssetName = `ffmpeg-${assetKey}`
+  const ffprobeAssetName = `ffprobe-${assetKey}`
+  const ffmpegAsset = findReleaseAssetByName(release, ffmpegAssetName)
+  const ffprobeAsset = findReleaseAssetByName(release, ffprobeAssetName)
+
+  if (!ffmpegAsset || !ffprobeAsset) {
+    throw new Error(`Release ${release?.tag_name || 'latest'} is missing ${ffmpegAssetName} or ${ffprobeAssetName}`)
+  }
+
+  const releaseTag = String(release?.tag_name || '').trim()
+  const releaseName = String(release?.name || '').trim()
+  const releaseVersion = releaseTag.replace(/^[^0-9]*/, '') || releaseName.replace(/^[^0-9]*/, '') || releaseTag || releaseName
+
+  return {
+    releaseTag,
+    releaseName,
+    releaseVersion,
+    ffmpegAssetName,
+    ffprobeAssetName,
+    ffmpegUrl: String(ffmpegAsset?.browser_download_url || '').trim(),
+    ffprobeUrl: String(ffprobeAsset?.browser_download_url || '').trim(),
+  }
+}
+
+async function ensureFfmpegRuntimeDependency(paths) {
+  patchDependencyBootstrapState({
+    phase: 'checking',
+    blocking: true,
+    activeTask: 'ffmpeg',
+    message: 'checking',
+  })
+  patchDependencyTaskState('ffmpeg', {
+    status: 'checking',
+    progress: 0.05,
+    error: '',
+  })
+
+  const existing = await verifyFfmpegDependency(paths)
+  if (existing.ok) {
+    patchDependencyTaskState('ffmpeg', {
+      status: 'ready',
+      progress: 1,
+      version: existing.version,
+      path: existing.path,
+      error: '',
+    })
+    return existing
+  }
+
+  const releaseAssets = await fetchLatestFfmpegReleaseAssets()
+
+  patchDependencyBootstrapState({
+    phase: 'downloading',
+    blocking: true,
+    activeTask: 'ffmpeg',
+    message: 'downloading',
+  })
+  patchDependencyTaskState('ffmpeg', {
+    status: 'downloading',
+    progress: 0.1,
+    error: '',
+  })
+
+  await downloadFileWithProgress({
+    url: releaseAssets.ffmpegUrl,
+    destinationPath: paths.ffmpegPath,
+    onProgress: ({ downloadedBytes, totalBytes }) => {
+      const ratio = totalBytes > 0 ? (downloadedBytes / totalBytes) : 0
+      patchDependencyTaskState('ffmpeg', {
+        progress: 0.1 + normalizeProgressFraction(ratio) * 0.42,
+      })
+    },
+  })
+
+  await downloadFileWithProgress({
+    url: releaseAssets.ffprobeUrl,
+    destinationPath: paths.ffprobePath,
+    onProgress: ({ downloadedBytes, totalBytes }) => {
+      const ratio = totalBytes > 0 ? (downloadedBytes / totalBytes) : 0
+      patchDependencyTaskState('ffmpeg', {
+        progress: 0.55 + normalizeProgressFraction(ratio) * 0.35,
+      })
+    },
+  })
+
+  if (!IS_WINDOWS) {
+    fs.chmodSync(paths.ffmpegPath, 0o755)
+    fs.chmodSync(paths.ffprobePath, 0o755)
+  }
+
+  patchDependencyBootstrapState({
+    phase: 'installing',
+    blocking: true,
+    activeTask: 'ffmpeg',
+    message: 'installing',
+  })
+  patchDependencyTaskState('ffmpeg', {
+    status: 'installing',
+    progress: 0.95,
+    error: '',
+  })
+
+  const verified = await verifyFfmpegDependency(paths)
+  if (!verified.ok) {
+    throw new Error('ffmpeg installation completed but validation failed')
+  }
+
+  writeFfmpegReleaseMetadata(paths, releaseAssets, verified.version || releaseAssets.releaseVersion)
+
+  patchDependencyTaskState('ffmpeg', {
+    status: 'ready',
+    progress: 1,
+    version: verified.version,
+    path: verified.path,
+    error: '',
+  })
+
+  return verified
+}
+
+function shouldSkipRuntimeDependencyBootstrap() {
+  return String(process.env.ELECTRON_BACKEND_MANAGED_EXTERNAL || '') === '1'
+}
+
+function scheduleDependencyBootstrapRetry() {
+  clearDependencyBootstrapRetryTimer()
+
+  dependencyBootstrapRetryTimer = setTimeout(() => {
+    dependencyBootstrapRetryTimer = null
+    ensureRuntimeDependencies()
+      .then((result) => {
+        if (result?.ok) {
+          startRuntimeServicesIfNeeded()
+        }
+      })
+      .catch(() => {
+        // errors are already reflected in dependency bootstrap state
+      })
+  }, DEPENDENCY_BOOTSTRAP_RETRY_DELAY_MS)
+
+  dependencyBootstrapRetryTimer.unref?.()
+}
+
+async function ensureRuntimeDependencies() {
+  if (dependencyBootstrapPromise) {
+    return dependencyBootstrapPromise
+  }
+
+  if (shouldSkipRuntimeDependencyBootstrap()) {
+    resetDependencyBootstrapTasks()
+    patchDependencyTaskState('ytdlp', { status: 'ready', progress: 1, error: '' })
+    patchDependencyTaskState('ffmpeg', { status: 'ready', progress: 1, error: '' })
+    patchDependencyBootstrapState({
+      phase: 'ready',
+      blocking: false,
+      activeTask: '',
+      message: '',
+      error: '',
+      retryAt: 0,
+      startedAt: Date.now(),
+      completedAt: Date.now(),
+    }, 'ready')
+    return { ok: true, skipped: true }
+  }
+
+  clearDependencyBootstrapRetryTimer()
+
+  dependencyBootstrapPromise = (async () => {
+    try {
+      resetDependencyBootstrapTasks()
+      patchDependencyBootstrapState({
+        phase: 'checking',
+        blocking: true,
+        activeTask: '',
+        message: 'checking',
+        error: '',
+        retryAt: 0,
+        startedAt: Date.now(),
+        completedAt: 0,
+      }, 'started')
+
+      const paths = getRuntimeToolsPaths()
+      fs.mkdirSync(path.dirname(paths.ytdlpPath), { recursive: true })
+      fs.mkdirSync(paths.ffmpegBinDir, { recursive: true })
+
+      await ensureYtDlpRuntimeDependency(paths)
+      await ensureFfmpegRuntimeDependency(paths)
+
+      patchDependencyBootstrapState({
+        phase: 'ready',
+        blocking: false,
+        activeTask: '',
+        message: '',
+        error: '',
+        retryAt: 0,
+        completedAt: Date.now(),
+      }, 'ready')
+
+      return { ok: true }
+    } catch (error) {
+      const message = String(error?.message || error || 'Runtime dependency bootstrap failed')
+
+      if (dependencyBootstrapState.activeTask === 'ytdlp') {
+        patchDependencyTaskState('ytdlp', {
+          status: 'error',
+          error: message,
+        })
+      }
+
+      if (dependencyBootstrapState.activeTask === 'ffmpeg') {
+        patchDependencyTaskState('ffmpeg', {
+          status: 'error',
+          error: message,
+        })
+      }
+
+      patchDependencyBootstrapState({
+        phase: 'error',
+        blocking: true,
+        activeTask: '',
+        message: '',
+        error: message,
+        retryAt: Date.now() + DEPENDENCY_BOOTSTRAP_RETRY_DELAY_MS,
+      }, 'error')
+      scheduleDependencyBootstrapRetry()
+      return { ok: false, error: message }
+    } finally {
+      dependencyBootstrapPromise = null
+    }
+  })()
+
+  return dependencyBootstrapPromise
+}
+
+function registerDependencyBootstrapIpcHandlers() {
+  if (dependencyBootstrapIpcRegistered) return
+  dependencyBootstrapIpcRegistered = true
+
+  ipcMain.handle('dependency-bootstrap:get-state', () => getDependencyBootstrapSnapshot())
+  ipcMain.handle('dependency-bootstrap:ensure', async () => ensureRuntimeDependencies())
+}
+
+function startRuntimeServicesIfNeeded() {
+  if (runtimeServicesStarted) return
+  runtimeServicesStarted = true
+
+  startBackendProcessIfNeeded()
+  syncDownloadSettingsFromBackend({ force: true }).catch(() => {
+    // ignore startup backend race; defaults stay active until refresh succeeds
+  })
+  scheduleStartupUpdateCheck()
 }
 
 function isFiniteNumber(value) {
@@ -1363,11 +2120,7 @@ function resolveBackendEntryPath() {
 }
 
 function resolveToolsRootPath() {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'tools')
-  }
-
-  return path.join(app.getAppPath(), '.tools')
+  return resolveRuntimeToolsRootPath()
 }
 
 function isRegularFile(filePath) {
@@ -1620,15 +2373,37 @@ if (hasSingleInstanceLock) {
   app.whenReady().then(() => {
     registerWindowIpcHandlers()
     registerUpdaterIpcHandlers()
+    registerDependencyBootstrapIpcHandlers()
     registerDownloadsIpcHandlers()
     registerDownloadInterception()
     configureAutoUpdater()
-    startBackendProcessIfNeeded()
-    syncDownloadSettingsFromBackend({ force: true }).catch(() => {
-      // ignore startup backend race; defaults stay active until refresh succeeds
-    })
+
+    const runtimePaths = getRuntimeToolsPaths()
+    const hasRuntimeTools = (
+      isRegularFile(runtimePaths.ytdlpPath)
+      && isRegularFile(runtimePaths.ffmpegPath)
+      && isRegularFile(runtimePaths.ffprobePath)
+    )
+    patchDependencyBootstrapState({
+      phase: 'idle',
+      blocking: !shouldSkipRuntimeDependencyBootstrap() && !hasRuntimeTools,
+      activeTask: '',
+      message: '',
+      error: '',
+      retryAt: 0,
+      completedAt: 0,
+    }, 'seed')
+
     createMainWindow()
-    scheduleStartupUpdateCheck()
+
+    ensureRuntimeDependencies()
+      .then((result) => {
+        if (!result?.ok) return
+        startRuntimeServicesIfNeeded()
+      })
+      .catch(() => {
+        // dependency bootstrap state already exposes errors and schedules retry
+      })
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -1646,6 +2421,7 @@ app.on('before-quit', (event) => {
   }
 
   shuttingDown = true
+  clearDependencyBootstrapRetryTimer()
   if (windowStateSaveTimer) {
     clearTimeout(windowStateSaveTimer)
     windowStateSaveTimer = null
