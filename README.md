@@ -12,6 +12,8 @@ yLoader is built for fast daily use: clean UI, advanced media controls, and feat
 
 <img width="1314" height="817" alt="image1_dark" src="https://github.com/user-attachments/assets/b7577c6c-a76b-4372-ae10-8cb255fa6c5c" />
 
+<br><br>
+
 <img width="1314" height="817" alt="image2_dark" src="https://github.com/user-attachments/assets/aab38a50-6e77-41d2-8468-27d9749f1cec" />
 
 ## Electron Desktop App
