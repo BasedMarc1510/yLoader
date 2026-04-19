@@ -20,6 +20,55 @@ body,
   font-family: 'Inter', 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
 }
 
+:root[data-runtime-target='electron'] body {
+  cursor: default;
+  overscroll-behavior: none;
+}
+
+:root[data-runtime-target='electron'] :where(
+  button,
+  [role='button'],
+  a,
+  a *,
+  .MuiButtonBase-root,
+  .MuiButtonBase-root *,
+  .MuiIconButton-root,
+  .MuiListItemButton-root,
+  .MuiMenuItem-root,
+  .MuiSwitch-root,
+  .MuiSlider-root,
+  .MuiCheckbox-root,
+  .MuiRadio-root
+) {
+  cursor: pointer;
+}
+
+:root[data-runtime-target='electron'] :where(
+  input,
+  textarea,
+  [contenteditable='true'],
+  .MuiInputBase-input,
+  .MuiSelect-select,
+  .MuiAutocomplete-input
+) {
+  cursor: text;
+}
+
+:root[data-runtime-target='electron'] :where(
+  button,
+  [role='button'],
+  .MuiButtonBase-root,
+  .MuiIconButton-root,
+  .MuiListItemButton-root,
+  .MuiMenuItem-root
+) {
+  user-select: none;
+}
+
+:root[data-runtime-target='electron'] :where(img, svg) {
+  -webkit-user-drag: none;
+}
+
 /* SimpleBar scrollbar tokens */
 :root {
   --yl-scroll-size: 11px;

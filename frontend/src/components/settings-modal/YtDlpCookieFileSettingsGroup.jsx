@@ -139,8 +139,9 @@ export default function YtDlpCookieFileSettingsGroup({
       <SettingRow
         label={t('settings.cookieFilePath')}
         description={t('settings.cookieFilePathDesc')}
+        stacked
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', width: '100%' }}>
           <TextField
             size="small"
             value={cookieFilePathDraft}

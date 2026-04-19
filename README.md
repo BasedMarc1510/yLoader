@@ -103,6 +103,12 @@ npm install
 npm run start:electron
 ```
 
+For a fresh Electron reset (clears local settings/state plus local yt-dlp/ffmpeg cache before launch):
+
+```bash
+npm run start:electron:clear
+```
+
 ## Docker Image Notes
 
 - The image runs the app on container port `8080`
@@ -127,6 +133,7 @@ Common variables:
 ```bash
 npm run start
 npm run start:electron
+npm run start:electron:clear
 npm run build:electron
 npm run docker:start
 npm run docker:logs

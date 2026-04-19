@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import { createRequire } from 'module'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import process from 'process'
 import { fileURLToPath } from 'url'
@@ -11,6 +12,8 @@ const __dirname = path.dirname(__filename)
 const ROOT_DIR = path.resolve(__dirname, '..')
 const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
+const CLI_ARGS = new Set(process.argv.slice(2))
+const CLEAR_RUNTIME_STATE = CLI_ARGS.has('--clear')
 const require = createRequire(import.meta.url)
 const ELECTRON_BINARY = require('electron')
 const ELECTRON_INSTALL_SCRIPT = path.join(ROOT_DIR, 'node_modules', 'electron', 'install.js')
@@ -54,6 +57,29 @@ function streamWithPrefix(stream, prefix, target) {
       target.write(`[${prefix}] ${buffer}\n`)
     }
   })
+}
+
+function resolveElectronUserDataDir() {
+  if (IS_WINDOWS) {
+    const appData = String(process.env.APPDATA || '').trim() || path.join(os.homedir(), 'AppData', 'Roaming')
+    return path.join(appData, 'yLoader')
+  }
+
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'yLoader')
+  }
+
+  const xdgConfigHome = String(process.env.XDG_CONFIG_HOME || '').trim() || path.join(os.homedir(), '.config')
+  return path.join(xdgConfigHome, 'yLoader')
+}
+
+function removeDirectoryIfExists(directoryPath, label) {
+  const target = String(directoryPath || '').trim()
+  if (!target || !fs.existsSync(target)) return false
+
+  fs.rmSync(target, { recursive: true, force: true })
+  info(`Cleared ${label}: ${target}`)
+  return true
 }
 
 function prependToPath(envObj, entryPath) {
@@ -243,6 +269,30 @@ async function main() {
 
   process.on('SIGINT', () => shutdown(0))
   process.on('SIGTERM', () => shutdown(0))
+
+  if (CLEAR_RUNTIME_STATE) {
+    info('Clear mode enabled. Verifying no existing local services are running...')
+    const backendRunning = await waitForHttp(backendHealthUrl, 1500, {
+      accept: (response) => response.ok,
+    })
+    const frontendRunning = await waitForHttp(frontendUrl, 1500, {
+      accept: (response) => response.ok || response.status < 500,
+    })
+
+    if (backendRunning || frontendRunning) {
+      throw new Error('Cannot clear runtime state while local backend/frontend services are running. Stop them first and re-run start:electron:clear.')
+    }
+
+    const clearedAny = [
+      removeDirectoryIfExists(path.join(ROOT_DIR, 'backend-data'), 'backend settings and updater state'),
+      removeDirectoryIfExists(path.join(ROOT_DIR, '.tools'), 'local yt-dlp/ffmpeg cache'),
+      removeDirectoryIfExists(resolveElectronUserDataDir(), 'Electron user data'),
+    ].some(Boolean)
+
+    if (!clearedAny) {
+      info('Clear mode: no existing runtime state was found to remove.')
+    }
+  }
 
   await ensureElectronBinary()
 

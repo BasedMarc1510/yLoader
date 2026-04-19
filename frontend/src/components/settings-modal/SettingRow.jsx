@@ -1,19 +1,19 @@
 import React from 'react'
 import { Box, Typography, Divider } from '@mui/material'
 
-export default function SettingRow({ label, description, children, noDivider }) {
+export default function SettingRow({ label, description, children, noDivider, stacked = false }) {
   return (
     <>
       <Box
         sx={{
           display: 'flex',
-          alignItems: { xs: 'flex-start', sm: 'center' },
-          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: stacked ? 'flex-start' : { xs: 'flex-start', sm: 'center' },
+          flexDirection: stacked ? 'column' : { xs: 'column', sm: 'row' },
           justifyContent: 'space-between',
           minHeight: 44,
           px: 2,
           py: 1.25,
-          gap: { xs: 1.5, sm: 3 },
+          gap: stacked ? 1.25 : { xs: 1.5, sm: 3 },
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -26,7 +26,14 @@ export default function SettingRow({ label, description, children, noDivider }) 
             </Typography>
           )}
         </Box>
-        <Box sx={{ flexShrink: 0, width: { xs: '100%', sm: 'auto' }, display: 'flex', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
+        <Box
+          sx={{
+            flexShrink: 0,
+            width: stacked ? '100%' : { xs: '100%', sm: 'auto' },
+            display: 'flex',
+            justifyContent: stacked ? 'flex-start' : { xs: 'flex-start', sm: 'flex-end' },
+          }}
+        >
           {children}
         </Box>
       </Box>

@@ -2719,7 +2719,8 @@ function sanitizeToolStatusState(raw) {
     latestFromCache: Boolean(input.latestFromCache),
     updateAvailable: Boolean(input.updateAvailable),
     updateSupported: Boolean(input.updateSupported),
-    updateInProgress: Boolean(input.updateInProgress),
+    // Never restore stale in-progress flags from disk; active updates are runtime-only.
+    updateInProgress: false,
   }
 }
 
