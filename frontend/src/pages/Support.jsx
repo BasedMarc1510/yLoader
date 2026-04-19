@@ -14,12 +14,12 @@ import {
   Typography,
 } from '@mui/material'
 import { Check, Copy, ExternalLink, Heart, Wallet } from 'lucide-react'
-import { useTheme } from '@mui/material/styles'
 import QRCode from 'qrcode'
 import { useI18n } from '../providers/I18nProvider'
 import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
 
 const COFFEE_URL = 'https://buymeacoffee.com/michaelsant0s'
+const REPOSITORY_URL = 'https://github.com/BasedMarc1510/yLoader'
 const DONATION_OPTIONS = [
   {
     key: 'btc',
@@ -58,8 +58,6 @@ async function copyTextToClipboard(text) {
 
 export default function SupportPage() {
   const { t } = useI18n()
-  const theme = useTheme()
-  const isDark = theme.palette.mode === 'dark'
   const [copiedKey, setCopiedKey] = React.useState('')
   const [qrCodes, setQrCodes] = React.useState({})
   const [activeCurrencyKey, setActiveCurrencyKey] = React.useState(DONATION_OPTIONS[0].key)
@@ -128,11 +126,10 @@ export default function SupportPage() {
           elevation={0}
           sx={{
             p: { xs: 2.5, md: 4 },
-            borderRadius: 3,
-            border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
-            background: isDark
-              ? 'linear-gradient(135deg, rgba(36,36,36,0.98), rgba(22,22,22,0.98))'
-              : 'linear-gradient(135deg, #fff7ec, #ffffff 60%)',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
           }}
         >
           <Stack spacing={2.5}>
@@ -142,7 +139,7 @@ export default function SupportPage() {
               sx={{
                 width: 'fit-content',
                 fontWeight: 700,
-                bgcolor: isDark ? 'rgba(255,255,255,0.08)' : '#fff1df',
+                bgcolor: 'action.hover',
               }}
             />
             <Typography variant="h3" component="h1" sx={{ fontWeight: 800, fontSize: { xs: '2rem', md: '2.6rem' } }}>
@@ -154,30 +151,47 @@ export default function SupportPage() {
             <Typography variant="body1" sx={{ maxWidth: 760, fontWeight: 600 }}>
               {t('support.thanks')}
             </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }}>
-              <Button
-                variant="contained"
-                color="error"
-                component="a"
-                href={COFFEE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                endIcon={<ExternalLink size={18} />}
-                sx={{
-                  width: { xs: '100%', sm: 'fit-content' },
-                  borderRadius: 999,
-                  px: 2.25,
-                  py: 1.1,
-                  fontWeight: 700,
-                  transition: 'transform 180ms ease, box-shadow 180ms ease',
-                  '&:hover': {
-                    transform: 'translateY(-1px)',
-                    boxShadow: '0 8px 18px rgba(255, 77, 79, 0.28)',
-                  },
-                }}
-              >
-                {t('support.coffeeButton')}
-              </Button>
+            <Stack spacing={1.25}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <Button
+                  variant="contained"
+                  color="error"
+                  component="a"
+                  href={COFFEE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  endIcon={<ExternalLink size={18} />}
+                  sx={{
+                    width: { xs: '100%', sm: 'fit-content' },
+                    borderRadius: 999,
+                    px: 2.25,
+                    py: 1.1,
+                    fontWeight: 700,
+                    textTransform: 'none',
+                  }}
+                >
+                  {t('support.coffeeButton')}
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  component="a"
+                  href={REPOSITORY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  endIcon={<ExternalLink size={18} />}
+                  sx={{
+                    width: { xs: '100%', sm: 'fit-content' },
+                    borderRadius: 999,
+                    px: 2,
+                    py: 1.1,
+                    fontWeight: 700,
+                    textTransform: 'none',
+                  }}
+                >
+                  {t('support.contributeButton')}
+                </Button>
+              </Stack>
               <Typography variant="body2" color="text.secondary">
                 {t('support.pullRequestHint')}
               </Typography>
@@ -190,9 +204,10 @@ export default function SupportPage() {
           sx={{
             mt: { xs: 4, md: 5.5 },
             p: { xs: 2.25, md: 3 },
-            borderRadius: 3,
-            bgcolor: isDark ? '#1d1d1d' : '#f9f9f9',
-            border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+            borderRadius: 2,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
           }}
         >
           <Stack spacing={2.25}>
@@ -212,7 +227,7 @@ export default function SupportPage() {
                 gap: 0.75,
                 p: 0.75,
                 borderRadius: 999,
-                bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                bgcolor: 'action.hover',
                 width: 'fit-content',
               }}
             >
@@ -243,8 +258,9 @@ export default function SupportPage() {
               sx={{
                 p: { xs: 1.6, md: 2 },
                 borderRadius: 2,
-                bgcolor: isDark ? '#151515' : '#ffffff',
-                border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                bgcolor: 'background.default',
+                border: '1px solid',
+                borderColor: 'divider',
               }}
             >
               <Stack spacing={1.5}>
@@ -257,7 +273,7 @@ export default function SupportPage() {
                     size="small"
                     sx={{
                       fontWeight: 800,
-                      bgcolor: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6',
+                      bgcolor: 'action.hover',
                     }}
                   />
                 </Stack>
@@ -327,7 +343,8 @@ export default function SupportPage() {
                 p: 1,
                 borderRadius: 2,
                 bgcolor: '#ffffff',
-                boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+                border: '1px solid',
+                borderColor: 'divider',
               }}
             >
               {qrCodes[activeDonation.key] ? (
