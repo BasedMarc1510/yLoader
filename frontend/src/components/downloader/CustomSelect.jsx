@@ -112,7 +112,7 @@ export default function CustomSelect({
           borderRadius: '12px',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.5 : 1,
-          transition: 'all 0.2s ease',
+          transition: 'background-color 0.1s ease, border-color 0.1s ease',
           boxShadow: isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
           '&:hover': {
             backgroundColor: isDark ? '#222' : '#fafbfc',
@@ -152,7 +152,7 @@ export default function CustomSelect({
           style={{
             color: isDark ? '#888888' : '#8e8e93',
             transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 200ms ease',
+            transition: 'transform 100ms ease',
             flexShrink: 0,
           }}
         />
@@ -202,7 +202,7 @@ export default function CustomSelect({
                       backgroundColor: isSelected
                         ? (isDark ? '#272727' : '#f0f1f3')
                         : 'transparent',
-                      transition: 'background-color 150ms ease',
+                      transition: 'background-color 90ms ease',
                       '&:hover': {
                         backgroundColor: isDark ? '#272727' : '#f0f1f3',
                       },

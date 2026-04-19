@@ -2,7 +2,7 @@ import React from 'react'
 import { Box, Slider, Typography } from '@mui/material'
 import { X } from 'lucide-react'
 import TimeField from './TimeField'
-import { buildRailGradient, formatTime } from './utils'
+import { formatTime } from './utils'
 import { makeSliderSx } from './styles'
 
 export default function CutSegmentsList({
@@ -14,9 +14,6 @@ export default function CutSegmentsList({
   brandColor,
   disabled,
   dur,
-  trimStart,
-  trimEnd,
-  railBase,
   textColor,
   mutedColor,
   dividerColor,
@@ -24,15 +21,12 @@ export default function CutSegmentsList({
   commitCutStart,
   commitCutEnd,
   removeCut,
-  getRemovalZones,
   t,
 }) {
   if (cuts.length === 0) return null
 
   const maxSeconds = Math.max(dur || 0, 1)
-  const otherRemovalColor = isDark ? 'rgba(255,70,70,0.96)' : 'rgba(194,35,35,0.92)'
   const sliderRailBase = isDark ? '#393c41' : '#d8dce3'
-  const sliderTrackColor = isDark ? 'rgba(236,240,246,0.38)' : 'rgba(27,34,45,0.28)'
 
   return (
     <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${dividerColor}` }}>
@@ -51,17 +45,7 @@ export default function CutSegmentsList({
 
       {cuts.map((cut, idx) => {
         const strs = cutStrs[cut.id] || { startStr: formatTime(cut.start), endStr: formatTime(cut.end) }
-        const others = cuts.filter((c) => c.id !== cut.id)
-        const otherRemovals = others.length > 0
-          ? getRemovalZones(others, mode, trimStart, trimEnd)
-          : []
-        const railGradient = buildRailGradient(
-          otherRemovals,
-          trimStart,
-          Math.max(trimEnd, trimStart + 1),
-          sliderRailBase,
-          otherRemovalColor
-        )
+        const railGradient = sliderRailBase
 
         return (
           <Box key={cut.id} sx={{ mt: 1.25 }}>
@@ -95,15 +79,15 @@ export default function CutSegmentsList({
             <Box sx={{ px: 0.5, mt: 0.25 }}>
               <Slider
                 value={[cut.start, cut.end]}
-                min={trimStart}
-                max={Math.max(trimEnd, trimStart + 1)}
+                min={0}
+                max={maxSeconds}
                 step={1}
                 disableSwap
                 disabled={disabled || dur === 0}
                 onChange={(_, value) => handleCutSlider(cut.id, value)}
                 valueLabelDisplay="auto"
                 valueLabelFormat={(v, i) => `${i % 2 === 1 ? t('downloader.cutEnd') : t('downloader.cutStart')}: ${formatTime(v)}`}
-                sx={makeSliderSx(brandColor, railGradient, true, 0.76, sliderTrackColor)}
+                sx={makeSliderSx(brandColor, railGradient)}
               />
             </Box>
 

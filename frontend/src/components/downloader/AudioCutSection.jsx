@@ -1,5 +1,6 @@
 import React from 'react'
 import { Box, Menu, MenuItem, Slider, Typography } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import { ChevronDown, Plus } from 'lucide-react'
 import { useI18n } from '../../providers/I18nProvider'
 import CutSegmentsList from './audio-cut/CutSegmentsList'
@@ -21,6 +22,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
   const { t } = useI18n()
   const dur = durationProp || 0
   const maxDur = Math.max(dur, 1)
+  const accentColor = brandColor || (isDark ? '#7ca2ff' : '#2f5ef7')
 
   const textColor = isDark ? '#fff' : '#111'
   const mutedColor = isDark ? '#888' : '#666'
@@ -76,23 +78,31 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
   }, [])
 
   const applyCuts = React.useCallback((nextCuts) => {
-    const sorted = [...nextCuts].sort((a, b) => a.start - b.start)
-    setCutsState(sorted)
-    syncCutStrs(sorted)
+    const safeCuts = Array.isArray(nextCuts) ? [...nextCuts] : []
+    setCutsState(safeCuts)
+    syncCutStrs(safeCuts)
   }, [syncCutStrs])
 
   const clampCutsToTrim = React.useCallback((allCuts, ts, te) => {
     const clampedEnd = Math.max(te, ts + 1)
-    const sorted = [...allCuts]
+    return [...allCuts]
       .map(c => {
         const start = Math.max(ts, Math.min(c.start, clampedEnd - 1))
         const end = Math.max(start + 1, Math.min(c.end, clampedEnd))
         return { ...c, start, end }
       })
       .filter(c => c.end > c.start)
-      .sort((a, b) => (a.start - b.start) || (a.end - b.end))
+  }, [])
 
-    return sorted
+  const clampCutsToDuration = React.useCallback((allCuts, durationUpperBound) => {
+    const upper = Math.max(durationUpperBound, 1)
+    return [...allCuts]
+      .map(c => {
+        const start = Math.max(0, Math.min(c.start, upper - 1))
+        const end = Math.max(start + 1, Math.min(c.end, upper))
+        return { ...c, start, end }
+      })
+      .filter(c => c.end > c.start)
   }, [])
 
   const getRemovalZones = React.useCallback((segments, currentMode, ts, te) => {
@@ -147,23 +157,22 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
   }, [trimStart, trimEnd])
 
   React.useEffect(() => {
-    const clamped = clampCutsToTrim(cuts, trimStart, trimEnd)
+    const clamped = clampCutsToDuration(cuts, maxDur)
     const changed =
       clamped.length !== cuts.length ||
       clamped.some((c, i) => !cuts[i] || c.id !== cuts[i].id || c.start !== cuts[i].start || c.end !== cuts[i].end)
     if (changed) {
       applyCuts(clamped)
     }
-  }, [cuts, trimStart, trimEnd, clampCutsToTrim, applyCuts])
+  }, [cuts, maxDur, clampCutsToDuration, applyCuts])
 
   const updateCutById = (id, updater) => {
     const current = cuts.find(c => c.id === id)
     if (!current) return
 
-    const next = updater(current, { trimStart, trimEnd })
-    const safeTrimEnd = Math.max(trimEnd, trimStart + 1)
-    const clampedStart = Math.max(trimStart, Math.min(next.start, safeTrimEnd - 1))
-    const clampedEnd = Math.max(clampedStart + 1, Math.min(next.end, safeTrimEnd))
+    const next = updater(current)
+    const clampedStart = Math.max(0, Math.min(next.start, maxDur - 1))
+    const clampedEnd = Math.max(clampedStart + 1, Math.min(next.end, maxDur))
 
     const updatedCuts = cuts.map(c => {
       if (c.id !== id) return c
@@ -198,9 +207,6 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     setTrimEndState(newEnd)
     setTrimStartStr(formatTime(newStart))
     setTrimEndStr(formatTime(newEnd))
-
-    const clamped = clampCutsToTrim(cuts, newStart, newEnd)
-    applyCuts(clamped)
   }
 
   const commitTrimStart = (str) => {
@@ -208,7 +214,6 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     const clamped = Math.min(v, trimEnd - 1)
     setTrimStartState(clamped)
     setTrimStartStr(formatTime(clamped))
-    applyCuts(clampCutsToTrim(cuts, clamped, trimEnd))
   }
 
   const commitTrimEnd = (str) => {
@@ -216,7 +221,6 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     const clamped = Math.max(v, trimStart + 1)
     setTrimEndState(clamped)
     setTrimEndStr(formatTime(clamped))
-    applyCuts(clampCutsToTrim(cuts, trimStart, clamped))
   }
 
   // ── Per-cut slider / input commit ─────────────────────────────────────────
@@ -228,17 +232,17 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
 
   const commitCutStart = (id, str) => {
     const v = parseTime(str, maxDur)
-    updateCutById(id, (current, { trimStart: localTrimStart }) => ({
-      start: Math.max(localTrimStart, Math.min(v, current.end - 1)),
+    updateCutById(id, (current) => ({
+      start: Math.max(0, Math.min(v, current.end - 1)),
       end: current.end,
     }))
   }
 
   const commitCutEnd = (id, str) => {
     const v = parseTime(str, maxDur)
-    updateCutById(id, (current, { trimEnd: localTrimEnd }) => ({
+    updateCutById(id, (current) => ({
       start: current.start,
-      end: Math.max(current.start + 1, Math.min(v, localTrimEnd)),
+      end: Math.max(current.start + 1, Math.min(v, maxDur)),
     }))
   }
 
@@ -276,7 +280,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
     const cutEnd = Math.max(Math.ceil(best.from + gapSize * 0.7), cutStart + 1)
 
     const id = `cut-${nextCutIdRef.current++}`
-    const newCuts = [...cuts, { id, start: cutStart, end: cutEnd }].sort((a, b) => a.start - b.start)
+    const newCuts = [...cuts, { id, start: cutStart, end: cutEnd }]
     applyCuts(newCuts)
   }
 
@@ -298,6 +302,24 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
   const modeTipLabel = mediaType === 'video'
     ? t('downloader.cutModeTipVideo')
     : t('downloader.cutModeTipAudio')
+  const menuSelectedBg = alpha(accentColor, isDark ? 0.28 : 0.16)
+  const menuSelectedBgHover = alpha(accentColor, isDark ? 0.38 : 0.24)
+  const menuItemSx = {
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    minHeight: 30,
+    color: textColor,
+    '&.Mui-selected': {
+      bgcolor: menuSelectedBg,
+      color: textColor,
+    },
+    '&.Mui-selected:hover': {
+      bgcolor: menuSelectedBgHover,
+    },
+    '&:hover': {
+      bgcolor: isDark ? '#252525' : '#f1f4f8',
+    },
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -316,7 +338,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
           onClick={() => !disabled && toggleEnabled()}
           sx={{
             width: 40, height: 22, borderRadius: 12,
-            bgcolor: enabled ? brandColor : (isDark ? '#444' : '#ccc'),
+            bgcolor: enabled ? accentColor : (isDark ? '#444' : '#ccc'),
             position: 'relative',
             cursor: disabled ? 'default' : 'pointer',
             transition: 'background-color 0.2s',
@@ -343,51 +365,53 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
             {modeLabel}
           </Typography>
 
-          <Box
-            onClick={(event) => {
-              if (!disabled && dur > 0) {
-                setModeMenuAnchorEl(event.currentTarget)
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !disabled && dur > 0) {
-                event.preventDefault()
-                setModeMenuAnchorEl(event.currentTarget)
-              }
-            }}
-            sx={{
-              mt: 0.5,
-              height: 34,
-              borderRadius: '9px',
-              border: `1px solid ${isDark ? '#3a3a3a' : '#d0d0d0'}`,
-              bgcolor: isDark ? '#1b1b1b' : '#fff',
-              color: textColor,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              px: 1,
-              cursor: 'pointer',
-              userSelect: 'none',
-              opacity: disabled ? 0.78 : 1,
-              '&:hover': {
-                borderColor: isDark ? '#616161' : '#b4b8c0',
-                bgcolor: isDark ? '#222' : '#fafbfc',
-              },
-            }}
-          >
-            <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.78rem', color: textColor }}>
-              {selectedModeLabel}
-            </Typography>
-            <ChevronDown
-              size={16}
-              style={{
-                color: isDark ? '#9aa0ad' : '#586071',
-                transform: modeMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'transform 0.15s ease',
+          <Box sx={{ mt: 0.5 }}>
+            <Box
+              onClick={(event) => {
+                if (!disabled && dur > 0) {
+                  setModeMenuAnchorEl(event.currentTarget)
+                }
               }}
-            />
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if ((event.key === 'Enter' || event.key === ' ') && !disabled && dur > 0) {
+                  event.preventDefault()
+                  setModeMenuAnchorEl(event.currentTarget)
+                }
+              }}
+              sx={{
+                height: 34,
+                borderRadius: '9px',
+                border: `1px solid ${isDark ? '#3a3a3a' : '#d0d0d0'}`,
+                bgcolor: isDark ? '#1b1b1b' : '#fff',
+                color: textColor,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                px: 1,
+                cursor: 'pointer',
+                userSelect: 'none',
+                opacity: disabled ? 0.78 : 1,
+                transition: 'background-color 0.1s ease, border-color 0.1s ease',
+                '&:hover': {
+                  borderColor: isDark ? '#616161' : '#b4b8c0',
+                  bgcolor: isDark ? '#222' : '#fafbfc',
+                },
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.78rem', color: textColor }}>
+                {selectedModeLabel}
+              </Typography>
+              <ChevronDown
+                size={16}
+                style={{
+                  color: isDark ? '#9aa0ad' : '#586071',
+                  transform: modeMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.1s ease',
+                }}
+              />
+            </Box>
           </Box>
 
           <Menu
@@ -417,7 +441,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
                 if (!disabled) setModeState('keep')
                 setModeMenuAnchorEl(null)
               }}
-              sx={{ fontSize: '0.8rem', fontWeight: 600, minHeight: 30 }}
+              sx={menuItemSx}
             >
               {t('downloader.cutModeKeep')}
             </MenuItem>
@@ -428,23 +452,10 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
                 if (!disabled) setModeState('remove')
                 setModeMenuAnchorEl(null)
               }}
-              sx={{ fontSize: '0.8rem', fontWeight: 600, minHeight: 30 }}
+              sx={menuItemSx}
             >
               {t('downloader.cutModeRemove')}
             </MenuItem>
-
-            <Box
-              sx={{
-                px: 1.25,
-                py: 0.75,
-                borderTop: `1px solid ${isDark ? '#2f2f2f' : '#eceff3'}`,
-                bgcolor: isDark ? '#171717' : '#f8fafc',
-              }}
-            >
-              <Typography variant="caption" sx={{ color: isDark ? '#aab1c0' : '#5d6677', fontSize: '0.72rem' }}>
-                {modeTipLabel}
-              </Typography>
-            </Box>
           </Menu>
 
           {/* ── Keep / Trim range ── */}
@@ -466,7 +477,7 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
               disabled={disabled || dur === 0}
               disableSwap
               onChange={handleTrimSlider}
-              sx={makeSliderSx(brandColor, trimRailGradient)}
+              sx={makeSliderSx(accentColor, trimRailGradient)}
             />
           </Box>
 
@@ -500,12 +511,9 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
             setCutStrs={setCutStrs}
             mode={mode}
             isDark={isDark}
-            brandColor={brandColor}
+            brandColor={accentColor}
             disabled={disabled}
             dur={dur}
-            trimStart={trimStart}
-            trimEnd={trimEnd}
-            railBase={railBase}
             textColor={textColor}
             mutedColor={mutedColor}
             dividerColor={dividerColor}
@@ -513,7 +521,6 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
             commitCutStart={commitCutStart}
             commitCutEnd={commitCutEnd}
             removeCut={removeCut}
-            getRemovalZones={getRemovalZones}
             t={t}
           />
 
@@ -537,6 +544,21 @@ export default function AudioCutSection({ duration: durationProp, brandColor, is
             <Plus size={13} />
             <Typography variant="caption" sx={{ fontWeight: 600, color: 'inherit', fontSize: '0.78rem' }}>
               {t('downloader.cutAddSegment')}
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              mt: 1.25,
+              px: 1.25,
+              py: 0.85,
+              border: `1px solid ${isDark ? '#2f2f2f' : '#e3e7ef'}`,
+              borderRadius: '9px',
+              bgcolor: isDark ? '#171717' : '#f7f9fc',
+            }}
+          >
+            <Typography variant="caption" sx={{ color: isDark ? '#aab1c0' : '#5d6677', fontSize: '0.72rem' }}>
+              {modeTipLabel}
             </Typography>
           </Box>
         </Box>

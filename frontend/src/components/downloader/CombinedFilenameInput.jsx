@@ -93,7 +93,7 @@ export default function CombinedFilenameInput({
                 bgcolor: isDark ? '#1b1b1b' : '#ffffff',
                 border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
                 borderRadius: '16px',
-                transition: 'border-color 0.2s ease',
+                transition: 'border-color 0.1s ease',
                 '&:focus-within': {
                     borderColor: isDark ? '#555555' : '#c0c2c6',
                 },
@@ -189,7 +189,7 @@ export default function CombinedFilenameInput({
                             height: '100%',
                             color: isDark ? '#9a9a9a' : '#5e5e63',
                             bgcolor: isDark ? '#232323' : '#f4f5f7',
-                            transition: 'background-color 0.2s ease, color 0.2s ease',
+                            transition: 'background-color 0.1s ease, color 0.1s ease',
                             '&:hover': {
                                 bgcolor: isDark ? '#2a2a2a' : '#ecedf0',
                                 color: isDark ? '#ffffff' : '#1a1a1a',
@@ -234,6 +234,7 @@ export default function CombinedFilenameInput({
                         width: 20,
                         color: isDark ? '#777' : '#8e8e93',
                     },
+                    transition: 'background-color 0.1s ease, color 0.1s ease',
                     '&:hover': {
                         bgcolor: isDark ? '#2a2a2a' : '#ecedf0',
                         color: isDark ? '#fff' : '#1a1a1a',
