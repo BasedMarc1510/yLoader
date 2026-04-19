@@ -16,7 +16,7 @@ services:
       - FFPROBE_PATH=/usr/local/bin/ffprobe
       - YT_DLP_MANAGED_BY_YLOADER=1
       - FFMPEG_MANAGED_BY_YLOADER=1
-      - YLOADER_RUNTIME_TARGET=server
+      - YLOADER_RUNTIME_TARGET=docker
       - YLOADER_ALLOW_BROWSER_COOKIE_IMPORT=0
     volumes:
       - ./downloads:/downloads

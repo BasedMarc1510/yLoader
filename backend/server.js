@@ -158,6 +158,10 @@ const DEFAULT_TOOL_UPDATER_SETTINGS = Object.freeze({
   ytDlpAutoUpdate: true,
   ffmpegAutoUpdate: true,
 })
+const APP_VERSION = String(process.env.YLOADER_APP_VERSION || process.env.npm_package_version || '').trim() || '0.0.0'
+const APP_RELEASE_SOURCE = Object.freeze({ owner: 'BasedMarc1510', repo: 'yLoader' })
+const APP_RELEASES_URL = `https://github.com/${APP_RELEASE_SOURCE.owner}/${APP_RELEASE_SOURCE.repo}/releases`
+const APP_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
 const TOOL_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 const TOOL_UPDATE_SCHEDULER_TICK_MS = 5 * 60 * 1000
 const metaFormatsCache = new Map()
@@ -203,6 +207,14 @@ const ffmpegLatestVersionCache = {
   htmlUrl: '',
 }
 let ffmpegLatestVersionFetchPromise = null
+const appLatestVersionCache = {
+  version: '',
+  fetchedAt: 0,
+  releaseTag: '',
+  releaseName: '',
+  htmlUrl: '',
+}
+let appLatestVersionFetchPromise = null
 
 const TOOL_ROOT_CANDIDATES = [
   path.resolve(process.cwd(), '..', 'tools'),
@@ -2885,6 +2897,133 @@ async function fetchLatestGitHubRelease(owner, repo) {
   return payload
 }
 
+function buildAppReleasePageUrl(tag = '') {
+  const normalizedTag = String(tag || '').trim()
+  if (!normalizedTag) return APP_RELEASES_URL
+  return `${APP_RELEASES_URL}/tag/${encodeURIComponent(normalizedTag)}`
+}
+
+function getAppLatestCacheSnapshot() {
+  const hasVersion = Boolean(appLatestVersionCache.version)
+  return {
+    latestVersion: hasVersion ? appLatestVersionCache.version : '',
+    latestReleaseTag: hasVersion ? appLatestVersionCache.releaseTag : '',
+    latestReleaseName: hasVersion ? appLatestVersionCache.releaseName : '',
+    latestHtmlUrl: hasVersion ? appLatestVersionCache.htmlUrl : '',
+    latestFromCache: hasVersion,
+    latestCheckedAt: hasVersion ? appLatestVersionCache.fetchedAt : 0,
+    latestSource: hasVersion ? 'cache' : 'none',
+  }
+}
+
+function isAppLatestCacheFresh(now = Date.now()) {
+  if (!appLatestVersionCache.version || !appLatestVersionCache.fetchedAt) return false
+  return (now - appLatestVersionCache.fetchedAt) < APP_LATEST_CACHE_TTL_MS
+}
+
+async function fetchLatestAppVersionFromGitHub() {
+  const release = await fetchLatestGitHubRelease(APP_RELEASE_SOURCE.owner, APP_RELEASE_SOURCE.repo)
+  const releaseTag = String(release?.tag_name || '').trim()
+  const releaseName = String(release?.name || '').trim()
+  const fallbackVersion = releaseTag.replace(/^v/i, '')
+  const latestVersion = fallbackVersion || releaseName || releaseTag
+
+  if (!latestVersion) {
+    throw new Error('GitHub release response did not include an app version')
+  }
+
+  return {
+    latestVersion,
+    latestReleaseTag: releaseTag,
+    latestReleaseName: releaseName,
+    latestHtmlUrl: String(release?.html_url || '').trim() || buildAppReleasePageUrl(releaseTag),
+  }
+}
+
+async function getLatestAppVersion({ forceRefresh = false } = {}) {
+  const now = Date.now()
+
+  if (!forceRefresh && isAppLatestCacheFresh(now)) {
+    return {
+      latestVersion: appLatestVersionCache.version,
+      latestReleaseTag: appLatestVersionCache.releaseTag,
+      latestReleaseName: appLatestVersionCache.releaseName,
+      latestHtmlUrl: appLatestVersionCache.htmlUrl,
+      latestFromCache: true,
+      latestCheckedAt: appLatestVersionCache.fetchedAt,
+      latestSource: 'cache',
+    }
+  }
+
+  if (!forceRefresh && appLatestVersionFetchPromise) {
+    return appLatestVersionFetchPromise
+  }
+
+  const requestPromise = (async () => {
+    const latestInfo = await fetchLatestAppVersionFromGitHub()
+    appLatestVersionCache.version = latestInfo.latestVersion
+    appLatestVersionCache.releaseTag = latestInfo.latestReleaseTag
+    appLatestVersionCache.releaseName = latestInfo.latestReleaseName
+    appLatestVersionCache.htmlUrl = latestInfo.latestHtmlUrl
+    appLatestVersionCache.fetchedAt = Date.now()
+
+    return {
+      ...latestInfo,
+      latestFromCache: false,
+      latestCheckedAt: appLatestVersionCache.fetchedAt,
+      latestSource: 'network',
+    }
+  })()
+
+  appLatestVersionFetchPromise = requestPromise
+
+  try {
+    return await requestPromise
+  } finally {
+    if (appLatestVersionFetchPromise === requestPromise) {
+      appLatestVersionFetchPromise = null
+    }
+  }
+}
+
+function createAppUpdateStatusPayload({
+  phase = 'idle',
+  availableVersion = '',
+  latestReleaseTag = '',
+  latestReleaseName = '',
+  releasePageUrl = APP_RELEASES_URL,
+  latestCheckedAt = 0,
+  latestFromCache = false,
+  latestSource = 'none',
+  error = '',
+} = {}) {
+  const runtimeTarget = String(YLOADER_RUNTIME_TARGET || '').trim().toLowerCase()
+  const isDockerDeployment = runtimeTarget === 'docker'
+
+  return {
+    phase,
+    currentVersion: APP_VERSION,
+    availableVersion: String(availableVersion || '').trim(),
+    downloadedVersion: '',
+    progress: { percent: 0, bytesPerSecond: 0, transferred: 0, total: 0 },
+    error: String(error || '').trim(),
+    canCheckForUpdates: isDockerDeployment,
+    canAutoUpdate: false,
+    autoUpdateEnabled: false,
+    manualDownloadOnly: true,
+    releasePageUrl: String(releasePageUrl || APP_RELEASES_URL).trim() || APP_RELEASES_URL,
+    closeBlocked: false,
+    deploymentTarget: isDockerDeployment ? 'docker' : 'web',
+    runtimeTarget,
+    latestReleaseTag: String(latestReleaseTag || '').trim(),
+    latestReleaseName: String(latestReleaseName || '').trim(),
+    latestCheckedAt: Number(latestCheckedAt || 0),
+    latestFromCache: Boolean(latestFromCache),
+    latestSource: String(latestSource || 'none').trim() || 'none',
+    updateAvailable: phase === 'update-available',
+  }
+}
+
 function getYtDlpLatestCacheSnapshot() {
   const hasVersion = Boolean(ytDlpLatestVersionCache.version)
   return {
@@ -3638,6 +3777,40 @@ function startToolUpdateScheduler() {
 }
 
 startToolUpdateScheduler()
+
+app.get('/api/app/update-status', async (req, res) => {
+  const runtimeTarget = String(YLOADER_RUNTIME_TARGET || '').trim().toLowerCase()
+  const isDockerDeployment = runtimeTarget === 'docker'
+  const forceLatest = parseBooleanQueryFlag(req?.query?.forceLatest)
+
+  if (!isDockerDeployment) {
+    return res.json(createAppUpdateStatusPayload({ phase: 'idle' }))
+  }
+
+  try {
+    const latest = await getLatestAppVersion({ forceRefresh: forceLatest })
+    const availableVersion = String(latest.latestVersion || '').trim()
+    const updateAvailable = Boolean(availableVersion && versionsAreDifferent(APP_VERSION, availableVersion))
+    const phase = updateAvailable ? 'update-available' : 'up-to-date'
+
+    return res.json(createAppUpdateStatusPayload({
+      phase,
+      availableVersion: updateAvailable ? availableVersion : '',
+      latestReleaseTag: latest.latestReleaseTag,
+      latestReleaseName: latest.latestReleaseName,
+      releasePageUrl: latest.latestHtmlUrl || buildAppReleasePageUrl(latest.latestReleaseTag),
+      latestCheckedAt: latest.latestCheckedAt,
+      latestFromCache: latest.latestFromCache,
+      latestSource: latest.latestSource,
+      error: '',
+    }))
+  } catch (err) {
+    return res.json(createAppUpdateStatusPayload({
+      phase: 'error',
+      error: String(err?.message || err),
+    }))
+  }
+})
 
 function buildToolUpdateSummaryPayload(settings) {
   const normalizedSettings = normalizeToolUpdaterSettingsPayload(settings)

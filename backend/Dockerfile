@@ -31,6 +31,7 @@ ENV YT_DLP_MANAGED_BY_YLOADER=1
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 ENV FFMPEG_MANAGED_BY_YLOADER=1
+ENV YLOADER_RUNTIME_TARGET=docker
 
 # Runtime dependencies: standalone yt-dlp + ffmpeg/ffprobe release binaries
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

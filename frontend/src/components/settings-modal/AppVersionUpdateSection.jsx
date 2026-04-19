@@ -4,6 +4,7 @@ import {
   Button,
   CircularProgress,
   LinearProgress,
+  Switch,
   Typography,
 } from '@mui/material'
 import SettingRow from './SettingRow'
@@ -30,6 +31,48 @@ function formatSpeed(bytesPerSecond, t) {
   return t('settings.appUpdateSpeedMb', { value })
 }
 
+function resolveFriendlyUpdaterError(rawMessage, t) {
+  const message = String(rawMessage || '').trim()
+  if (!message) return t('settings.appUpdateUnknownError')
+
+  const lowered = message.toLowerCase()
+
+  if (lowered.includes('timeout') || lowered.includes('timed out') || lowered.includes('etimedout')) {
+    return t('settings.appUpdateErrorTimeout')
+  }
+
+  if (
+    lowered.includes('getaddrinfo')
+    || lowered.includes('enotfound')
+    || lowered.includes('econnrefused')
+    || lowered.includes('failed to fetch')
+    || lowered.includes('network')
+  ) {
+    return t('settings.appUpdateErrorNetwork')
+  }
+
+  if (lowered.includes('rate limit') || lowered.includes('429')) {
+    return t('settings.appUpdateErrorRateLimit')
+  }
+
+  if (lowered.includes('authentication token') || lowered.includes('unauthorized') || lowered.includes('401')) {
+    return t('settings.appUpdateErrorAuth')
+  }
+
+  if (lowered.includes('releases.atom') && lowered.includes('404')) {
+    return t('settings.appUpdateErrorRepositoryUnavailable')
+  }
+
+  if (lowered.includes('404')) {
+    return t('settings.appUpdateErrorNotFound')
+  }
+
+  const firstLine = message.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || ''
+  if (!firstLine) return t('settings.appUpdateUnknownError')
+  if (firstLine.length <= 180) return firstLine
+  return `${firstLine.slice(0, 177)}...`
+}
+
 export default function AppVersionUpdateSection({
   t,
   appUpdateState,
@@ -37,14 +80,18 @@ export default function AppVersionUpdateSection({
   checkForAppUpdates,
   downloadAppUpdate,
   installAppUpdate,
+  setAppAutoUpdateEnabled,
 }) {
   const actionLockRef = React.useRef(false)
   const [runningAction, setRunningAction] = React.useState('')
 
   const phase = String(appUpdateState?.phase || 'idle').trim()
-  const canCheckForUpdates = Boolean(isElectronUpdaterAvailable && appUpdateState?.canCheckForUpdates)
+  const canCheckForUpdates = Boolean(appUpdateState?.canCheckForUpdates)
   const canAutoUpdate = Boolean(isElectronUpdaterAvailable && appUpdateState?.canAutoUpdate)
-  const manualDownloadOnly = Boolean(isElectronUpdaterAvailable && appUpdateState?.manualDownloadOnly)
+  const manualDownloadOnly = Boolean(appUpdateState?.manualDownloadOnly)
+  const deploymentTarget = String(appUpdateState?.deploymentTarget || '').trim().toLowerCase()
+  const isDockerDeployment = !isElectronUpdaterAvailable && deploymentTarget === 'docker'
+  const autoUpdateEnabled = Boolean(appUpdateState?.autoUpdateEnabled !== false)
   const releasePageUrl = String(appUpdateState?.releasePageUrl || '').trim()
   const currentVersion = String(appUpdateState?.currentVersion || '-').trim() || '-'
   const targetVersion = String(appUpdateState?.availableVersion || appUpdateState?.downloadedVersion || '').trim()
@@ -62,10 +109,14 @@ export default function AppVersionUpdateSection({
   const isReadyToInstall = phase === 'downloaded'
   const isUpToDate = phase === 'up-to-date'
   const isError = phase === 'error'
+  const isAutoUpdateSwitchVisible = Boolean(isElectronUpdaterAvailable && canAutoUpdate)
 
   const statusText = React.useMemo(() => {
-    if (!isElectronUpdaterAvailable) return t('settings.appUpdateWebVersionOnly')
-    if (!canCheckForUpdates) return t('settings.appUpdateNotSupported')
+    if (!canCheckForUpdates) {
+      return isElectronUpdaterAvailable
+        ? t('settings.appUpdateNotSupported')
+        : t('settings.appUpdateLocalVersionOnly')
+    }
     if (isChecking) return t('settings.appUpdateChecking')
     if (isUpdateAvailable) {
       return manualDownloadOnly
@@ -75,7 +126,7 @@ export default function AppVersionUpdateSection({
     if (isDownloading) return t('settings.appUpdateDownloading')
     if (isReadyToInstall) return t('settings.appUpdateReady')
     if (isError) {
-      const message = String(appUpdateState?.error || '').trim() || t('settings.appUpdateUnknownError')
+      const message = resolveFriendlyUpdaterError(appUpdateState?.error, t)
       return t('settings.appUpdateError', { message })
     }
     if (isUpToDate) return t('settings.appUpdateUpToDate')
@@ -83,7 +134,6 @@ export default function AppVersionUpdateSection({
   }, [
     appUpdateState?.error,
     canCheckForUpdates,
-    canAutoUpdate,
     isChecking,
     isDownloading,
     isElectronUpdaterAvailable,
@@ -111,9 +161,23 @@ export default function AppVersionUpdateSection({
     }
   }, [])
 
-  if (!isElectronUpdaterAvailable) {
+  const showCheckButton = canCheckForUpdates
+    && !isChecking
+    && !isUpdateAvailable
+    && !isDownloading
+    && !isReadyToInstall
+  const showDownloadButton = canCheckForUpdates && isUpdateAvailable
+  const showInstallButton = canAutoUpdate && isReadyToInstall
+  const showVersionOnly = !isElectronUpdaterAvailable && !canCheckForUpdates
+
+  const isActionRunning = Boolean(runningAction)
+  const transferredLabel = formatMegabytes(transferredBytes, t)
+  const totalLabel = totalBytes > 0 ? formatMegabytes(totalBytes, t) : t('settings.appUpdateUnknownSize')
+  const speedLabel = formatSpeed(speedBytesPerSecond, t)
+
+  if (showVersionOnly) {
     return (
-      <SettingGroup>
+      <SettingGroup title={t('settings.appUpdateTitle')}>
         <SettingRow label={t('settings.appVersion')} noDivider>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
             {currentVersion}
@@ -123,19 +187,6 @@ export default function AppVersionUpdateSection({
     )
   }
 
-  const showCheckButton = canCheckForUpdates
-    && !isChecking
-    && !isUpdateAvailable
-    && !isDownloading
-    && !isReadyToInstall
-  const showDownloadButton = canCheckForUpdates && isUpdateAvailable
-  const showInstallButton = canAutoUpdate && isReadyToInstall
-
-  const isActionRunning = Boolean(runningAction)
-  const transferredLabel = formatMegabytes(transferredBytes, t)
-  const totalLabel = totalBytes > 0 ? formatMegabytes(totalBytes, t) : t('settings.appUpdateUnknownSize')
-  const speedLabel = formatSpeed(speedBytesPerSecond, t)
-
   return (
     <SettingGroup title={t('settings.appUpdateTitle')}>
       <SettingRow label={t('settings.appVersion')}>
@@ -143,6 +194,19 @@ export default function AppVersionUpdateSection({
           {currentVersion}
         </Typography>
       </SettingRow>
+
+      {isAutoUpdateSwitchVisible && (
+        <SettingRow
+          label={t('settings.appUpdateAutoEnabled')}
+          description={t('settings.appUpdateAutoEnabledDesc')}
+        >
+          <Switch
+            checked={autoUpdateEnabled}
+            disabled={isActionRunning || isChecking || isDownloading}
+            onChange={(event) => runAction('toggle-auto-update', () => setAppAutoUpdateEnabled?.(event.target.checked))}
+          />
+        </SettingRow>
+      )}
 
       <Box sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 24 }}>
@@ -154,7 +218,7 @@ export default function AppVersionUpdateSection({
 
         {manualDownloadOnly && (
           <Typography variant="caption" sx={{ mt: 0.75, display: 'block', color: 'text.secondary' }}>
-            {t('settings.appUpdateManualMacHint')}
+            {isDockerDeployment ? t('settings.appUpdateDockerManualHint') : t('settings.appUpdateManualMacHint')}
           </Typography>
         )}
 

@@ -1,7 +1,12 @@
 import React from 'react'
 import {
   Badge,
+  Button,
   Box,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Drawer,
   List,
   ListItem,
@@ -59,6 +64,7 @@ export default function Sidebar({
     checkForUpdates: checkForAppUpdates,
     downloadUpdate: downloadAppUpdate,
     quitAndInstall: installAppUpdate,
+    setAutoUpdateEnabled: setAppAutoUpdateEnabled,
   } = useElectronAppUpdater()
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const isElectron = Boolean(
@@ -76,11 +82,21 @@ export default function Sidebar({
     ytDlp: { updateAvailable: false, updateInProgress: false, updateSupported: true },
     ffmpeg: { updateAvailable: false, updateInProgress: false, updateSupported: true },
   })
+  const [downloadedPromptOpen, setDownloadedPromptOpen] = React.useState(false)
+  const [downloadedPromptVersion, setDownloadedPromptVersion] = React.useState('')
+  const [dismissedDownloadedVersion, setDismissedDownloadedVersion] = React.useState('')
   const updatePhase = String(appUpdateState?.phase || 'idle').trim()
-  const hasAppUpdateBadge = isElectronUpdaterAvailable
-    && (updatePhase === 'update-available' || updatePhase === 'downloading' || updatePhase === 'downloaded')
+  const hasAppUpdateBadge = (updatePhase === 'update-available' || updatePhase === 'downloading' || updatePhase === 'downloaded')
   const hasToolUpdateBadge = Boolean(toolUpdateSummary.anyUpdateAvailable)
   const showSettingsUpdateBadge = hasAppUpdateBadge || hasToolUpdateBadge
+  const hasAnyUpdateRunning = Boolean(
+    toolUpdateSummary.anyUpdateInProgress
+    || updatePhase === 'checking'
+    || updatePhase === 'downloading'
+  )
+  const settingsNavLabel = hasAnyUpdateRunning
+    ? i18nT('sidebar.updateRunning')
+    : (showSettingsUpdateBadge ? i18nT('sidebar.updateAvailable') : i18nT('sidebar.settings'))
   const settingsBadgeColor = updatePhase === 'downloaded'
     ? 'error'
     : (hasToolUpdateBadge ? 'warning' : 'info')
@@ -134,13 +150,42 @@ export default function Sidebar({
     }
 
     fetchSummary()
-    const interval = window.setInterval(fetchSummary, 90_000)
+    const interval = window.setInterval(fetchSummary, 15_000)
 
     return () => {
       cancelled = true
       window.clearInterval(interval)
     }
   }, [API_BASE])
+
+  React.useEffect(() => {
+    if (!isElectronUpdaterAvailable) return
+
+    const phase = String(appUpdateState?.phase || 'idle').trim()
+    const downloadedVersion = String(
+      appUpdateState?.downloadedVersion
+      || appUpdateState?.availableVersion
+      || ''
+    ).trim()
+
+    if (phase !== 'downloaded' || !downloadedVersion) {
+      setDownloadedPromptOpen(false)
+      return
+    }
+
+    if (dismissedDownloadedVersion === downloadedVersion) {
+      return
+    }
+
+    setDownloadedPromptVersion(downloadedVersion)
+    setDownloadedPromptOpen(true)
+  }, [
+    appUpdateState?.availableVersion,
+    appUpdateState?.downloadedVersion,
+    appUpdateState?.phase,
+    dismissedDownloadedVersion,
+    isElectronUpdaterAvailable,
+  ])
 
   const withCollapsedTooltip = (node, title) => (
     collapsed
@@ -460,12 +505,19 @@ export default function Sidebar({
                     invisible={!showSettingsUpdateBadge}
                     anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
                   >
-                    <Settings size={16} strokeWidth={sidebarIconStroke} />
+                    <Box
+                      sx={{
+                        display: 'inline-flex',
+                        animation: hasAnyUpdateRunning ? 'yl-settings-spin 1.2s linear infinite' : 'none',
+                      }}
+                    >
+                      <Settings size={16} strokeWidth={sidebarIconStroke} />
+                    </Box>
                   </Badge>
                 </ListItemIcon>
                 {!collapsed && (
                   <ListItemText
-                    primary={i18nT('sidebar.settings')}
+                    primary={settingsNavLabel}
                     sx={{
                       '& .MuiListItemText-primary': {
                         fontSize: '0.875rem',
@@ -478,7 +530,7 @@ export default function Sidebar({
                   />
                 )}
               </ListItemButton>,
-              i18nT('sidebar.settings'),
+              settingsNavLabel,
             )}
           </ListItem>
         </List>
@@ -549,7 +601,46 @@ export default function Sidebar({
         checkForAppUpdates={checkForAppUpdates}
         downloadAppUpdate={downloadAppUpdate}
         installAppUpdate={installAppUpdate}
+        setAppAutoUpdateEnabled={setAppAutoUpdateEnabled}
       />
+
+      <Dialog
+        open={downloadedPromptOpen}
+        onClose={() => {
+          setDownloadedPromptOpen(false)
+          setDismissedDownloadedVersion(downloadedPromptVersion)
+        }}
+      >
+        <DialogTitle>{i18nT('settings.appUpdatePromptTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 0.25 }}>
+            {i18nT('settings.appUpdatePromptBody', {
+              version: downloadedPromptVersion || i18nT('settings.appUpdateVersionUnknown'),
+            })}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setDownloadedPromptOpen(false)
+              setDismissedDownloadedVersion(downloadedPromptVersion)
+            }}
+            sx={{ textTransform: 'none' }}
+          >
+            {i18nT('settings.appUpdatePromptLater')}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setDownloadedPromptOpen(false)
+              installAppUpdate?.()
+            }}
+            sx={{ textTransform: 'none', boxShadow: 'none' }}
+          >
+            {i18nT('settings.appUpdatePromptInstallNow')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

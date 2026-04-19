@@ -99,10 +99,6 @@ export default function ElectronDependencyBootstrapOverlay({ state, isVisible })
         <Box sx={{ mt: 2.5, display: 'grid', gap: 1.25 }}>
           {TASK_ORDER.map((taskKey) => {
             const task = tasks[taskKey] && typeof tasks[taskKey] === 'object' ? tasks[taskKey] : {}
-            const taskProgressRaw = Number(task.progress)
-            const taskProgress = Number.isFinite(taskProgressRaw)
-              ? Math.min(Math.max(taskProgressRaw * 100, 0), 100)
-              : 0
             const taskVersion = String(task.version || '').trim()
             const taskError = String(task.error || '').trim()
 
@@ -116,7 +112,6 @@ export default function ElectronDependencyBootstrapOverlay({ state, isVisible })
                     {resolveStatusLabel(task.status, t)}
                   </Typography>
                 </Box>
-                <LinearProgress variant="determinate" value={taskProgress} sx={{ mt: 0.55, height: 6, borderRadius: 999 }} />
                 {taskVersion && !taskError && (
                   <Typography sx={{ mt: 0.4, fontSize: 12, color: 'text.secondary' }}>
                     {t('app.dependencyBootstrap.version', { value: taskVersion })}

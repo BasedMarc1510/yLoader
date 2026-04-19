@@ -115,7 +115,7 @@ export default function DownloadsSettingsSection({
         </SettingRow>
       </SettingGroup>
 
-      <SettingGroup title={t('settings.downloadsAdvancedTitle')}>
+      <SettingGroup title={t('settings.downloadsAdvancedTitle')} allowOverflow>
         {/* Parallel downloads — Slider */}
         <SettingRow
           label={t('settings.downloaderConcurrentDownloads')}

@@ -79,6 +79,7 @@ function SettingsModalInner({
   checkForAppUpdates,
   downloadAppUpdate,
   installAppUpdate,
+  setAppAutoUpdateEnabled,
 }) {
   const { t } = useI18n()
   const { mode, setPreference } = useContext(ColorModeContext)
@@ -678,12 +679,15 @@ function SettingsModalInner({
 
   /* ─── navigation ─── */
 
+  const appUpdatePhase = String(appUpdateState?.phase || 'idle').trim()
+  const appUpdateAvailable = appUpdatePhase === 'update-available' || appUpdatePhase === 'downloaded'
+
   const sections = useMemo(() => ([
-    { key: 'general', label: t('settings.general'), icon: SettingsIcon, hasUpdate: false },
+    { key: 'general', label: t('settings.general'), icon: SettingsIcon, hasUpdate: appUpdateAvailable },
     { key: 'downloads', label: t('settings.sectionDownloads'), icon: DownloadIcon, hasUpdate: false },
     { key: 'network', label: t('settings.sectionNetwork'), icon: GlobeIcon, hasUpdate: false },
     { key: 'system', label: t('settings.sectionSystem'), icon: CpuIcon, hasUpdate: Boolean(ytInfo.outdated || ffmpegInfo.outdated) },
-  ]), [ffmpegInfo.outdated, t, ytInfo.outdated])
+  ]), [appUpdateAvailable, ffmpegInfo.outdated, t, ytInfo.outdated])
 
   const sectionTitleMap = {
     general: t('settings.general'),
@@ -944,7 +948,7 @@ function SettingsModalInner({
                   setLanguage={setLanguage}
                   mode={mode}
                   setPreference={setPreference}
-                  showAppUpdateSection={isElectronRuntime}
+                  showAppUpdateSection
                   selectSx={selectSx}
                   t={t}
                   appUpdateState={appUpdateState}
@@ -952,6 +956,7 @@ function SettingsModalInner({
                   checkForAppUpdates={checkForAppUpdates}
                   downloadAppUpdate={downloadAppUpdate}
                   installAppUpdate={installAppUpdate}
+                  setAppAutoUpdateEnabled={setAppAutoUpdateEnabled}
                 />
               )}
 

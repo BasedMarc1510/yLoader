@@ -65,12 +65,29 @@ function DependencyCard({ icon: Icon, name, version, statusElement, hasUpdate, o
           </Box>
           <Box>
             <Typography sx={{ fontWeight: 700, fontSize: 15 }}>{name}</Typography>
-            <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', fontWeight: 500 }}>
+            <Typography
+              noWrap
+              title={version}
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: 'text.secondary',
+                fontWeight: 500,
+                maxWidth: 150,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {version}
             </Typography>
           </Box>
         </Box>
-        <ChevronRight size={18} style={{ color: '#8e8e93' }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {hasUpdate && (
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ff3b30', flexShrink: 0 }} />
+          )}
+          <ChevronRight size={18} style={{ color: '#8e8e93' }} />
+        </Box>
       </Box>
       {statusElement}
       {hasUpdate && (

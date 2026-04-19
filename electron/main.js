@@ -17,6 +17,8 @@ const DEFAULT_WINDOW_HEIGHT = 860
 const MIN_WINDOW_WIDTH = 1024
 const MIN_WINDOW_HEIGHT = 700
 const STARTUP_UPDATE_CHECK_DELAY_MS = 3000
+const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
+const APP_UPDATER_SETTINGS_FILE_NAME = 'app-updater-settings.json'
 const APP_NAME = 'yLoader'
 const APP_ID = 'com.yloader.app'
 const APP_UPDATER_EVENT_CHANNEL = 'app-updater:event'
@@ -100,6 +102,8 @@ let cachedDownloadSettingsFetchedAt = 0
 let dependencyBootstrapPromise = null
 let dependencyBootstrapRetryTimer = null
 let runtimeServicesStarted = false
+let periodicUpdateCheckTimer = null
+let startupUpdateCheckScheduled = false
 
 const UPDATE_PROGRESS_EMPTY = Object.freeze({
   percent: 0,
@@ -117,9 +121,14 @@ const updateState = {
   error: '',
   canCheckForUpdates: false,
   canAutoUpdate: false,
+  autoUpdateEnabled: true,
   manualDownloadOnly: false,
   releasePageUrl: `${APP_REPOSITORY_URL}/releases`,
   closeBlocked: false,
+}
+
+const appUpdaterSettings = {
+  autoUpdateEnabled: true,
 }
 
 const dependencyBootstrapState = {
@@ -1309,6 +1318,47 @@ function createEmptyUpdateProgress() {
   return { ...UPDATE_PROGRESS_EMPTY }
 }
 
+function normalizeAppUpdaterSettings(input) {
+  const raw = input && typeof input === 'object' ? input : {}
+  return {
+    autoUpdateEnabled: raw.autoUpdateEnabled !== false,
+  }
+}
+
+function getAppUpdaterSettingsPath() {
+  return path.join(app.getPath('userData'), APP_UPDATER_SETTINGS_FILE_NAME)
+}
+
+function readAppUpdaterSettings() {
+  const fallback = { autoUpdateEnabled: true }
+
+  try {
+    const settingsPath = getAppUpdaterSettingsPath()
+    if (!fs.existsSync(settingsPath)) {
+      return fallback
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+    return normalizeAppUpdaterSettings(parsed)
+  } catch {
+    return fallback
+  }
+}
+
+function writeAppUpdaterSettings(nextSettings) {
+  const normalized = normalizeAppUpdaterSettings(nextSettings)
+
+  try {
+    const settingsPath = getAppUpdaterSettingsPath()
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+    fs.writeFileSync(settingsPath, JSON.stringify(normalized, null, 2))
+  } catch {
+    // ignore persistence errors and keep in-memory setting
+  }
+
+  return normalized
+}
+
 function ensureVersionTag(version) {
   const normalized = String(version || '').trim()
   if (!normalized) return ''
@@ -1359,6 +1409,30 @@ function setUpdateState(patch = {}) {
   Object.assign(updateState, next)
 }
 
+function setAppAutoUpdateEnabled(enabled, { emit = true } = {}) {
+  const normalized = Boolean(enabled)
+  appUpdaterSettings.autoUpdateEnabled = normalized
+  writeAppUpdaterSettings(appUpdaterSettings)
+  setUpdateState({ autoUpdateEnabled: normalized })
+
+  if (normalized && updateState.phase === 'update-available' && !updateState.manualDownloadOnly) {
+    setImmediate(() => {
+      downloadAppUpdate('auto').catch(() => {
+        // updater event handlers already propagate failures
+      })
+    })
+  }
+
+  if (emit) {
+    emitUpdaterEvent('settings-changed', { autoUpdateEnabled: normalized })
+  }
+
+  return {
+    ok: true,
+    autoUpdateEnabled: normalized,
+  }
+}
+
 function emitUpdaterEvent(type, payload = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return
 
@@ -1382,6 +1456,35 @@ function notifyCloseBlockedWhileDownloading() {
   emitUpdaterEvent('close-blocked', { reason: 'download-in-progress' })
 }
 
+function schedulePeriodicUpdateChecks() {
+  if (!updateState.canCheckForUpdates) return
+
+  if (!startupUpdateCheckScheduled) {
+    startupUpdateCheckScheduled = true
+    setTimeout(() => {
+      checkForAppUpdates('startup').catch(() => {
+        // event handlers already publish failures
+      })
+    }, STARTUP_UPDATE_CHECK_DELAY_MS)
+  }
+
+  if (periodicUpdateCheckTimer) return
+
+  periodicUpdateCheckTimer = setInterval(() => {
+    checkForAppUpdates('scheduled').catch(() => {
+      // event handlers already publish failures
+    })
+  }, PERIODIC_UPDATE_CHECK_INTERVAL_MS)
+
+  periodicUpdateCheckTimer.unref?.()
+}
+
+function clearPeriodicUpdateCheckTimer() {
+  if (!periodicUpdateCheckTimer) return
+  clearInterval(periodicUpdateCheckTimer)
+  periodicUpdateCheckTimer = null
+}
+
 async function checkForAppUpdates(source = 'manual') {
   if (!updateState.canCheckForUpdates) {
     return { ok: false, reason: 'unsupported' }
@@ -1390,6 +1493,10 @@ async function checkForAppUpdates(source = 'manual') {
   if (isUpdateDownloadInProgress()) {
     notifyCloseBlockedWhileDownloading()
     return { ok: false, reason: 'download-in-progress' }
+  }
+
+  if (updateState.phase === 'downloaded') {
+    return { ok: false, reason: 'update-ready-to-install' }
   }
 
   if (updateState.phase === 'checking') {
@@ -1411,7 +1518,7 @@ async function checkForAppUpdates(source = 'manual') {
   }
 }
 
-async function downloadAppUpdate() {
+async function downloadAppUpdate(source = 'manual') {
   if (!updateState.canCheckForUpdates) {
     return { ok: false, reason: 'unsupported' }
   }
@@ -1441,7 +1548,7 @@ async function downloadAppUpdate() {
         error: message,
         closeBlocked: false,
       })
-      emitUpdaterEvent('error', { message, source: 'manual-download-open' })
+      emitUpdaterEvent('error', { message, source: `manual-download-open:${source}` })
       return { ok: false, error: message }
     }
   }
@@ -1471,7 +1578,7 @@ async function downloadAppUpdate() {
       error: message,
       closeBlocked: false,
     })
-    emitUpdaterEvent('error', { message, source: 'download' })
+    emitUpdaterEvent('error', { message, source: `download:${source}` })
     return { ok: false, error: message }
   }
 }
@@ -1510,6 +1617,8 @@ function configureAutoUpdater() {
   if (updaterConfigured) return
   updaterConfigured = true
 
+  Object.assign(appUpdaterSettings, readAppUpdaterSettings())
+
   const canCheckForUpdates = app.isPackaged
   const manualDownloadOnly = app.isPackaged && IS_MAC
   const canAutoUpdate = canCheckForUpdates && !manualDownloadOnly
@@ -1523,6 +1632,7 @@ function configureAutoUpdater() {
     error: '',
     canCheckForUpdates,
     canAutoUpdate,
+    autoUpdateEnabled: Boolean(appUpdaterSettings.autoUpdateEnabled),
     manualDownloadOnly,
     releasePageUrl: buildReleasePageUrl(),
     closeBlocked: false,
@@ -1532,7 +1642,7 @@ function configureAutoUpdater() {
 
   // Best-practice updater defaults for explicit, user-driven downloads.
   autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = false
+  autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowPrerelease = true
 
   autoUpdater.on('checking-for-update', () => {
@@ -1556,6 +1666,14 @@ function configureAutoUpdater() {
       closeBlocked: false,
     })
     emitUpdaterEvent('update-available', { version })
+
+    if (!manualDownloadOnly && updateState.autoUpdateEnabled) {
+      setImmediate(() => {
+        downloadAppUpdate('auto').catch(() => {
+          // updater event handlers already propagate failures
+        })
+      })
+    }
   })
 
   autoUpdater.on('update-not-available', () => {
@@ -1613,13 +1731,7 @@ function configureAutoUpdater() {
 }
 
 function scheduleStartupUpdateCheck() {
-  if (!updateState.canCheckForUpdates) return
-
-  setTimeout(() => {
-    checkForAppUpdates('startup').catch(() => {
-      // event handlers already publish failures
-    })
-  }, STARTUP_UPDATE_CHECK_DELAY_MS)
+  schedulePeriodicUpdateChecks()
 }
 
 function getWindowStatePath() {
@@ -1874,7 +1986,13 @@ function registerUpdaterIpcHandlers() {
   ipcMain.handle('app-updater:check-for-updates', async () => checkForAppUpdates('manual'))
 
   // Renderer action: begin update download only after explicit user confirmation.
-  ipcMain.handle('app-updater:download-update', async () => downloadAppUpdate())
+  ipcMain.handle('app-updater:download-update', async () => downloadAppUpdate('manual'))
+
+  // Renderer action: persist user preference for automatic app updates.
+  ipcMain.handle('app-updater:set-auto-update-enabled', async (_event, payload = {}) => {
+    const enabled = payload?.enabled !== false
+    return setAppAutoUpdateEnabled(enabled)
+  })
 
   // Renderer action: restart process and hand over install to electron-updater.
   ipcMain.handle('app-updater:quit-and-install', () => quitAndInstallAppUpdate())
@@ -2422,6 +2540,7 @@ app.on('before-quit', (event) => {
 
   shuttingDown = true
   clearDependencyBootstrapRetryTimer()
+  clearPeriodicUpdateCheckTimer()
   if (windowStateSaveTimer) {
     clearTimeout(windowStateSaveTimer)
     windowStateSaveTimer = null

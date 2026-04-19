@@ -1,7 +1,7 @@
 import React from 'react'
 import { Box, Typography } from '@mui/material'
 
-export default function SettingGroup({ title, description, children, sx }) {
+export default function SettingGroup({ title, description, children, sx, allowOverflow = false }) {
   return (
     <Box sx={{ mb: 3.5, ...sx }}>
       {(title || description) && (
@@ -22,7 +22,7 @@ export default function SettingGroup({ title, description, children, sx }) {
         sx={(theme) => ({
           bgcolor: theme.palette.mode === 'dark' ? '#1c1c1e' : '#ffffff',
           borderRadius: '10px',
-          overflow: 'hidden',
+          overflow: allowOverflow ? 'visible' : 'hidden',
           border: `1px solid ${theme.palette.divider}`,
         })}
       >

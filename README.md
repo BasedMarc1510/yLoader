@@ -118,6 +118,7 @@ npm run start:electron:clear
 - If you do not publish a host port with `-p`, the app runs but is not reachable from your browser
 - `latest` tracks the newest pushed `v*` release tag
 - Version tags are also published in both forms (for example `v2026.1.0` and `2026.1.0`)
+- In Docker mode, Settings > General can check for newer yLoader releases and will show a hint to update the container manually
 
 ## Configuration
 

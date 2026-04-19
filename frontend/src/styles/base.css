@@ -35,10 +35,19 @@ body,
   .MuiIconButton-root,
   .MuiListItemButton-root,
   .MuiMenuItem-root,
+  .MuiFormControlLabel-root,
+  .MuiSelect-select,
+  .MuiSelect-icon,
   .MuiSwitch-root,
+  .MuiSwitch-root *,
+  .MuiSwitch-switchBase,
+  .MuiSwitch-thumb,
+  .MuiSwitch-track,
   .MuiSlider-root,
+  .MuiSlider-root *,
   .MuiCheckbox-root,
-  .MuiRadio-root
+  .MuiRadio-root,
+  [aria-haspopup='listbox']
 ) {
   cursor: pointer;
 }
@@ -47,8 +56,7 @@ body,
   input,
   textarea,
   [contenteditable='true'],
-  .MuiInputBase-input,
-  .MuiSelect-select,
+  .MuiInputBase-input:not(.MuiSelect-select),
   .MuiAutocomplete-input
 ) {
   cursor: text;
@@ -177,4 +185,14 @@ body,
 
 .yl-native-scroll::-webkit-scrollbar-thumb:active {
   background-color: var(--yl-scroll-thumb-active);
+}
+
+@keyframes yl-settings-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }

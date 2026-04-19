@@ -17,6 +17,7 @@ export default function GeneralSettingsSection({
   checkForAppUpdates,
   downloadAppUpdate,
   installAppUpdate,
+  setAppAutoUpdateEnabled,
 }) {
   return (
     <Box sx={{ px: 4, pt: 4, pb: 4 }}>
@@ -54,6 +55,7 @@ export default function GeneralSettingsSection({
           checkForAppUpdates={checkForAppUpdates}
           downloadAppUpdate={downloadAppUpdate}
           installAppUpdate={installAppUpdate}
+          setAppAutoUpdateEnabled={setAppAutoUpdateEnabled}
         />
       )}
     </Box>

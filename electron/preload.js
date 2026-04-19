@@ -27,6 +27,9 @@ const appUpdater = {
   checkForUpdates: () => ipcRenderer.invoke('app-updater:check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('app-updater:download-update'),
   quitAndInstall: () => ipcRenderer.invoke('app-updater:quit-and-install'),
+  setAutoUpdateEnabled: (enabled) => ipcRenderer.invoke('app-updater:set-auto-update-enabled', {
+    enabled: enabled !== false,
+  }),
   onEvent: (callback) => {
     if (typeof callback !== 'function') return () => {}
 
