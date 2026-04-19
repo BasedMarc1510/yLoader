@@ -1463,7 +1463,7 @@ export default function SearchPage({
 
           {showInitialLoading && (
             <Box sx={{ overflow: 'hidden' }}>
-              <Stack spacing={2} sx={{ mt: 2 }}>
+              <Stack spacing={2}>
                 {Array.from({ length: hasMeasured && availableHeight > 0 ? Math.max(2, Math.floor((availableHeight - 160) / 140)) : 4 }).map((_, i) => {
                   const useSquareThumbnail = SQUARE_THUMBNAIL_SERVICES.has(selectedService)
                   const thumbnailWidth = useSquareThumbnail ? { xs: 110, sm: 130 } : { xs: 140, sm: 230 }

@@ -7,10 +7,10 @@
 }
 
 @font-face {
-  font-family: 'YouTube Sans Bold';
-  src: url('/youtube-sans-bold.ttf') format('truetype');
+  font-family: 'Outfit';
+  src: url('/fonts/outfit/Outfit-VariableFont_wght.ttf') format('truetype');
   font-style: normal;
-  font-weight: 700;
+  font-weight: 100 900;
   font-display: swap;
 }
 
@@ -53,13 +53,22 @@ body,
 }
 
 :root[data-runtime-target='electron'] :where(
-  input,
+  input:not([type='checkbox']):not([type='radio']):not(.MuiSwitch-input):not(.MuiCheckbox-input):not(.MuiRadio-input),
   textarea,
   [contenteditable='true'],
   .MuiInputBase-input:not(.MuiSelect-select),
   .MuiAutocomplete-input
 ) {
   cursor: text;
+}
+
+:root[data-runtime-target='electron'] .MuiSwitch-root,
+:root[data-runtime-target='electron'] .MuiSwitch-root *,
+:root[data-runtime-target='electron'] .MuiSelect-select,
+:root[data-runtime-target='electron'] .MuiSelect-icon,
+:root[data-runtime-target='electron'] .MuiMenuItem-root,
+:root[data-runtime-target='electron'] .MuiButtonBase-root {
+  cursor: pointer !important;
 }
 
 :root[data-runtime-target='electron'] :where(
@@ -143,7 +152,7 @@ body,
 }
 
 .youtube-title {
-  font-family: 'YouTube Sans Bold', 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif !important;
+  font-family: 'Outfit', 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif !important;
   font-weight: 800 !important;
   letter-spacing: -0.03em;
 }
