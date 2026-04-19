@@ -11,7 +11,7 @@ const ROOT_DIR = path.resolve(__dirname, '..')
 const FRONTEND_DIR = path.join(ROOT_DIR, 'frontend')
 const BACKEND_DIR = path.join(ROOT_DIR, 'backend')
 const IS_WINDOWS = process.platform === 'win32'
-const NPM_CMD = IS_WINDOWS ? 'npm.cmd' : 'npm'
+const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
 const WORKFLOW_NAME = 'Electron Build and Release'
 const DEFAULT_TIMEOUT_MS = 90 * 60 * 1000
 const RELEASE_TIMEOUT_MS = 45 * 60 * 1000
@@ -106,6 +106,10 @@ function getArgValue(flagName) {
   return String(process.argv[idx + 1] || '').trim()
 }
 
+function npmArgs(args) {
+  return IS_WINDOWS ? ['/d', '/s', '/c', 'npm', ...args] : args
+}
+
 async function askVersionIfMissing(initialValue) {
   if (initialValue) return initialValue
 
@@ -146,9 +150,9 @@ function getCurrentBranchName() {
 }
 
 function updateAllPackageVersions(version) {
-  run(NPM_CMD, ['version', version, '--no-git-tag-version'], { cwd: ROOT_DIR })
-  run(NPM_CMD, ['version', version, '--no-git-tag-version'], { cwd: FRONTEND_DIR })
-  run(NPM_CMD, ['version', version, '--no-git-tag-version'], { cwd: BACKEND_DIR })
+  run(NPM_CMD, npmArgs(['version', version, '--no-git-tag-version']), { cwd: ROOT_DIR })
+  run(NPM_CMD, npmArgs(['version', version, '--no-git-tag-version']), { cwd: FRONTEND_DIR })
+  run(NPM_CMD, npmArgs(['version', version, '--no-git-tag-version']), { cwd: BACKEND_DIR })
 }
 
 function stageVersionFiles() {
@@ -212,6 +216,12 @@ async function waitForWorkflowCompletion(repositorySlug, tagName) {
     const result = await fetchJson(`https://api.github.com/repos/${repositorySlug}/actions/runs?event=push&per_page=50`)
 
     if (!result.ok) {
+      if (result.status === 404 && !AUTH_TOKEN) {
+        info('GitHub Actions API liefert ohne GH_TOKEN/GITHUB_TOKEN HTTP 404 (private Repo naheliegend).')
+        info('Workflow-Statusabfrage wird uebersprungen. Setze GH_TOKEN/GITHUB_TOKEN, um den Run hier zu verfolgen.')
+        return null
+      }
+
       throw new Error(`Failed to query workflow runs (HTTP ${result.status}). ${result.text || ''}`)
     }
 
@@ -245,7 +255,8 @@ async function waitForWorkflowCompletion(repositorySlug, tagName) {
   throw new Error(`Timed out while waiting for workflow completion for ${tagName}`)
 }
 
-async function waitForRelease(repositorySlug, tagName) {
+async function waitForRelease(repositorySlug, tagName, options = {}) {
+  const { allowUnauthenticated404Skip = false } = options
   const pollIntervalMs = AUTH_TOKEN ? 15000 : 60000
   const deadline = Date.now() + RELEASE_TIMEOUT_MS
 
@@ -255,6 +266,12 @@ async function waitForRelease(repositorySlug, tagName) {
     const result = await fetchJson(`https://api.github.com/repos/${repositorySlug}/releases/tags/${encodeURIComponent(tagName)}`)
 
     if (result.status === 404) {
+      if (allowUnauthenticated404Skip) {
+        info('GitHub Release API liefert ohne GH_TOKEN/GITHUB_TOKEN HTTP 404 (private Repo naheliegend).')
+        info('Release-Statusabfrage wird uebersprungen. Setze GH_TOKEN/GITHUB_TOKEN, um Releases hier zu verfolgen.')
+        return null
+      }
+
       info('Release noch nicht angelegt, warte weiter...')
       await sleep(pollIntervalMs)
       continue
@@ -311,12 +328,19 @@ async function main() {
   run('git', ['push', 'origin', tagName])
 
   const workflowRun = await waitForWorkflowCompletion(repositorySlug, tagName)
-  const release = await waitForRelease(repositorySlug, tagName)
+  const release = await waitForRelease(repositorySlug, tagName, {
+    allowUnauthenticated404Skip: !workflowRun && !AUTH_TOKEN,
+  })
 
   const releaseUrl = String(release?.html_url || '').trim()
   const assets = Array.isArray(release?.assets) ? release.assets : []
 
-  info(`Fertig. Run: ${String(workflowRun?.html_url || '').trim()}`)
+  const runUrl = String(workflowRun?.html_url || '').trim()
+  if (runUrl) {
+    info(`Fertig. Run: ${runUrl}`)
+  } else {
+    info('Fertig. Run-URL nicht verfuegbar (Remote-Status nicht verifiziert).')
+  }
   if (releaseUrl) {
     info(`Release: ${releaseUrl}`)
   }
@@ -333,5 +357,5 @@ async function main() {
 
 main().catch((error) => {
   fail(error?.message || String(error))
-  process.exit(1)
+  process.exitCode = 1
 })
