@@ -1,6 +1,6 @@
 {
   "name": "yloader-frontend",
-  "version": "2026.1.2-beta",
+  "version": "2026.1.3-beta",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
