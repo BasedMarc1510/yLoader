@@ -67,6 +67,27 @@ const SECTION_DATA_DEPENDENCIES = {
   system: ['tool-status'],
 }
 
+const DESKTOP_SETTINGS_DEFAULTS = Object.freeze({
+  closeToTrayOnWindowClose: false,
+  startOnSystemStartup: false,
+  startupWindowMode: 'normal',
+  startupSupported: true,
+})
+
+function normalizeDesktopSettingsPayload(input) {
+  const raw = input && typeof input === 'object' ? input : {}
+  const startupWindowMode = String(raw.startupWindowMode || '').trim().toLowerCase() === 'minimized'
+    ? 'minimized'
+    : 'normal'
+
+  return {
+    closeToTrayOnWindowClose: Boolean(raw.closeToTrayOnWindowClose),
+    startOnSystemStartup: Boolean(raw.startOnSystemStartup),
+    startupWindowMode,
+    startupSupported: raw.startupSupported !== false,
+  }
+}
+
 /* ─── settings modal ─── */
 
 function SettingsModalInner({
@@ -90,6 +111,8 @@ function SettingsModalInner({
   const { language, setLanguage } = useContext(SettingsContext)
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const isElectronRuntime = Boolean(runtime?.isElectron)
+  const desktopSettingsApi = runtime?.desktopSettings
+  const isDesktopSettingsAvailable = Boolean(isElectronRuntime && desktopSettingsApi)
   // Map legacy section keys from external callers to the new navigation structure.
   // This ensures openSettingsModal('yt-dlp', 'cookies') still works after the refactor.
   const resolveSectionKey = React.useCallback((key) => {
@@ -171,6 +194,13 @@ function SettingsModalInner({
   const [ytCookieSettingsSaving, setYtCookieSettingsSaving] = useState(false)
   const [ytCookieSettingsError, setYtCookieSettingsError] = useState('')
 
+  /* ─── electron desktop settings ─── */
+  const [desktopSettings, setDesktopSettings] = useState(() => ({ ...DESKTOP_SETTINGS_DEFAULTS }))
+  const desktopSettingsRef = useRef(desktopSettings)
+  const desktopSettingsRequestIdRef = useRef(0)
+  const [desktopSettingsLoading, setDesktopSettingsLoading] = useState(false)
+  const [desktopSettingsSaving, setDesktopSettingsSaving] = useState(false)
+
   const isAppUpdateDownloading = appUpdateState?.phase === 'downloading'
 
   /* ─── ref syncs ─── */
@@ -178,6 +208,7 @@ function SettingsModalInner({
   useEffect(() => { autoDownloadSettingsRef.current = autoDownloadSettings }, [autoDownloadSettings])
   useEffect(() => { downloadSettingsRef.current = downloadSettings }, [downloadSettings])
   useEffect(() => { ytCookieSettingsRef.current = ytCookieSettings }, [ytCookieSettings])
+  useEffect(() => { desktopSettingsRef.current = desktopSettings }, [desktopSettings])
 
   /* ─── fetch helpers ─── */
 
@@ -511,6 +542,53 @@ function SettingsModalInner({
     })
   }, [saveYtCookieSettings])
 
+  const fetchDesktopSettings = React.useCallback(async () => {
+    if (!isDesktopSettingsAvailable || typeof desktopSettingsApi?.get !== 'function') {
+      setDesktopSettings({ ...DESKTOP_SETTINGS_DEFAULTS })
+      return
+    }
+
+    setDesktopSettingsLoading(true)
+
+    try {
+      const snapshot = await Promise.resolve(desktopSettingsApi.get())
+      setDesktopSettings(normalizeDesktopSettingsPayload(snapshot))
+    } catch {
+      setDesktopSettings({ ...DESKTOP_SETTINGS_DEFAULTS })
+    } finally {
+      setDesktopSettingsLoading(false)
+    }
+  }, [desktopSettingsApi, isDesktopSettingsAvailable])
+
+  const updateDesktopSettings = React.useCallback((changes) => {
+    if (!isDesktopSettingsAvailable || typeof desktopSettingsApi?.update !== 'function') return
+
+    const current = desktopSettingsRef.current || DESKTOP_SETTINGS_DEFAULTS
+    const patch = typeof changes === 'function' ? changes(current) : changes
+    if (!patch || typeof patch !== 'object') return
+
+    const optimistic = normalizeDesktopSettingsPayload({ ...current, ...patch })
+    setDesktopSettings(optimistic)
+
+    const requestId = ++desktopSettingsRequestIdRef.current
+    setDesktopSettingsSaving(true)
+
+    Promise.resolve(desktopSettingsApi.update(patch))
+      .then((snapshot) => {
+        if (requestId !== desktopSettingsRequestIdRef.current) return
+        setDesktopSettings(normalizeDesktopSettingsPayload(snapshot))
+      })
+      .catch(() => {
+        if (requestId !== desktopSettingsRequestIdRef.current) return
+        fetchDesktopSettings()
+      })
+      .finally(() => {
+        if (requestId === desktopSettingsRequestIdRef.current) {
+          setDesktopSettingsSaving(false)
+        }
+      })
+  }, [desktopSettingsApi, fetchDesktopSettings, isDesktopSettingsAvailable])
+
   /* ─── lifecycle ─── */
 
   useEffect(() => {
@@ -524,6 +602,21 @@ function SettingsModalInner({
     const rawSection = String(requestedSection || '').trim()
     setSystemDetail(rawSection === 'ffmpeg' ? 'ffmpeg' : null)
   }, [open, requestedSection, requestedFocusRequestId, requestedFocusTarget, resolveSectionKey])
+
+  useEffect(() => {
+    if (!open || !isDesktopSettingsAvailable) return undefined
+
+    fetchDesktopSettings()
+
+    const unsubscribe = desktopSettingsApi?.onEvent?.((eventEnvelope) => {
+      const nextState = eventEnvelope?.state || eventEnvelope?.payload || eventEnvelope
+      setDesktopSettings(normalizeDesktopSettingsPayload(nextState))
+    })
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe()
+    }
+  }, [desktopSettingsApi, fetchDesktopSettings, isDesktopSettingsAvailable, open])
 
   useEffect(() => {
     if (!open) return undefined
@@ -721,6 +814,13 @@ function SettingsModalInner({
     if (section === 'general') {
       setLanguage('en')
       setPreference(null)
+      if (isDesktopSettingsAvailable) {
+        updateDesktopSettings({
+          closeToTrayOnWindowClose: false,
+          startOnSystemStartup: false,
+          startupWindowMode: 'normal',
+        })
+      }
       return
     }
     if (section === 'downloads') {
@@ -735,7 +835,15 @@ function SettingsModalInner({
         // error state is handled in saveAutoDownloadSettings
       })
     }
-  }, [section, saveAutoDownloadSettings, saveDownloadSettings, setLanguage, setPreference])
+  }, [
+    isDesktopSettingsAvailable,
+    section,
+    saveAutoDownloadSettings,
+    saveDownloadSettings,
+    setLanguage,
+    setPreference,
+    updateDesktopSettings,
+  ])
 
   const handleRequestResetSection = React.useCallback(() => {
     if (!canResetSection || resetDisabled) return
@@ -806,6 +914,10 @@ function SettingsModalInner({
           installAppUpdate={installAppUpdate}
           setAppAutoUpdateEnabled={setAppAutoUpdateEnabled}
           isMobileLayout={isMobileLayout}
+          showDesktopSettings={isDesktopSettingsAvailable}
+          desktopSettings={desktopSettings}
+          desktopSettingsLoading={desktopSettingsLoading || desktopSettingsSaving}
+          onUpdateDesktopSettings={updateDesktopSettings}
         />
       )
     }

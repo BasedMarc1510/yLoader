@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, screen, session, dialog, Menu } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, screen, session, dialog, Menu, Tray } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const { spawn } = require('child_process')
 const { Readable } = require('stream')
@@ -19,10 +19,13 @@ const MIN_WINDOW_HEIGHT = 700
 const STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 const APP_UPDATER_SETTINGS_FILE_NAME = 'app-updater-settings.json'
+const DESKTOP_SETTINGS_FILE_NAME = 'desktop-settings.json'
 const APP_NAME = 'yLoader'
 const APP_ID = 'com.yloader.app'
 const APP_UPDATER_EVENT_CHANNEL = 'app-updater:event'
 const DEPENDENCY_BOOTSTRAP_EVENT_CHANNEL = 'dependency-bootstrap:event'
+const DESKTOP_SETTINGS_EVENT_CHANNEL = 'desktop-settings:event'
+const DEEP_LINK_EVENT_CHANNEL = 'deep-link:event'
 const APP_REPOSITORY_URL = 'https://github.com/BasedMarc1510/yLoader'
 const ELECTRON_API_BASE = String(process.env.ELECTRON_API_BASE || 'http://127.0.0.1:4000').trim() || 'http://127.0.0.1:4000'
 const DEPENDENCY_BOOTSTRAP_RETRY_DELAY_MS = 30_000
@@ -32,6 +35,9 @@ const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
 const AUDIO_FILE_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.opus'])
 const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv'])
 const THUMBNAIL_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
+const STARTUP_WINDOW_MODE_OPTIONS = new Set(['normal', 'minimized'])
+const AUTO_LAUNCH_ARGUMENT = '--yloader-auto-launch'
+const DEEP_LINK_PROTOCOL = 'yloader'
 const YTDLP_DOWNLOAD_URLS = Object.freeze({
   win32: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
   linuxX64: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux',
@@ -88,11 +94,15 @@ process.env.ELECTRON_DEFAULT_DOWNLOADS_PATH = APP_DEFAULT_DOWNLOADS_DIR
 
 let mainWindow = null
 let backendProcess = null
+let tray = null
 let shuttingDown = false
+let forceCloseRequested = false
 let windowStateSaveTimer = null
 let windowIpcRegistered = false
 let updaterIpcRegistered = false
 let dependencyBootstrapIpcRegistered = false
+let desktopSettingsIpcRegistered = false
+let deepLinkIpcRegistered = false
 let updaterConfigured = false
 let isInstallingUpdate = false
 let downloadsIpcRegistered = false
@@ -104,6 +114,10 @@ let dependencyBootstrapRetryTimer = null
 let runtimeServicesStarted = false
 let periodicUpdateCheckTimer = null
 let startupUpdateCheckScheduled = false
+let deepLinkRendererReady = false
+let startupWindowLaunchBehaviorConsumed = false
+
+const pendingDeepLinkPayloads = []
 
 const UPDATE_PROGRESS_EMPTY = Object.freeze({
   percent: 0,
@@ -129,6 +143,12 @@ const updateState = {
 
 const appUpdaterSettings = {
   autoUpdateEnabled: true,
+}
+
+const desktopSettings = {
+  closeToTrayOnWindowClose: false,
+  startOnSystemStartup: false,
+  startupWindowMode: 'normal',
 }
 
 const dependencyBootstrapState = {
@@ -164,16 +184,21 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock()
 if (!hasSingleInstanceLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return
-
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
+  app.on('second-instance', (_event, commandLine) => {
+    const deepLinkUrl = extractDeepLinkUrlFromArgv(commandLine)
+    if (deepLinkUrl) {
+      handleIncomingDeepLink(deepLinkUrl, 'second-instance')
+      return
     }
 
-    mainWindow.focus()
+    revealMainWindow()
   })
 }
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  handleIncomingDeepLink(url, 'open-url')
+})
 
 function log(message) {
   process.stdout.write(`[electron] ${message}\n`)
@@ -1314,6 +1339,418 @@ function buildUniqueDownloadPath(directoryPath, filename) {
   return candidate
 }
 
+function normalizeStartupWindowMode(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (!normalized) return 'normal'
+  return STARTUP_WINDOW_MODE_OPTIONS.has(normalized) ? normalized : 'normal'
+}
+
+function normalizeDesktopSettings(input) {
+  const raw = input && typeof input === 'object' ? input : {}
+  return {
+    closeToTrayOnWindowClose: Boolean(raw.closeToTrayOnWindowClose),
+    startOnSystemStartup: Boolean(raw.startOnSystemStartup),
+    startupWindowMode: normalizeStartupWindowMode(raw.startupWindowMode),
+  }
+}
+
+function sanitizeDesktopSettingsPatch(input) {
+  const raw = input && typeof input === 'object' ? input : {}
+  const patch = {}
+
+  if (Object.prototype.hasOwnProperty.call(raw, 'closeToTrayOnWindowClose') && raw.closeToTrayOnWindowClose !== undefined) {
+    patch.closeToTrayOnWindowClose = Boolean(raw.closeToTrayOnWindowClose)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(raw, 'startOnSystemStartup') && raw.startOnSystemStartup !== undefined) {
+    patch.startOnSystemStartup = Boolean(raw.startOnSystemStartup)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(raw, 'startupWindowMode') && raw.startupWindowMode !== undefined) {
+    patch.startupWindowMode = normalizeStartupWindowMode(raw.startupWindowMode)
+  }
+
+  return patch
+}
+
+function getDesktopSettingsPath() {
+  return path.join(app.getPath('userData'), DESKTOP_SETTINGS_FILE_NAME)
+}
+
+function readDesktopSettings() {
+  const fallback = {
+    closeToTrayOnWindowClose: false,
+    startOnSystemStartup: false,
+    startupWindowMode: 'normal',
+  }
+
+  try {
+    const settingsPath = getDesktopSettingsPath()
+    if (!fs.existsSync(settingsPath)) {
+      return fallback
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+    return normalizeDesktopSettings(parsed)
+  } catch {
+    return fallback
+  }
+}
+
+function writeDesktopSettings(nextSettings) {
+  const normalized = normalizeDesktopSettings(nextSettings)
+
+  try {
+    const settingsPath = getDesktopSettingsPath()
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+    fs.writeFileSync(settingsPath, JSON.stringify(normalized, null, 2))
+  } catch {
+    // ignore persistence errors and keep in-memory settings
+  }
+
+  return normalized
+}
+
+function isAutoLaunchSupported() {
+  return (IS_WINDOWS || IS_MAC) && typeof app.setLoginItemSettings === 'function'
+}
+
+function buildAutoLaunchArguments() {
+  if (app.isPackaged) {
+    return [AUTO_LAUNCH_ARGUMENT]
+  }
+
+  const appEntryPath = path.resolve(process.argv[1] || app.getAppPath())
+  return [appEntryPath, AUTO_LAUNCH_ARGUMENT]
+}
+
+function getAutoLaunchLoginItemSettings() {
+  if (!isAutoLaunchSupported()) return {}
+
+  const options = IS_WINDOWS
+    ? {
+        path: process.execPath,
+        args: buildAutoLaunchArguments(),
+      }
+    : undefined
+
+  try {
+    if (options) {
+      return app.getLoginItemSettings(options)
+    }
+
+    return app.getLoginItemSettings()
+  } catch {
+    return {}
+  }
+}
+
+function applyStartupRegistration(nextSettings = desktopSettings) {
+  const enabled = Boolean(nextSettings.startOnSystemStartup)
+  const startupWindowMode = normalizeStartupWindowMode(nextSettings.startupWindowMode)
+  const autoLaunchArgs = buildAutoLaunchArguments()
+
+  if (!isAutoLaunchSupported()) {
+    return {
+      supported: false,
+      enabled: false,
+    }
+  }
+
+  try {
+    if (IS_WINDOWS) {
+      app.setLoginItemSettings({
+        openAtLogin: enabled,
+        path: process.execPath,
+        args: autoLaunchArgs,
+      })
+    } else if (IS_MAC) {
+      app.setLoginItemSettings({
+        openAtLogin: enabled,
+        openAsHidden: enabled && startupWindowMode === 'minimized',
+        args: [AUTO_LAUNCH_ARGUMENT],
+      })
+    }
+  } catch {
+    return {
+      supported: true,
+      enabled,
+    }
+  }
+
+  const loginSettings = getAutoLaunchLoginItemSettings()
+  return {
+    supported: true,
+    enabled: Boolean(loginSettings?.openAtLogin),
+  }
+}
+
+function getDesktopSettingsSnapshot() {
+  const startupSupported = isAutoLaunchSupported()
+  let effectiveStartOnSystemStartup = Boolean(desktopSettings.startOnSystemStartup)
+
+  if (startupSupported) {
+    const loginSettings = getAutoLaunchLoginItemSettings()
+    if (typeof loginSettings?.openAtLogin === 'boolean') {
+      effectiveStartOnSystemStartup = Boolean(loginSettings.openAtLogin)
+    }
+  } else {
+    effectiveStartOnSystemStartup = false
+  }
+
+  return {
+    closeToTrayOnWindowClose: Boolean(desktopSettings.closeToTrayOnWindowClose),
+    startOnSystemStartup: effectiveStartOnSystemStartup,
+    startupWindowMode: normalizeStartupWindowMode(desktopSettings.startupWindowMode),
+    startupSupported,
+  }
+}
+
+function emitDesktopSettingsEvent(type, payload = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+
+  try {
+    mainWindow.webContents.send(DESKTOP_SETTINGS_EVENT_CHANNEL, {
+      type,
+      payload,
+      state: getDesktopSettingsSnapshot(),
+    })
+  } catch {
+    // ignore temporary dispatch errors during navigation
+  }
+}
+
+function configureDesktopSettings() {
+  Object.assign(desktopSettings, readDesktopSettings())
+  const registrationState = applyStartupRegistration(desktopSettings)
+  if (registrationState.supported) {
+    desktopSettings.startOnSystemStartup = Boolean(registrationState.enabled)
+  }
+}
+
+function setDesktopSettingsValues(patch = {}, { emit = true } = {}) {
+  const current = normalizeDesktopSettings(desktopSettings)
+  const normalizedPatch = sanitizeDesktopSettingsPatch(patch)
+  const next = normalizeDesktopSettings({ ...current, ...normalizedPatch })
+
+  Object.assign(desktopSettings, next)
+  writeDesktopSettings(desktopSettings)
+
+  const registrationState = applyStartupRegistration(desktopSettings)
+  if (registrationState.supported) {
+    desktopSettings.startOnSystemStartup = Boolean(registrationState.enabled)
+  }
+
+  const snapshot = getDesktopSettingsSnapshot()
+  if (emit) {
+    emitDesktopSettingsEvent('settings-changed', snapshot)
+  }
+
+  return snapshot
+}
+
+function wasStartedByAutoLaunch() {
+  if (process.argv.some((entry) => String(entry || '').trim() === AUTO_LAUNCH_ARGUMENT)) {
+    return true
+  }
+
+  if (!isAutoLaunchSupported()) return false
+
+  const loginSettings = getAutoLaunchLoginItemSettings()
+  return Boolean(loginSettings?.wasOpenedAtLogin)
+}
+
+function shouldLaunchWindowHidden() {
+  if (startupWindowLaunchBehaviorConsumed) return false
+  startupWindowLaunchBehaviorConsumed = true
+
+  return Boolean(
+    desktopSettings.startOnSystemStartup
+    && normalizeStartupWindowMode(desktopSettings.startupWindowMode) === 'minimized'
+    && wasStartedByAutoLaunch()
+  )
+}
+
+function sanitizeDeepLinkCandidateUrl(value) {
+  const normalized = String(value || '').trim()
+  if (!normalized) return ''
+  return normalized.slice(0, 4096)
+}
+
+function collectDeepLinkUrls(searchParams) {
+  const params = searchParams instanceof URLSearchParams ? searchParams : new URLSearchParams('')
+  const dedupe = new Set()
+
+  const appendUrl = (candidate) => {
+    const normalized = sanitizeDeepLinkCandidateUrl(candidate)
+    if (!normalized || dedupe.has(normalized)) return
+    dedupe.add(normalized)
+  }
+
+  const parseBatch = (value) => {
+    const normalized = String(value || '').replace(/\r/g, '\n').trim()
+    if (!normalized) return
+
+    if (normalized.startsWith('[') && normalized.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(normalized)
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            appendUrl(item)
+          }
+          return
+        }
+      } catch {
+        // fallback to plain text parsing
+      }
+    }
+
+    if (normalized.includes('\n')) {
+      for (const line of normalized.split('\n')) {
+        appendUrl(line)
+      }
+      return
+    }
+
+    appendUrl(normalized)
+  }
+
+  for (const value of params.getAll('url')) {
+    appendUrl(value)
+  }
+
+  for (const value of params.getAll('urls')) {
+    parseBatch(value)
+  }
+
+  if (dedupe.size === 0) {
+    const sourceUrl = params.get('source')
+    if (sourceUrl) {
+      appendUrl(sourceUrl)
+    }
+  }
+
+  return Array.from(dedupe).slice(0, 50)
+}
+
+function createDeepLinkId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+}
+
+function normalizeDeepLinkPayload(rawUrl, source = 'unknown') {
+  const inputUrl = String(rawUrl || '').trim()
+  if (!inputUrl) return null
+
+  let parsed = null
+  try {
+    parsed = new URL(inputUrl)
+  } catch {
+    return null
+  }
+
+  if (String(parsed.protocol || '').toLowerCase() !== `${DEEP_LINK_PROTOCOL}:`) {
+    return null
+  }
+
+  const actionFromHost = String(parsed.hostname || '').trim().toLowerCase()
+  const actionFromPath = String(parsed.pathname || '').replace(/^\/+/, '').split('/')[0].trim().toLowerCase()
+  const action = actionFromHost || actionFromPath || 'open'
+
+  const targetRaw = String(parsed.searchParams.get('target') || '').trim().toLowerCase()
+  const target = (targetRaw === 'current' || targetRaw === 'current-tab')
+    ? 'current-tab'
+    : 'new-tab'
+
+  const service = String(parsed.searchParams.get('service') || '').trim().toLowerCase().slice(0, 40)
+  const urls = collectDeepLinkUrls(parsed.searchParams)
+
+  return {
+    id: createDeepLinkId(),
+    rawUrl: inputUrl,
+    source: String(source || '').trim().slice(0, 48) || 'unknown',
+    action,
+    target,
+    service,
+    urls,
+    receivedAt: Date.now(),
+  }
+}
+
+function extractDeepLinkUrlFromArgv(commandLine = []) {
+  if (!Array.isArray(commandLine)) return ''
+  const prefix = `${DEEP_LINK_PROTOCOL}://`
+
+  for (const arg of commandLine) {
+    const candidate = String(arg || '').trim()
+    if (!candidate) continue
+    if (candidate.toLowerCase().startsWith(prefix)) {
+      return candidate
+    }
+  }
+
+  return ''
+}
+
+function registerDeepLinkProtocol() {
+  try {
+    if (process.defaultApp) {
+      const appEntryPath = path.resolve(process.argv[1] || app.getAppPath())
+      app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [appEntryPath])
+      return
+    }
+
+    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL)
+  } catch {
+    // ignore protocol registration errors (for example restricted runtime)
+  }
+}
+
+function enqueuePendingDeepLink(payload) {
+  if (!payload || typeof payload !== 'object') return
+  pendingDeepLinkPayloads.push(payload)
+
+  if (pendingDeepLinkPayloads.length > 40) {
+    pendingDeepLinkPayloads.splice(0, pendingDeepLinkPayloads.length - 40)
+  }
+}
+
+function getPendingDeepLinksAndClear() {
+  if (pendingDeepLinkPayloads.length === 0) return []
+  return pendingDeepLinkPayloads.splice(0, pendingDeepLinkPayloads.length)
+}
+
+function emitDeepLinkEvent(payload) {
+  if (!deepLinkRendererReady) return false
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+
+  try {
+    mainWindow.webContents.send(DEEP_LINK_EVENT_CHANNEL, {
+      type: 'received',
+      payload,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function handleIncomingDeepLink(rawUrl, source = 'unknown') {
+  const payload = normalizeDeepLinkPayload(rawUrl, source)
+  if (!payload) return false
+
+  // Deep links should bring the app to foreground so users can immediately confirm/edit.
+  if (app.isReady()) {
+    revealMainWindow()
+  }
+
+  if (emitDeepLinkEvent(payload)) {
+    return true
+  }
+
+  enqueuePendingDeepLink(payload)
+  return true
+}
+
 function createEmptyUpdateProgress() {
   return { ...UPDATE_PROGRESS_EMPTY }
 }
@@ -1899,6 +2336,107 @@ function emitWindowState() {
   }
 }
 
+function resolveTrayIconPath() {
+  const preferredPath = resolveWindowIconPath()
+  if (preferredPath && fs.existsSync(preferredPath)) {
+    return preferredPath
+  }
+
+  const fallbackPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'frontend', 'dist', 'favicon-96x96.png')
+    : path.join(app.getAppPath(), 'frontend', 'public', 'favicon-96x96.png')
+
+  return fs.existsSync(fallbackPath) ? fallbackPath : ''
+}
+
+function revealMainWindow() {
+  if (!app.isReady()) return
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow()
+    return
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+
+  if (!mainWindow.isVisible()) {
+    mainWindow.show()
+  }
+
+  if (!mainWindow.isFocused()) {
+    mainWindow.focus()
+  }
+}
+
+function hideMainWindowToTray() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (!mainWindow.isVisible()) return
+  mainWindow.hide()
+}
+
+function buildTrayContextMenu() {
+  return Menu.buildFromTemplate([
+    {
+      label: APP_NAME,
+      click: () => {
+        revealMainWindow()
+      },
+    },
+    { type: 'separator' },
+    {
+      role: 'quit',
+    },
+  ])
+}
+
+function ensureTray() {
+  if (tray) {
+    return tray
+  }
+
+  const trayIconPath = resolveTrayIconPath()
+  if (!trayIconPath) {
+    return null
+  }
+
+  try {
+    tray = new Tray(trayIconPath)
+  } catch {
+    tray = null
+    return null
+  }
+
+  tray.setToolTip(APP_NAME)
+  tray.setContextMenu(buildTrayContextMenu())
+
+  tray.on('click', () => {
+    revealMainWindow()
+  })
+
+  tray.on('double-click', () => {
+    revealMainWindow()
+  })
+
+  return tray
+}
+
+function destroyTray() {
+  if (!tray) {
+    tray = null
+    return
+  }
+
+  try {
+    tray.destroy()
+  } catch {
+    // ignore destroy races
+  }
+
+  tray = null
+}
+
 function buildEditableFieldContextMenu(editFlags = {}) {
   const flags = (editFlags && typeof editFlags === 'object') ? editFlags : {}
   const canUse = (key) => Boolean(flags[key])
@@ -1973,6 +2511,30 @@ function registerWindowIpcHandlers() {
   })
 
   ipcMain.handle('window:get-state', () => getWindowStatePayload())
+}
+
+function registerDesktopSettingsIpcHandlers() {
+  if (desktopSettingsIpcRegistered) return
+  desktopSettingsIpcRegistered = true
+
+  ipcMain.handle('desktop-settings:get', () => getDesktopSettingsSnapshot())
+
+  ipcMain.handle('desktop-settings:update', (_event, payload = {}) => {
+    return setDesktopSettingsValues(payload)
+  })
+
+  ipcMain.on('deep-link:renderer-ready', () => {
+    deepLinkRendererReady = true
+  })
+}
+
+function registerDeepLinkIpcHandlers() {
+  if (deepLinkIpcRegistered) return
+  deepLinkIpcRegistered = true
+
+  ipcMain.handle('deep-link:get-pending', () => {
+    return getPendingDeepLinksAndClear()
+  })
 }
 
 function registerUpdaterIpcHandlers() {
@@ -2410,8 +2972,13 @@ function createMainWindow() {
       sandbox: false,
     },
   })
+  deepLinkRendererReady = false
 
   registerEditableFieldContextMenu(mainWindow)
+
+  mainWindow.webContents.on('did-start-loading', () => {
+    deepLinkRendererReady = false
+  })
 
   mainWindow.on('move', () => {
     scheduleWindowStateSave()
@@ -2440,20 +3007,36 @@ function createMainWindow() {
   })
 
   mainWindow.on('close', (event) => {
-    if (!isUpdateDownloadInProgress()) return
+    if (isUpdateDownloadInProgress()) {
+      event.preventDefault()
+      notifyCloseBlockedWhileDownloading()
+      return
+    }
+
+    if (forceCloseRequested || shuttingDown) return
+    if (!desktopSettings.closeToTrayOnWindowClose) return
+
     event.preventDefault()
-    notifyCloseBlockedWhileDownloading()
+    hideMainWindowToTray()
   })
 
   mainWindow.on('closed', () => {
+    deepLinkRendererReady = false
     mainWindow = null
   })
 
   mainWindow.once('ready-to-show', () => {
     if (!mainWindow) return
-    mainWindow.show()
+
+    if (shouldLaunchWindowHidden()) {
+      mainWindow.hide()
+    } else {
+      mainWindow.show()
+    }
+
     emitWindowState()
     emitUpdaterEvent('state-sync')
+    emitDesktopSettingsEvent('state-sync')
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -2490,11 +3073,16 @@ function createMainWindow() {
 if (hasSingleInstanceLock) {
   app.whenReady().then(() => {
     registerWindowIpcHandlers()
+    registerDesktopSettingsIpcHandlers()
+    registerDeepLinkIpcHandlers()
     registerUpdaterIpcHandlers()
     registerDependencyBootstrapIpcHandlers()
     registerDownloadsIpcHandlers()
     registerDownloadInterception()
+    configureDesktopSettings()
+    registerDeepLinkProtocol()
     configureAutoUpdater()
+    ensureTray()
 
     const runtimePaths = getRuntimeToolsPaths()
     const hasRuntimeTools = (
@@ -2514,6 +3102,11 @@ if (hasSingleInstanceLock) {
 
     createMainWindow()
 
+    const launchDeepLinkUrl = extractDeepLinkUrlFromArgv(process.argv)
+    if (launchDeepLinkUrl) {
+      handleIncomingDeepLink(launchDeepLinkUrl, 'launch')
+    }
+
     ensureRuntimeDependencies()
       .then((result) => {
         if (!result?.ok) return
@@ -2524,6 +3117,11 @@ if (hasSingleInstanceLock) {
       })
 
     app.on('activate', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        revealMainWindow()
+        return
+      }
+
       if (BrowserWindow.getAllWindows().length === 0) {
         createMainWindow()
       }
@@ -2538,6 +3136,7 @@ app.on('before-quit', (event) => {
     return
   }
 
+  forceCloseRequested = true
   shuttingDown = true
   clearDependencyBootstrapRetryTimer()
   clearPeriodicUpdateCheckTimer()
@@ -2546,6 +3145,7 @@ app.on('before-quit', (event) => {
     windowStateSaveTimer = null
   }
   writeWindowStateNow()
+  destroyTray()
   stopBackendProcess()
 })
 

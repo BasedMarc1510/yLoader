@@ -64,6 +64,13 @@ docker pull yloader/yloader
 Download and run the installer for your operating system from the links above.
 On first launch, yLoader downloads the required runtime tools (yt-dlp and ffmpeg) and blocks downloads until setup is complete.
 
+Electron-only behavior (Settings > General):
+
+- Optional close-to-tray mode (disabled by default)
+- Tray icon is always available while the app is running
+- Autostart at system boot with selectable startup mode (normal window or tray-only)
+- Deep-link protocol registration via `yloader://` for app handoff integrations
+
 ### Option 2: Docker Hub
 
 ```bash
@@ -109,6 +116,7 @@ npm run start:electron
 ```
 
 The local Electron runtime also performs a first-run yt-dlp/ffmpeg setup inside the Electron user-data directory.
+Deep links are also registered in local Electron dev mode (`npm run start:electron`) so browser-extension style handoff flows can be tested without a packaged build.
 
 For a fresh Electron reset (clears local settings/state plus local yt-dlp/ffmpeg cache before launch):
 

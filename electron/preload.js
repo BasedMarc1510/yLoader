@@ -96,6 +96,55 @@ const downloads = {
   settingsUpdated: () => ipcRenderer.invoke('downloads:settings-updated'),
 }
 
+const desktopSettings = {
+  get: () => ipcRenderer.invoke('desktop-settings:get'),
+  update: (patch = {}) => {
+    const payload = {}
+
+    if (Object.prototype.hasOwnProperty.call(patch || {}, 'closeToTrayOnWindowClose')) {
+      payload.closeToTrayOnWindowClose = patch.closeToTrayOnWindowClose
+    }
+    if (Object.prototype.hasOwnProperty.call(patch || {}, 'startOnSystemStartup')) {
+      payload.startOnSystemStartup = patch.startOnSystemStartup
+    }
+    if (Object.prototype.hasOwnProperty.call(patch || {}, 'startupWindowMode')) {
+      payload.startupWindowMode = patch.startupWindowMode
+    }
+
+    return ipcRenderer.invoke('desktop-settings:update', payload)
+  },
+  onEvent: (callback) => {
+    if (typeof callback !== 'function') return () => {}
+
+    const listener = (_event, payload) => {
+      callback(payload || {})
+    }
+
+    ipcRenderer.on('desktop-settings:event', listener)
+    return () => {
+      ipcRenderer.removeListener('desktop-settings:event', listener)
+    }
+  },
+}
+
+const deepLinks = {
+  getPending: () => ipcRenderer.invoke('deep-link:get-pending'),
+  onEvent: (callback) => {
+    if (typeof callback !== 'function') return () => {}
+
+    const listener = (_event, payload) => {
+      callback(payload || {})
+    }
+
+    ipcRenderer.on('deep-link:event', listener)
+    return () => {
+      ipcRenderer.removeListener('deep-link:event', listener)
+    }
+  },
+}
+
+ipcRenderer.send('deep-link:renderer-ready')
+
 contextBridge.exposeInMainWorld('yloaderRuntime', {
   apiBase,
   isElectron: true,
@@ -105,4 +154,6 @@ contextBridge.exposeInMainWorld('yloaderRuntime', {
   appUpdater,
   dependencyBootstrap,
   downloads,
+  desktopSettings,
+  deepLinks,
 })

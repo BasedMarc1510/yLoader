@@ -54,6 +54,14 @@
         "provider": "github"
       }
     ],
+    "protocols": [
+      {
+        "name": "yLoader",
+        "schemes": [
+          "yloader"
+        ]
+      }
+    ],
     "files": [
       "electron/**/*",
       "package.json"
