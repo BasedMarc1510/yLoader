@@ -15,6 +15,14 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
         : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',
     },
   }), [theme.palette.mode])
+  const durationSkeletonSx = React.useMemo(() => ({
+    bgcolor: 'rgba(0,0,0,0.88)',
+    border: '1px solid rgba(255,255,255,0.18)',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.4)',
+    '&::after': {
+      background: 'linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.42), rgba(255,255,255,0))',
+    },
+  }), [])
 
   const handleClick = () => {
     if (!interactive) return
@@ -93,7 +101,7 @@ export default function MediaSummary({ thumbnail, title, author, duration, url, 
             right: 4,
             bottom: 4,
           }}>
-            <Skeleton variant="rounded" width={46} height={18} animation="wave" sx={{ ...skeletonSx, borderRadius: 0.75 }} />
+            <Skeleton variant="rounded" width={52} height={20} animation="wave" sx={{ ...durationSkeletonSx, borderRadius: 0.75 }} />
           </Box>
         ) : duration && (
           <Box

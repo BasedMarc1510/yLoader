@@ -2,7 +2,6 @@ import React from 'react'
 import {
   GENERIC_SERVICE_KEY,
   detectService,
-  fetchDuration,
   fetchFormats,
   fetchNoembed,
   getApiBase,
@@ -223,13 +222,17 @@ export function useAutoDownload({
 
     try {
       const normalized = normalizeUrlForNoembed(target)
-      const [autoSettings, downloadSettingsForNaming, formatsData, noembedData, durationData] = await Promise.all([
+      const [autoSettings, downloadSettingsForNaming, formatsData, noembedData] = await Promise.all([
         fetchAutoDownloadSettingsFromServer(),
         fetchDownloadSettingsForNaming(),
         fetchFormats(normalized).catch(() => ({ audioFormats: [], videoFormats: [] })),
         fetchNoembed(normalized).catch(() => ({})),
-        fetchDuration(normalized).catch(() => ({ duration: null, durationString: null })),
       ])
+
+      const formatDurationRaw = Number(formatsData?.duration)
+      const resolvedDuration = Number.isFinite(formatDurationRaw) && formatDurationRaw >= 0
+        ? formatDurationRaw
+        : null
 
       const isAudio = autoDownloadFormat === 'mp3'
       const rawTitle = String(noembedData?.title || '').trim() || target
@@ -268,7 +271,7 @@ export function useAutoDownload({
         url: normalized,
         service: serviceKey || GENERIC_SERVICE_KEY,
         type: isAudio ? 'audio' : 'video',
-        duration: durationData?.duration ?? null,
+        duration: resolvedDuration,
         videoTitle: rawTitle,
         videoAuthor: rawAuthor,
         format: isAudio ? 'mp3' : 'mp4',

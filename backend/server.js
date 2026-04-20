@@ -120,8 +120,8 @@ const DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 216
 const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
 const DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH = 180
 const DOWNLOAD_FILENAME_PATTERN_TOKEN_REGEX = /\{(title|artist|uploader|service|type|id|date|time|datetime)\}/gi
-const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
-const META_FORMATS_CACHE_MAX_ENTRIES = 150
+const META_FORMATS_CACHE_TTL_MS = 10 * 60 * 1000
+const META_FORMATS_CACHE_MAX_ENTRIES = 500
 const SEARCH_PROVIDER_OPTIONS = new Set(['youtube', 'youtubemusic', 'spotify', 'soundcloud'])
 const SEARCH_QUERY_MAX_LENGTH = 300
 const SEARCH_PAGE_SIZE = 10
@@ -170,6 +170,7 @@ const APP_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
 const TOOL_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 const TOOL_UPDATE_SCHEDULER_TICK_MS = 5 * 60 * 1000
 const metaFormatsCache = new Map()
+const metaFormatsInFlight = new Map()
 const ALLOWED_TAB_PATHS = new Set([
   '/',
   '/search',
@@ -2452,6 +2453,459 @@ function formatDurationLabel(durationSeconds) {
   return `${pad2(m)}:${pad2(s)}`
 }
 
+function pickFirstNonEmptyText(...values) {
+  for (const value of values) {
+    const normalized = String(value || '').trim()
+    if (normalized) return normalized
+  }
+  return ''
+}
+
+function compareNumberDesc(a, b) {
+  const aNum = Number.isFinite(Number(a)) ? Number(a) : 0
+  const bNum = Number.isFinite(Number(b)) ? Number(b) : 0
+  if (aNum === bNum) return 0
+  return bNum - aNum
+}
+
+function parseFormatIdNumericValue(value) {
+  const match = String(value || '').match(/(\d+(?:\.\d+)?)/)
+  if (!match || !match[1]) return 0
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function compareAudioFormatQuality(a, b) {
+  const byAbr = compareNumberDesc(a?.abr, b?.abr)
+  if (byAbr !== 0) return byAbr
+
+  const byFilesize = compareNumberDesc(a?.filesize, b?.filesize)
+  if (byFilesize !== 0) return byFilesize
+
+  const byFormatNumeric = compareNumberDesc(
+    parseFormatIdNumericValue(a?.formatId),
+    parseFormatIdNumericValue(b?.formatId),
+  )
+  if (byFormatNumeric !== 0) return byFormatNumeric
+
+  return String(a?.formatId || '').localeCompare(String(b?.formatId || ''), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+}
+
+function compareVideoFormatQuality(a, b) {
+  const byHeight = compareNumberDesc(a?.height, b?.height)
+  if (byHeight !== 0) return byHeight
+
+  const byWidth = compareNumberDesc(a?.width, b?.width)
+  if (byWidth !== 0) return byWidth
+
+  const byFps = compareNumberDesc(a?.fps, b?.fps)
+  if (byFps !== 0) return byFps
+
+  const byRequiresMerge = Number(Boolean(a?.requiresMerge)) - Number(Boolean(b?.requiresMerge))
+  if (byRequiresMerge !== 0) return byRequiresMerge
+
+  const byFilesize = compareNumberDesc(a?.filesize, b?.filesize)
+  if (byFilesize !== 0) return byFilesize
+
+  const byFormatNumeric = compareNumberDesc(
+    parseFormatIdNumericValue(a?.formatId),
+    parseFormatIdNumericValue(b?.formatId),
+  )
+  if (byFormatNumeric !== 0) return byFormatNumeric
+
+  return String(a?.formatId || '').localeCompare(String(b?.formatId || ''), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+}
+
+function hasUsableMetaFormats(data) {
+  const formats = Array.isArray(data?.formats) ? data.formats : []
+  for (const rawFormat of formats) {
+    if (!rawFormat || typeof rawFormat !== 'object') continue
+    if (sanitizeFormatId(rawFormat.format_id)) return true
+  }
+  return false
+}
+
+function pickMetaInfoCandidate(data) {
+  const root = (data && typeof data === 'object') ? data : {}
+  if (hasUsableMetaFormats(root)) return root
+
+  const entries = Array.isArray(root?.entries) ? root.entries : []
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue
+    if (hasUsableMetaFormats(entry)) return entry
+  }
+
+  return root
+}
+
+function collectMetaCacheKeys(sourceUrl, ...metadataObjects) {
+  const keys = new Set()
+
+  const addKey = (value) => {
+    const normalized = String(value || '').trim()
+    if (!isValidHttpUrl(normalized)) return
+    keys.add(normalized)
+  }
+
+  addKey(sourceUrl)
+
+  for (const metadata of metadataObjects) {
+    if (!metadata || typeof metadata !== 'object') continue
+
+    addKey(metadata?.webpage_url)
+    addKey(metadata?.original_url)
+    addKey(metadata?.url)
+
+    const entries = Array.isArray(metadata?.entries) ? metadata.entries : []
+    for (const entry of entries.slice(0, 5)) {
+      if (!entry || typeof entry !== 'object') continue
+      addKey(entry?.webpage_url)
+      addKey(entry?.url)
+    }
+  }
+
+  return [...keys]
+}
+
+function appendMetaProbeTarget(targets, seenTargets, value) {
+  const candidate = String(value || '').trim()
+  if (!isValidHttpUrl(candidate)) return
+  if (seenTargets.has(candidate)) return
+
+  seenTargets.add(candidate)
+  targets.push(candidate)
+}
+
+function collectMetaProbeTargets(sourceUrl, data) {
+  const source = String(sourceUrl || '').trim()
+  const targets = []
+  const seenTargets = new Set()
+
+  const sourceHost = (() => {
+    try {
+      return String(new NodeURL(source).hostname || '').trim().toLowerCase()
+    } catch {
+      return ''
+    }
+  })()
+  const sourceLooksLikeYouTube = sourceHost.includes('youtube.com') || sourceHost.includes('youtu.be')
+
+  appendMetaProbeTarget(targets, seenTargets, data?.webpage_url)
+  appendMetaProbeTarget(targets, seenTargets, data?.original_url)
+  appendMetaProbeTarget(targets, seenTargets, data?.url)
+
+  const entries = Array.isArray(data?.entries) ? data.entries : []
+  for (const entry of entries.slice(0, 5)) {
+    if (!entry || typeof entry !== 'object') continue
+
+    appendMetaProbeTarget(targets, seenTargets, entry?.webpage_url)
+    appendMetaProbeTarget(targets, seenTargets, entry?.url)
+
+    if (sourceLooksLikeYouTube) {
+      const entryId = String(entry?.id || '').trim()
+      if (entryId) {
+        appendMetaProbeTarget(targets, seenTargets, `https://www.youtube.com/watch?v=${encodeURIComponent(entryId)}`)
+      }
+    }
+  }
+
+  return targets.filter((target) => target !== source)
+}
+
+function shouldRetryMetaProbe(errorDetails) {
+  const normalized = String(errorDetails || '').trim().toLowerCase()
+  if (!normalized) return false
+
+  const retryNeedles = [
+    'timed out',
+    'timeout',
+    'http error 429',
+    'too many requests',
+    'temporarily unavailable',
+    'temporary failure',
+    'connection reset',
+    'network is unreachable',
+    'remote end closed connection',
+    'ssl',
+    'unable to download webpage',
+    'server returned 5',
+  ]
+
+  return retryNeedles.some((needle) => normalized.includes(needle))
+}
+
+async function runYtDlpMetaProbeForUrl(targetUrl, {
+  timeoutMs = 65 * 1000,
+  maxBuffer = 80 * 1024 * 1024,
+  retries = 1,
+  flatPlaylist = false,
+} = {}) {
+  const normalizedTarget = String(targetUrl || '').trim()
+  if (!isValidHttpUrl(normalizedTarget)) {
+    throw new Error('Invalid metadata probe url')
+  }
+
+  const probeArgs = [
+    '--dump-single-json',
+    '--no-warnings',
+    '--skip-download',
+    '--quiet',
+  ]
+
+  if (flatPlaylist) {
+    probeArgs.push('--flat-playlist', '--playlist-end', '5')
+  } else {
+    probeArgs.push('--no-playlist')
+  }
+
+  const args = await buildYtDlpNetworkArgs([...probeArgs, normalizedTarget])
+
+  let attempt = 0
+  while (attempt <= retries) {
+    try {
+      const out = await runCmd(YT_DLP, args, {
+        timeout: timeoutMs,
+        maxBuffer,
+      })
+      return parseYtDlpJson(out)
+    } catch (err) {
+      const details = extractCommandErrorDetails(err)
+      if (attempt >= retries || !shouldRetryMetaProbe(details)) {
+        throw err
+      }
+    }
+
+    attempt += 1
+  }
+
+  throw new Error('yt-dlp metadata probe failed')
+}
+
+function buildMetaFormatsPayloadFromYtDlpData(data, fallbackData = null) {
+  const primary = (data && typeof data === 'object') ? data : {}
+  const secondary = (fallbackData && typeof fallbackData === 'object') ? fallbackData : {}
+  const preferred = pickMetaInfoCandidate(primary)
+  const source = (preferred && typeof preferred === 'object') ? preferred : primary
+
+  const rawFormats = Array.isArray(source?.formats)
+    ? source.formats
+    : (Array.isArray(primary?.formats) ? primary.formats : [])
+
+  const audioByKey = new Map()
+  const videoByKey = new Map()
+
+  for (const rawFormat of rawFormats) {
+    if (!rawFormat || typeof rawFormat !== 'object') continue
+
+    const formatId = sanitizeFormatId(rawFormat?.format_id)
+    if (!formatId) continue
+
+    const ext = String(rawFormat?.ext || '').trim().slice(0, 12)
+    const acodec = String(rawFormat?.acodec || 'none').trim() || 'none'
+    const vcodec = String(rawFormat?.vcodec || 'none').trim() || 'none'
+
+    const widthRaw = Number(rawFormat?.width)
+    const heightRaw = Number(rawFormat?.height)
+    const fpsRaw = Number(rawFormat?.fps)
+    const abrRaw = Number(rawFormat?.abr)
+    const tbrRaw = Number(rawFormat?.tbr)
+    const asrRaw = Number(rawFormat?.asr)
+    const audioChannelsRaw = Number(rawFormat?.audio_channels)
+    const filesizeRaw = Number(rawFormat?.filesize ?? rawFormat?.filesize_approx)
+
+    const width = Number.isFinite(widthRaw) && widthRaw > 0 ? Math.round(widthRaw) : 0
+    const height = Number.isFinite(heightRaw) && heightRaw > 0 ? Math.round(heightRaw) : 0
+    const fps = Number.isFinite(fpsRaw) && fpsRaw > 0 ? Math.round(fpsRaw * 100) / 100 : 0
+    const abr = Number.isFinite(abrRaw) && abrRaw > 0
+      ? Math.round(abrRaw)
+      : (Number.isFinite(tbrRaw) && tbrRaw > 0 ? Math.round(tbrRaw) : 0)
+    const asr = Number.isFinite(asrRaw) && asrRaw > 0 ? Math.round(asrRaw) : 0
+    const audioChannels = Number.isFinite(audioChannelsRaw) && audioChannelsRaw > 0 ? Math.round(audioChannelsRaw) : 0
+    const filesize = Number.isFinite(filesizeRaw) && filesizeRaw > 0 ? Math.round(filesizeRaw) : 0
+
+    const resolutionLabel = String(rawFormat?.resolution || '').trim()
+    const hasAudio = acodec !== 'none' || abr > 0 || asr > 0 || audioChannels > 0
+    const hasVideo = vcodec !== 'none'
+      || (width > 0 && height > 0)
+      || fps > 0
+      || (resolutionLabel.includes('x') && resolutionLabel.toLowerCase() !== 'audio only')
+
+    if (hasAudio && !hasVideo) {
+      const audioCandidate = {
+        formatId,
+        ext,
+        abr,
+        acodec,
+        filesize,
+      }
+
+      const audioKey = `${formatId}:${ext}`
+      const currentAudio = audioByKey.get(audioKey)
+      if (!currentAudio || compareAudioFormatQuality(audioCandidate, currentAudio) < 0) {
+        audioByKey.set(audioKey, audioCandidate)
+      }
+    }
+
+    if (hasVideo) {
+      const resolution = resolutionLabel && resolutionLabel.toLowerCase() !== 'audio only'
+        ? resolutionLabel
+        : (width > 0 && height > 0 ? `${width}x${height}` : null)
+
+      const videoCandidate = {
+        formatId,
+        ext,
+        resolution,
+        width,
+        height,
+        vcodec,
+        acodec,
+        filesize,
+        fps,
+        requiresMerge: acodec === 'none',
+      }
+
+      const videoKey = `${formatId}:${ext}:${acodec}`
+      const currentVideo = videoByKey.get(videoKey)
+      if (!currentVideo || compareVideoFormatQuality(videoCandidate, currentVideo) < 0) {
+        videoByKey.set(videoKey, videoCandidate)
+      }
+    }
+  }
+
+  const audioFormats = [...audioByKey.values()].sort(compareAudioFormatQuality)
+  const videoFormats = [...videoByKey.values()].sort(compareVideoFormatQuality)
+
+  const thumbnails = buildTabDownloaderThumbnailOptions(
+    Array.isArray(source?.thumbnails) ? source.thumbnails : (Array.isArray(primary?.thumbnails) ? primary.thumbnails : secondary?.thumbnails),
+    source?.thumbnail || primary?.thumbnail || secondary?.thumbnail,
+  )
+
+  const durationRaw = Number(source?.duration ?? primary?.duration ?? secondary?.duration)
+  const duration = Number.isFinite(durationRaw) && durationRaw >= 0 ? durationRaw : null
+  const rawDurationString = pickFirstNonEmptyText(source?.duration_string, primary?.duration_string, secondary?.duration_string)
+  const durationString = formatDurationLabel(duration) || rawDurationString || null
+
+  const title = pickFirstNonEmptyText(source?.title, primary?.title, secondary?.title)
+  const author = pickFirstNonEmptyText(
+    source?.uploader,
+    source?.channel,
+    source?.creator,
+    source?.uploader_id,
+    primary?.uploader,
+    primary?.channel,
+    primary?.creator,
+    primary?.uploader_id,
+    secondary?.uploader,
+    secondary?.channel,
+    secondary?.creator,
+    secondary?.uploader_id,
+  )
+  const extractor = pickFirstNonEmptyText(source?.extractor_key, source?.extractor, primary?.extractor_key, primary?.extractor, secondary?.extractor_key, secondary?.extractor)
+  const thumbnail = pickFirstNonEmptyText(source?.thumbnail, primary?.thumbnail, thumbnails?.[0]?.url) || null
+
+  return {
+    title,
+    author,
+    extractor,
+    thumbnail,
+    duration,
+    durationString,
+    audioFormats,
+    videoFormats,
+    thumbnails,
+  }
+}
+
+async function resolveMetaFormatsPayload(url) {
+  const key = String(url || '').trim()
+  if (!key) throw new Error('Missing url')
+
+  const cachedPayload = readCachedMetaFormats(key)
+  if (cachedPayload) return cachedPayload
+
+  const inFlightPromise = metaFormatsInFlight.get(key)
+  if (inFlightPromise) {
+    return inFlightPromise
+  }
+
+  const requestPromise = (async () => {
+    let primaryData = null
+    let resolvedData = null
+    let lastError = null
+
+    try {
+      primaryData = await runYtDlpMetaProbeForUrl(key)
+      resolvedData = primaryData
+    } catch (err) {
+      lastError = err
+    }
+
+    let probeTargets = collectMetaProbeTargets(key, resolvedData)
+
+    if ((!resolvedData || !hasUsableMetaFormats(resolvedData)) && probeTargets.length === 0) {
+      try {
+        const playlistProbe = await runYtDlpMetaProbeForUrl(key, {
+          flatPlaylist: true,
+          retries: 0,
+        })
+        if (!resolvedData) {
+          resolvedData = playlistProbe
+        }
+        probeTargets = collectMetaProbeTargets(key, playlistProbe)
+      } catch (err) {
+        if (!lastError) lastError = err
+      }
+    }
+
+    if ((!resolvedData || !hasUsableMetaFormats(resolvedData)) && probeTargets.length > 0) {
+      for (const probeTarget of probeTargets.slice(0, 5)) {
+        try {
+          const candidateData = await runYtDlpMetaProbeForUrl(probeTarget)
+          if (candidateData && typeof candidateData === 'object') {
+            resolvedData = candidateData
+            if (hasUsableMetaFormats(candidateData)) break
+          }
+        } catch (err) {
+          if (!lastError) lastError = err
+        }
+      }
+    }
+
+    if (!resolvedData || typeof resolvedData !== 'object') {
+      throw (lastError || new Error('yt-dlp did not return metadata'))
+    }
+
+    const payload = buildMetaFormatsPayloadFromYtDlpData(resolvedData, primaryData)
+    const cacheKeys = collectMetaCacheKeys(key, resolvedData, primaryData)
+
+    if (cacheKeys.length === 0) {
+      writeCachedMetaFormats(key, payload)
+    } else {
+      for (const cacheKey of cacheKeys) {
+        writeCachedMetaFormats(cacheKey, payload)
+      }
+    }
+
+    return payload
+  })()
+
+  metaFormatsInFlight.set(key, requestPromise)
+
+  try {
+    return await requestPromise
+  } finally {
+    if (metaFormatsInFlight.get(key) === requestPromise) {
+      metaFormatsInFlight.delete(key)
+    }
+  }
+}
+
 function readCachedMetaFormats(url) {
   const key = String(url || '').trim()
   if (!key) return null
@@ -4344,6 +4798,23 @@ app.get('/api/meta/duration', async (req, res) => {
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
 
   try {
+    const cachedPayload = readCachedMetaFormats(url)
+    if (cachedPayload) {
+      const cachedDuration = Number(cachedPayload?.duration)
+      const duration = Number.isFinite(cachedDuration) ? cachedDuration : null
+      const durationString = formatDurationLabel(duration) || String(cachedPayload?.durationString || '').trim() || null
+      return res.json({ duration, durationString })
+    }
+
+    const inFlightPayload = metaFormatsInFlight.get(url)
+    if (inFlightPayload) {
+      const resolvedPayload = await inFlightPayload
+      const inFlightDuration = Number(resolvedPayload?.duration)
+      const duration = Number.isFinite(inFlightDuration) ? inFlightDuration : null
+      const durationString = formatDurationLabel(duration) || String(resolvedPayload?.durationString || '').trim() || null
+      return res.json({ duration, durationString })
+    }
+
     const durationArgs = await buildYtDlpNetworkArgs(['--no-warnings', '--no-playlist', '--skip-download', '-O', '%(duration)s|%(duration_string)s', url])
     // Print seconds and formatted string separated by pipe to avoid JSON parsing overhead
     const out = await runCmd(
@@ -4361,11 +4832,21 @@ app.get('/api/meta/duration', async (req, res) => {
     // Prefer our robust formatting, fallback to yt-dlp string, then null
     const durationString = formattedDuration || (strRaw && strRaw.trim()) || null
 
-    res.json({ duration: Number.isFinite(duration) ? duration : null, durationString })
+    return res.json({ duration: Number.isFinite(duration) ? duration : null, durationString })
   } catch (err) {
+    try {
+      const payload = await resolveMetaFormatsPayload(url)
+      const payloadDurationRaw = Number(payload?.duration)
+      const payloadDuration = Number.isFinite(payloadDurationRaw) ? payloadDurationRaw : null
+      const payloadDurationString = formatDurationLabel(payloadDuration) || String(payload?.durationString || '').trim() || null
+      return res.json({ duration: payloadDuration, durationString: payloadDurationString })
+    } catch {
+      // fall through to original error response below
+    }
+
     const details = extractCommandErrorDetails(err)
     const ytDlpError = buildYtDlpErrorPayload(details)
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to query duration',
       details: ytDlpError.rawMessage || details,
       ytDlpError,
@@ -4380,95 +4861,14 @@ app.get('/api/meta/formats', async (req, res) => {
   if (!url) return res.status(400).json({ error: 'Missing url' })
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
 
-  const cachedPayload = readCachedMetaFormats(url)
-  if (cachedPayload) {
-    return res.json(cachedPayload)
-  }
-
   try {
-    const formatArgs = await buildYtDlpNetworkArgs(['--no-warnings', '--no-playlist', '--skip-download', '--dump-json', url])
-    // Get format list as JSON
-    // Using --dump-json (same as -J) to retrieve full metadata including thumbnails
-    const out = await runCmd(
-      YT_DLP,
-      formatArgs,
-      { maxBuffer: 50 * 1024 * 1024, timeout: 60000 }
-    )
-    const data = parseYtDlpJson(out)
-
-    const audioFormats = []
-    const videoFormats = []
-
-    // Parse audio formats
-    if (data.formats) {
-      data.formats.forEach(fmt => {
-        if (fmt.vcodec === 'none' && fmt.acodec !== 'none') {
-          // Audio only format
-          audioFormats.push({
-            formatId: fmt.format_id,
-            ext: fmt.ext,
-            abr: fmt.abr || fmt.tbr || 0,
-            acodec: fmt.acodec,
-            filesize: fmt.filesize || fmt.filesize_approx || 0,
-          })
-        } else if (fmt.vcodec !== 'none') {
-          // Video format (include both video-only and muxed with audio)
-          const width = fmt.width || 0
-          const height = fmt.height || 0
-          const resolution = fmt.resolution || (width && height ? `${width}x${height}` : null)
-          videoFormats.push({
-            formatId: fmt.format_id,
-            ext: fmt.ext,
-            resolution,
-            width,
-            height,
-            vcodec: fmt.vcodec,
-            acodec: fmt.acodec || 'none',
-            filesize: fmt.filesize || fmt.filesize_approx || 0,
-            fps: fmt.fps,
-            requiresMerge: fmt.acodec === 'none',
-          })
-        }
-      })
-    }
-
-    // Sort audio formats by bitrate (descending)
-    audioFormats.sort((a, b) => (b.abr || 0) - (a.abr || 0))
-
-    // Sort video formats by resolution (descending)
-    videoFormats.sort((a, b) => {
-      const aHeight = Number(a.resolution?.includes('x') ? a.resolution.split('x')[1] : (a.height || 0)) || 0
-      const bHeight = Number(b.resolution?.includes('x') ? b.resolution.split('x')[1] : (b.height || 0)) || 0
-      return bHeight - aHeight
-    })
-
-    const thumbnails = buildTabDownloaderThumbnailOptions(data?.thumbnails, data?.thumbnail)
-
-    const numericDuration = Number(data?.duration)
-    const duration = Number.isFinite(numericDuration) ? numericDuration : null
-    const rawDurationString = String(data?.duration_string || '').trim()
-    const durationString = formatDurationLabel(duration) || rawDurationString || null
-
-    const payload = {
-      title: String(data?.title || '').trim(),
-      author: String(data?.uploader || data?.channel || data?.creator || data?.uploader_id || '').trim(),
-      extractor: String(data?.extractor_key || data?.extractor || '').trim(),
-      thumbnail: String(data?.thumbnail || thumbnails?.[0]?.url || '').trim() || null,
-      duration,
-      durationString,
-      audioFormats: audioFormats,
-      videoFormats: videoFormats,
-      thumbnails: thumbnails,
-    }
-
-    writeCachedMetaFormats(url, payload)
-
-    res.json(payload)
+    const payload = await resolveMetaFormatsPayload(url)
+    return res.json(payload)
   } catch (err) {
     console.error('Error fetching formats:', err)
     const details = extractCommandErrorDetails(err)
     const ytDlpError = buildYtDlpErrorPayload(details)
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to query formats',
       details: ytDlpError.rawMessage || details,
       ytDlpError,
@@ -4483,44 +4883,22 @@ app.get('/api/meta/thumbnails', async (req, res) => {
   if (!url) return res.status(400).json({ error: 'Missing url' })
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
 
-  const cachedPayload = readCachedMetaFormats(url)
-  if (cachedPayload) {
-    const thumbnails = buildTabDownloaderThumbnailOptions(
-      cachedPayload?.thumbnails,
-      cachedPayload?.thumbnail,
-    )
+  try {
+    const payload = await resolveMetaFormatsPayload(url)
+    const thumbnails = Array.isArray(payload?.thumbnails) ? payload.thumbnails : []
 
     return res.json({
-      title: String(cachedPayload?.title || '').trim(),
-      author: String(cachedPayload?.author || '').trim(),
-      extractor: String(cachedPayload?.extractor || '').trim(),
-      thumbnail: String(cachedPayload?.thumbnail || thumbnails?.[0]?.url || '').trim() || null,
-      thumbnails,
-    })
-  }
-
-  try {
-    const thumbnailArgs = await buildYtDlpNetworkArgs(['--no-warnings', '--no-playlist', '--skip-download', '--dump-json', url])
-    const out = await runCmd(
-      YT_DLP,
-      thumbnailArgs,
-      { maxBuffer: 50 * 1024 * 1024, timeout: 60000 }
-    )
-    const data = parseYtDlpJson(out)
-    const thumbnails = buildTabDownloaderThumbnailOptions(data?.thumbnails, data?.thumbnail)
-
-    res.json({
-      title: String(data?.title || '').trim(),
-      author: String(data?.uploader || data?.channel || data?.creator || data?.uploader_id || '').trim(),
-      extractor: String(data?.extractor_key || data?.extractor || '').trim(),
-      thumbnail: String(data?.thumbnail || thumbnails?.[0]?.url || '').trim() || null,
+      title: String(payload?.title || '').trim(),
+      author: String(payload?.author || '').trim(),
+      extractor: String(payload?.extractor || '').trim(),
+      thumbnail: String(payload?.thumbnail || thumbnails?.[0]?.url || '').trim() || null,
       thumbnails,
     })
   } catch (err) {
     console.error('Error fetching thumbnails:', err)
     const details = extractCommandErrorDetails(err)
     const ytDlpError = buildYtDlpErrorPayload(details)
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to query thumbnails',
       details: ytDlpError.rawMessage || details,
       ytDlpError,

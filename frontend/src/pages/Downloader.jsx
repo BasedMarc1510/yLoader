@@ -2,7 +2,7 @@ import React from 'react'
 import { Box } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import DownloaderShell from '../components/downloader/DownloaderShell'
-import { detectService, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchNoembed, normalizeServiceKey } from '../utils/metadata'
+import { detectService, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchFormats, fetchNoembed, normalizeServiceKey } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import DownloaderLanding from './downloader/DownloaderLanding'
 import FetchErrorPanel from './downloader/FetchErrorPanel'
@@ -90,7 +90,7 @@ export default function Downloader({
     })
   }, [])
 
-  const startDurationFetch = React.useCallback((targetUrl, requestId) => {
+  const startFormatsPrefetch = React.useCallback((targetUrl, requestId) => {
     void (async () => {
       const startedAt = Date.now()
       const settleDurationState = (updater) => {
@@ -107,24 +107,54 @@ export default function Downloader({
       }
 
       try {
-        const payload = await fetchDuration(targetUrl)
+        const payload = await fetchFormats(targetUrl)
         const durationSeconds = normalizeDurationSeconds(payload?.duration)
         const durationLabel = String(payload?.durationString || '').trim() || null
 
+        const preloadedFormats = {
+          title: String(payload?.title || '').trim(),
+          author: String(payload?.author || '').trim(),
+          extractor: String(payload?.extractor || '').trim(),
+          thumbnail: String(payload?.thumbnail || '').trim() || null,
+          duration: durationSeconds ?? null,
+          durationString: durationLabel || null,
+          audioFormats: Array.isArray(payload?.audioFormats) ? payload.audioFormats : [],
+          videoFormats: Array.isArray(payload?.videoFormats) ? payload.videoFormats : [],
+          thumbnails: Array.isArray(payload?.thumbnails) ? payload.thumbnails : [],
+        }
+
         settleDurationState((prevMeta) => ({
           ...prevMeta,
+          title: preloadedFormats.title || prevMeta.title,
+          author: preloadedFormats.author || prevMeta.author,
+          thumbnail: preloadedFormats.thumbnail || prevMeta.thumbnail,
           duration: durationLabel || prevMeta.duration || null,
           durationSeconds: durationSeconds ?? prevMeta.durationSeconds ?? null,
+          preloadedFormats,
           durationLoading: false,
           durationResolved: true,
         }))
       } catch {
-        // Duration is optional for initial usability; resolve loading state silently.
-        settleDurationState((prevMeta) => ({
-          ...prevMeta,
-          durationLoading: false,
-          durationResolved: true,
-        }))
+        try {
+          const durationPayload = await fetchDuration(targetUrl)
+          const durationSeconds = normalizeDurationSeconds(durationPayload?.duration)
+          const durationLabel = String(durationPayload?.durationString || '').trim() || null
+
+          settleDurationState((prevMeta) => ({
+            ...prevMeta,
+            duration: durationLabel || prevMeta.duration || null,
+            durationSeconds: durationSeconds ?? prevMeta.durationSeconds ?? null,
+            durationLoading: false,
+            durationResolved: true,
+          }))
+        } catch {
+          // Duration is optional for initial usability; resolve loading state silently.
+          settleDurationState((prevMeta) => ({
+            ...prevMeta,
+            durationLoading: false,
+            durationResolved: true,
+          }))
+        }
       }
     })()
   }, [updateMetaForRequest])
@@ -192,6 +222,8 @@ export default function Downloader({
             durationResolved: false,
           })
         const hasDurationSeconds = normalizeDurationSeconds(normalizedCachedMeta?.durationSeconds) != null
+        const hasPreloadedFormats = Boolean(normalizedCachedMeta?.preloadedFormats)
+        const shouldRefreshPrefetch = !hasDurationSeconds || !hasPreloadedFormats
         const hydratedCachedMeta = normalizeDownloaderMeta({
           ...normalizedCachedMeta,
           durationLoading: !hasDurationSeconds,
@@ -203,8 +235,8 @@ export default function Downloader({
         setLoading(false)
 
         startNoembedFetch(effectiveService, normalizedUrlParam, cachedRequestId)
-        if (!hasDurationSeconds) {
-          startDurationFetch(normalizedUrlParam, cachedRequestId)
+        if (shouldRefreshPrefetch) {
+          startFormatsPrefetch(normalizedUrlParam, cachedRequestId)
         }
         return
       }
@@ -347,7 +379,7 @@ export default function Downloader({
     setLoading(false)
 
     startNoembedFetch(targetService, target, requestId)
-    startDurationFetch(target, requestId)
+    startFormatsPrefetch(target, requestId)
   }
 
   const basePath = '/'
