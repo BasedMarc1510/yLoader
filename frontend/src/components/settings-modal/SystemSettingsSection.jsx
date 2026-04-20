@@ -33,14 +33,14 @@ function StatusBadge({ status, label }) {
 /**
  * Clickable card for dependency overview.
  */
-function DependencyCard({ icon: Icon, name, version, statusElement, hasUpdate, onClick, t }) {
+function DependencyCard({ icon: Icon, name, version, statusElement, hasUpdate, onClick, t, isMobileLayout = false }) {
   return (
     <Box
       onClick={onClick}
       sx={(theme) => ({
-        flex: '1 1 0',
-        minWidth: 200,
-        p: 2.5,
+        flex: isMobileLayout ? '1 1 100%' : '1 1 0',
+        minWidth: isMobileLayout ? 0 : 200,
+        p: isMobileLayout ? 2 : 2.5,
         borderRadius: '12px',
         bgcolor: theme.palette.mode === 'dark' ? '#1c1c1e' : '#ffffff',
         border: `1px solid ${hasUpdate ? 'rgba(245,158,11,0.4)' : theme.palette.divider}`,
@@ -73,7 +73,7 @@ function DependencyCard({ icon: Icon, name, version, statusElement, hasUpdate, o
                 fontSize: 12,
                 color: 'text.secondary',
                 fontWeight: 500,
-                maxWidth: 150,
+                maxWidth: isMobileLayout ? 220 : 150,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}
@@ -121,6 +121,7 @@ function DependencyDetail({
   onCheckForUpdates,
   logLines,
   t,
+  isMobileLayout = false,
 }) {
   const updateInProgress = Boolean(updating || info?.updateInProgress)
   const autoUpdateBusy = Boolean(toolUpdateSettingsLoading || toolUpdateSettingsSaving)
@@ -154,7 +155,7 @@ function DependencyDetail({
   const latestVersion = info.latestVersion || '-'
 
   return (
-    <Box sx={{ px: 4, pt: 1, pb: 4 }}>
+    <Box sx={{ px: isMobileLayout ? 2 : 4, pt: 1, pb: isMobileLayout ? 2.5 : 4 }}>
       {/* Terminal — always visible when update in progress */}
       {updateInProgress && (
         <Box sx={{ mb: 3 }}>
@@ -196,7 +197,7 @@ function DependencyDetail({
         </SettingRow>
 
         <SettingRow label={pathLabel}>
-          <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', maxWidth: 340, textAlign: 'right', wordBreak: 'break-all' }}>
+          <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary', maxWidth: isMobileLayout ? '100%' : 340, textAlign: 'right', wordBreak: 'break-all' }}>
             {info.loading ? '...' : pathValue}
           </Typography>
         </SettingRow>
@@ -287,6 +288,7 @@ export default function SystemSettingsSection({
   ytLogLines,
   ffmpegLogLines,
   t,
+  isMobileLayout = false,
 }) {
   // Overview mode
   if (!activeDetail) {
@@ -315,12 +317,12 @@ export default function SystemSettingsSection({
       : t('settings.ffmpegAvailable')
 
     return (
-      <Box sx={{ px: 4, pt: 4, pb: 4 }}>
+      <Box sx={{ px: isMobileLayout ? 2 : 4, pt: isMobileLayout ? 2.5 : 4, pb: isMobileLayout ? 2.5 : 4 }}>
         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 3, lineHeight: 1.45, fontSize: 13 }}>
           {t('settings.systemDescription')}
         </Typography>
 
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: isMobileLayout ? 1.5 : 2, flexWrap: 'wrap' }}>
           <DependencyCard
             icon={Video}
             name="yt-dlp"
@@ -329,6 +331,7 @@ export default function SystemSettingsSection({
             hasUpdate={Boolean(ytInfo.outdated)}
             onClick={() => onNavigateToDetail('yt-dlp')}
             t={t}
+            isMobileLayout={isMobileLayout}
           />
           <DependencyCard
             icon={Cpu}
@@ -338,6 +341,7 @@ export default function SystemSettingsSection({
             hasUpdate={Boolean(ffmpegInfo.outdated)}
             onClick={() => onNavigateToDetail('ffmpeg')}
             t={t}
+            isMobileLayout={isMobileLayout}
           />
         </Box>
       </Box>
@@ -361,6 +365,7 @@ export default function SystemSettingsSection({
       onCheckForUpdates={isYtDlp ? onCheckYtUpdates : onCheckFfmpegUpdates}
       logLines={isYtDlp ? ytLogLines : ffmpegLogLines}
       t={t}
+      isMobileLayout={isMobileLayout}
     />
   )
 }

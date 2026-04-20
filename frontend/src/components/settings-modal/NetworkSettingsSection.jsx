@@ -21,6 +21,7 @@ export default function NetworkSettingsSection({
   requestedFocusRequestId,
   t,
   isElectronRuntime,
+  isMobileLayout = false,
 }) {
   const cookieState = normalizeYtDlpCookieSettings(cookieSettings)
   const cookieControlsDisabled = Boolean(cookieSettingsLoading || cookieSettingsSaving)
@@ -40,7 +41,15 @@ export default function NetworkSettingsSection({
   }, [requestedFocusRequestId, requestedFocusTarget])
 
   return (
-    <Box ref={cookieSectionRef} sx={{ px: 4, pt: 4, pb: 4, scrollMarginTop: '32px' }}>
+    <Box
+      ref={cookieSectionRef}
+      sx={{
+        px: isMobileLayout ? 2 : 4,
+        pt: isMobileLayout ? 2.5 : 4,
+        pb: isMobileLayout ? 2.5 : 4,
+        scrollMarginTop: isMobileLayout ? '16px' : '32px',
+      }}
+    >
       <Box sx={{ mb: 2 }}>
         <Typography sx={{ fontWeight: 600, color: 'text.secondary', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           {t('settings.cookieSettingsTitle')}

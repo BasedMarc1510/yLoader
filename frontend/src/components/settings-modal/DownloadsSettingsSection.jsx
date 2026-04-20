@@ -25,6 +25,7 @@ export default function DownloadsSettingsSection({
   selectSx,
   t,
   isElectronRuntime,
+  isMobileLayout = false,
   /* path picker helpers from DownloaderSettingsSection are wired through the parent */
   renderStorageSection,
 }) {
@@ -53,7 +54,14 @@ export default function DownloadsSettingsSection({
   const staggerMax = DOWNLOAD_STAGGER_OPTIONS[DOWNLOAD_STAGGER_OPTIONS.length - 1] || 1000
 
   return (
-    <Box sx={{ px: 4, pt: 4, pb: 4 }} aria-busy={downloadSettingsLoading || autoDownloadLoading}>
+    <Box
+      sx={{
+        px: isMobileLayout ? 2 : 4,
+        pt: isMobileLayout ? 2.5 : 4,
+        pb: isMobileLayout ? 2.5 : 4,
+      }}
+      aria-busy={downloadSettingsLoading || autoDownloadLoading}
+    >
       {/* ─── BASIC: Format Selection ─── */}
       <SettingGroup title={t('settings.downloadsFormatTitle')}>
         <SettingRow

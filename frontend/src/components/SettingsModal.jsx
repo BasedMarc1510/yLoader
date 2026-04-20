@@ -1,6 +1,8 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Dialog, DialogContent, IconButton, List, ListItem, ListItemButton, Typography, Tooltip, Button } from '@mui/material'
+import { Box, Dialog, DialogContent, IconButton, List, ListItem, ListItemButton, Typography, Tooltip, Button, useMediaQuery } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import { X, Settings as SettingsIcon, Download as DownloadIcon, Globe as GlobeIcon, Cpu as CpuIcon, ChevronLeft } from 'lucide-react'
+import { Sheet } from 'react-modal-sheet'
 import { ColorModeContext } from '../providers/ColorModeProvider'
 import { SettingsContext } from '../providers/SettingsProvider'
 import { useI18n } from '../providers/I18nProvider'
@@ -82,6 +84,8 @@ function SettingsModalInner({
   setAppAutoUpdateEnabled,
 }) {
   const { t } = useI18n()
+  const theme = useTheme()
+  const isMobileLayout = useMediaQuery(theme.breakpoints.down('sm'))
   const { mode, setPreference } = useContext(ColorModeContext)
   const { language, setLanguage } = useContext(SettingsContext)
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
@@ -761,19 +765,334 @@ function SettingsModalInner({
   }, [isCloseBlocked, onClose, resetConfirmOpen])
 
   const selectSx = {
-    fontSize: 13,
-    height: 32,
-    minWidth: 140,
+    fontSize: isMobileLayout ? 14 : 13,
+    height: isMobileLayout ? 36 : 32,
+    minWidth: isMobileLayout ? 0 : 140,
+    width: isMobileLayout ? '100%' : 'auto',
     borderRadius: '4px',
     '& .MuiOutlinedInput-root': { transition: 'border-color 180ms ease, background-color 180ms ease' },
     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider', transition: 'border-color 180ms ease' },
-    '& .MuiSelect-select': { py: '6px', px: 1.5 },
+    '& .MuiSelect-select': { py: isMobileLayout ? '7px' : '6px', px: 1.5 },
     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'text.disabled' },
     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: 1 },
   }
 
   const resetConfirmTitleId = 'settings-reset-confirm-title'
   const resetConfirmDescriptionId = 'settings-reset-confirm-description'
+
+  const handleSectionSelect = React.useCallback((nextSection) => {
+    setResetConfirmOpen(false)
+    setSection(nextSection)
+    setSystemDetail(null)
+    setSectionFocusTarget('')
+    setSectionFocusRequestId(String(Date.now()))
+  }, [])
+
+  const renderSectionContent = () => {
+    if (section === 'general') {
+      return (
+        <GeneralSettingsSection
+          language={language}
+          setLanguage={setLanguage}
+          mode={mode}
+          setPreference={setPreference}
+          showAppUpdateSection
+          selectSx={selectSx}
+          t={t}
+          appUpdateState={appUpdateState}
+          isElectronUpdaterAvailable={isElectronUpdaterAvailable}
+          checkForAppUpdates={checkForAppUpdates}
+          downloadAppUpdate={downloadAppUpdate}
+          installAppUpdate={installAppUpdate}
+          setAppAutoUpdateEnabled={setAppAutoUpdateEnabled}
+          isMobileLayout={isMobileLayout}
+        />
+      )
+    }
+
+    if (section === 'downloads') {
+      return (
+        <DownloadsSettingsSection
+          downloadSettings={downloadSettings}
+          downloadSettingsLoading={downloadSettingsLoading}
+          downloadSettingsError={downloadSettingsError}
+          updateDownloadSettings={updateDownloadSettings}
+          autoDownloadSettings={autoDownloadSettings}
+          autoDownloadLoading={autoDownloadLoading}
+          autoDownloadError={autoDownloadError}
+          updateAutoDownloadSettings={updateAutoDownloadSettings}
+          selectSx={selectSx}
+          t={t}
+          isElectronRuntime={isElectronRuntime}
+          isMobileLayout={isMobileLayout}
+        />
+      )
+    }
+
+    if (section === 'network') {
+      return (
+        <NetworkSettingsSection
+          cookieSettings={ytCookieSettings}
+          cookieSettingsLoading={ytCookieSettingsLoading}
+          cookieSettingsSaving={ytCookieSettingsSaving}
+          cookieSettingsError={ytCookieSettingsError}
+          onUpdateCookieSettings={updateYtCookieSettings}
+          onRefreshCookieSettings={fetchYtCookieSettings}
+          requestedFocusTarget={sectionFocusTarget}
+          requestedFocusRequestId={sectionFocusRequestId}
+          t={t}
+          isElectronRuntime={isElectronRuntime}
+          isMobileLayout={isMobileLayout}
+        />
+      )
+    }
+
+    if (section === 'system') {
+      return (
+        <SystemSettingsSection
+          activeDetail={systemDetail}
+          onNavigateToDetail={(detail) => setSystemDetail(detail)}
+          onNavigateBack={() => setSystemDetail(null)}
+          ytInfo={ytInfo}
+          ffmpegInfo={ffmpegInfo}
+          ytAutoUpdateEnabled={toolUpdateSettings.ytDlpAutoUpdate}
+          ffmpegAutoUpdateEnabled={toolUpdateSettings.ffmpegAutoUpdate}
+          ytUpdating={updating}
+          ffmpegUpdating={ffmpegUpdating}
+          startYtUpdate={startUpdate}
+          startFfmpegUpdate={startFfmpegUpdate}
+          onToggleYtAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ytDlp', enabled)}
+          onToggleFfmpegAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ffmpeg', enabled)}
+          toolUpdateSettingsLoading={toolUpdateSettingsLoading}
+          toolUpdateSettingsSaving={toolUpdateSettingsSaving}
+          toolUpdateSettingsError={toolUpdateSettingsError}
+          onCheckYtUpdates={() => fetchStatus({ forceLatest: true })}
+          onCheckFfmpegUpdates={() => fetchFfmpegStatus({ forceLatest: true })}
+          ytLogLines={logLines}
+          ffmpegLogLines={ffmpegLogLines}
+          t={t}
+          isMobileLayout={isMobileLayout}
+        />
+      )
+    }
+
+    return null
+  }
+
+  const renderResetConfirmOverlay = (compactLayout = false) => {
+    if (!resetConfirmOpen || !canResetSection) return null
+
+    return (
+      <Box
+        onClick={handleCancelResetSection}
+        sx={(themeValue) => ({
+          position: 'absolute',
+          inset: 0,
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: compactLayout ? 1.5 : 2,
+          bgcolor: themeValue.palette.mode === 'dark' ? 'rgba(0,0,0,0.62)' : 'rgba(17,24,39,0.24)',
+        })}
+      >
+        <Box
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={resetConfirmTitleId}
+          aria-describedby={resetConfirmDescriptionId}
+          onClick={(event) => event.stopPropagation()}
+          sx={(themeValue) => ({
+            width: compactLayout ? 'min(460px, 100%)' : 'min(420px, 100%)',
+            borderRadius: '12px',
+            p: compactLayout ? 2 : 2.5,
+            bgcolor: themeValue.palette.mode === 'dark' ? '#111111' : '#ffffff',
+            border: `1px solid ${themeValue.palette.divider}`,
+            boxShadow: themeValue.palette.mode === 'dark' ? '0 18px 32px rgba(0,0,0,0.6)' : '0 18px 30px rgba(0,0,0,0.16)',
+          })}
+        >
+          <Typography id={resetConfirmTitleId} sx={{ fontWeight: 700, fontSize: 18, mb: 1 }}>
+            {t('settings.resetConfirmTitle')}
+          </Typography>
+          <Typography id={resetConfirmDescriptionId} sx={{ color: 'text.secondary', fontSize: 14, lineHeight: 1.5 }}>
+            {t('settings.resetConfirmDescription', { section: sectionTitle })}
+          </Typography>
+
+          <Box sx={{ mt: 2.5, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button
+              variant="text"
+              size="small"
+              onClick={handleCancelResetSection}
+              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}
+            >
+              {t('settings.resetConfirmCancel')}
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleConfirmResetSection}
+              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: '8px', boxShadow: 'none' }}
+            >
+              {t('settings.resetConfirmConfirm')}
+            </Button>
+          </Box>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (isMobileLayout) {
+    return (
+      <Sheet
+        isOpen={open}
+        onClose={handleDialogClose}
+        disableDismiss={isCloseBlocked}
+        disableDrag={isCloseBlocked}
+        detent="full"
+        snapPoints={[0, 0.58, 1]}
+        initialSnap={2}
+      >
+        <Sheet.Container
+          style={{
+            borderTopLeftRadius: '16px',
+            borderTopRightRadius: '16px',
+            background: theme.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
+            boxShadow: theme.palette.mode === 'dark'
+              ? '0 -1px 0 rgba(255,255,255,0.12), 0 -12px 36px rgba(0,0,0,0.45)'
+              : '0 -12px 30px rgba(0,0,0,0.18)',
+          }}
+        >
+          <Sheet.Header />
+          <Sheet.Content>
+            <Box
+              sx={{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+                height: '100%',
+              }}
+            >
+              <Box
+                sx={{
+                  px: 2,
+                  pt: 0.25,
+                  pb: 1.25,
+                  borderBottom: `1px solid ${theme.palette.divider}`,
+                  flexShrink: 0,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.3px' }}>{sectionTitle}</Typography>
+                  <IconButton
+                    onClick={handleDialogClose}
+                    disabled={isCloseBlocked}
+                    size="small"
+                    aria-label={t('settings.closeAria')}
+                    sx={{
+                      borderRadius: '8px',
+                      p: '6px',
+                      color: 'text.secondary',
+                      '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                    }}
+                  >
+                    <X size={18} />
+                  </IconButton>
+                </Box>
+
+                <Box
+                  sx={{
+                    mt: 1.25,
+                    display: 'flex',
+                    gap: 0.75,
+                    overflowX: 'auto',
+                    pb: 0.25,
+                    scrollbarWidth: 'none',
+                    '&::-webkit-scrollbar': { display: 'none' },
+                  }}
+                >
+                  {sections.map((entry) => (
+                    <Button
+                      key={entry.key}
+                      variant={section === entry.key ? 'contained' : 'outlined'}
+                      size="small"
+                      onClick={() => handleSectionSelect(entry.key)}
+                      sx={{
+                        textTransform: 'none',
+                        whiteSpace: 'nowrap',
+                        borderRadius: '999px',
+                        px: 1.25,
+                        minWidth: 'auto',
+                        minHeight: 32,
+                        fontWeight: section === entry.key ? 700 : 600,
+                        fontSize: 12.5,
+                        borderColor: 'divider',
+                        color: section === entry.key ? undefined : 'text.secondary',
+                        boxShadow: 'none',
+                        ...(section === entry.key
+                          ? {}
+                          : { '&:hover': { borderColor: 'text.disabled', bgcolor: 'action.hover' } }),
+                      }}
+                      startIcon={<entry.icon size={15} strokeWidth={2.5} />}
+                    >
+                      {entry.label}
+                    </Button>
+                  ))}
+                </Box>
+
+                {section === 'system' && systemDetail && (
+                  <Box sx={{ mt: 0.75 }}>
+                    <Button
+                      variant="text"
+                      size="small"
+                      onClick={() => setSystemDetail(null)}
+                      startIcon={<ChevronLeft size={15} />}
+                      sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px', px: 0.5 }}
+                    >
+                      {t('settings.breadcrumbSystem')}
+                    </Button>
+                  </Box>
+                )}
+
+                {canResetSection && (
+                  <Box sx={{ mt: 0.5, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button
+                      variant="text"
+                      size="small"
+                      disabled={resetDisabled}
+                      onClick={handleRequestResetSection}
+                      sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px', color: 'primary.main' }}
+                    >
+                      {t('settings.resetToDefaults')}
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  pb: 'calc(0.5rem + env(safe-area-inset-bottom))',
+                }}
+              >
+                {renderSectionContent()}
+              </Box>
+
+              {renderResetConfirmOverlay(true)}
+            </Box>
+          </Sheet.Content>
+        </Sheet.Container>
+        <Sheet.Backdrop
+          style={{
+            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.62)' : 'rgba(17,24,39,0.35)',
+          }}
+        />
+      </Sheet>
+    )
+  }
 
   return (
     <Dialog
@@ -783,23 +1102,23 @@ function SettingsModalInner({
       fullWidth
       maxWidth="md"
       PaperProps={{
-        sx: (theme) => ({
+        sx: (themeValue) => ({
           borderRadius: '12px',
           overflow: 'hidden',
-          bgcolor: theme.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
+          bgcolor: themeValue.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
           backgroundImage: 'none',
-          boxShadow: theme.palette.mode === 'dark' ? '0 0 0 1px rgba(255,255,255,0.1), 0 24px 48px rgba(0,0,0,0.5)' : '0 24px 48px rgba(0,0,0,0.15)',
+          boxShadow: themeValue.palette.mode === 'dark' ? '0 0 0 1px rgba(255,255,255,0.1), 0 24px 48px rgba(0,0,0,0.5)' : '0 24px 48px rgba(0,0,0,0.15)',
         }),
       }}
     >
       <DialogContent sx={{ p: 0, position: 'relative', '&:first-of-type': { pt: 0 } }}>
         <Box sx={{ display: 'flex', height: 640 }}>
           {/* ─── SIDEBAR ─── */}
-          <Box sx={(theme) => ({
+          <Box sx={(themeValue) => ({
             width: 240,
             flexShrink: 0,
-            borderRight: `1px solid ${theme.palette.divider}`,
-            bgcolor: theme.palette.mode === 'dark' ? '#1c1c1e' : '#fbfbfb',
+            borderRight: `1px solid ${themeValue.palette.divider}`,
+            bgcolor: themeValue.palette.mode === 'dark' ? '#1c1c1e' : '#fbfbfb',
             display: 'flex',
             flexDirection: 'column',
           })}>
@@ -839,22 +1158,16 @@ function SettingsModalInner({
                   <ListItem key={entry.key} disablePadding sx={{ mb: 0.5 }}>
                     <ListItemButton
                       selected={section === entry.key}
-                      onClick={() => {
-                        setResetConfirmOpen(false)
-                        setSection(entry.key)
-                        setSystemDetail(null)
-                        setSectionFocusTarget('')
-                        setSectionFocusRequestId(String(Date.now()))
-                      }}
-                      sx={(theme) => ({
+                      onClick={() => handleSectionSelect(entry.key)}
+                      sx={(themeValue) => ({
                         borderRadius: '8px',
                         py: '6px',
                         px: 1,
                         '&.Mui-selected': {
-                          bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
-                          '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' },
+                          bgcolor: themeValue.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                          '&:hover': { bgcolor: themeValue.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' },
                         },
-                        '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
+                        '&:hover': { bgcolor: themeValue.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
                       })}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
@@ -874,20 +1187,21 @@ function SettingsModalInner({
                   </ListItem>
                 ))}
               </List>
-
             </SimpleBarScrollArea>
           </Box>
 
           {/* ─── CONTENT AREA ─── */}
-          <Box sx={{
-            flex: 1,
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 0,
-          }}>
+          <Box
+            sx={{
+              flex: 1,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+            }}
+          >
             {/* Header with breadcrumb or title */}
-            <Box sx={(theme) => ({
+            <Box sx={(themeValue) => ({
               px: 4,
               pt: 3,
               pb: 2,
@@ -898,7 +1212,7 @@ function SettingsModalInner({
               position: 'sticky',
               top: 0,
               zIndex: 1,
-              bgcolor: theme.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
+              bgcolor: themeValue.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
             })}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {/* Back button for system detail */}
@@ -907,7 +1221,9 @@ function SettingsModalInner({
                     onClick={() => setSystemDetail(null)}
                     size="small"
                     sx={{
-                      borderRadius: '8px', p: '6px', mr: 0.5,
+                      borderRadius: '8px',
+                      p: '6px',
+                      mr: 0.5,
                       color: 'text.secondary',
                       '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
                     }}
@@ -942,142 +1258,12 @@ function SettingsModalInner({
             </Box>
 
             <SimpleBarScrollArea sx={{ flex: 1, minHeight: 0 }}>
-              {section === 'general' && (
-                <GeneralSettingsSection
-                  language={language}
-                  setLanguage={setLanguage}
-                  mode={mode}
-                  setPreference={setPreference}
-                  showAppUpdateSection
-                  selectSx={selectSx}
-                  t={t}
-                  appUpdateState={appUpdateState}
-                  isElectronUpdaterAvailable={isElectronUpdaterAvailable}
-                  checkForAppUpdates={checkForAppUpdates}
-                  downloadAppUpdate={downloadAppUpdate}
-                  installAppUpdate={installAppUpdate}
-                  setAppAutoUpdateEnabled={setAppAutoUpdateEnabled}
-                />
-              )}
-
-              {section === 'downloads' && (
-                <DownloadsSettingsSection
-                  downloadSettings={downloadSettings}
-                  downloadSettingsLoading={downloadSettingsLoading}
-                  downloadSettingsError={downloadSettingsError}
-                  updateDownloadSettings={updateDownloadSettings}
-                  autoDownloadSettings={autoDownloadSettings}
-                  autoDownloadLoading={autoDownloadLoading}
-                  autoDownloadError={autoDownloadError}
-                  updateAutoDownloadSettings={updateAutoDownloadSettings}
-                  selectSx={selectSx}
-                  t={t}
-                  isElectronRuntime={isElectronRuntime}
-                />
-              )}
-
-              {section === 'network' && (
-                <NetworkSettingsSection
-                  cookieSettings={ytCookieSettings}
-                  cookieSettingsLoading={ytCookieSettingsLoading}
-                  cookieSettingsSaving={ytCookieSettingsSaving}
-                  cookieSettingsError={ytCookieSettingsError}
-                  onUpdateCookieSettings={updateYtCookieSettings}
-                  onRefreshCookieSettings={fetchYtCookieSettings}
-                  requestedFocusTarget={sectionFocusTarget}
-                  requestedFocusRequestId={sectionFocusRequestId}
-                  t={t}
-                  isElectronRuntime={isElectronRuntime}
-                />
-              )}
-
-              {section === 'system' && (
-                <SystemSettingsSection
-                  activeDetail={systemDetail}
-                  onNavigateToDetail={(detail) => setSystemDetail(detail)}
-                  onNavigateBack={() => setSystemDetail(null)}
-                  ytInfo={ytInfo}
-                  ffmpegInfo={ffmpegInfo}
-                  ytAutoUpdateEnabled={toolUpdateSettings.ytDlpAutoUpdate}
-                  ffmpegAutoUpdateEnabled={toolUpdateSettings.ffmpegAutoUpdate}
-                  ytUpdating={updating}
-                  ffmpegUpdating={ffmpegUpdating}
-                  startYtUpdate={startUpdate}
-                  startFfmpegUpdate={startFfmpegUpdate}
-                  onToggleYtAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ytDlp', enabled)}
-                  onToggleFfmpegAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ffmpeg', enabled)}
-                  toolUpdateSettingsLoading={toolUpdateSettingsLoading}
-                  toolUpdateSettingsSaving={toolUpdateSettingsSaving}
-                  toolUpdateSettingsError={toolUpdateSettingsError}
-                  onCheckYtUpdates={() => fetchStatus({ forceLatest: true })}
-                  onCheckFfmpegUpdates={() => fetchFfmpegStatus({ forceLatest: true })}
-                  ytLogLines={logLines}
-                  ffmpegLogLines={ffmpegLogLines}
-                  t={t}
-                />
-              )}
+              {renderSectionContent()}
             </SimpleBarScrollArea>
           </Box>
         </Box>
 
-        {/* ─── RESET CONFIRM OVERLAY ─── */}
-        {resetConfirmOpen && canResetSection && (
-          <Box
-            onClick={handleCancelResetSection}
-            sx={(theme) => ({
-              position: 'absolute',
-              inset: 0,
-              zIndex: 20,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              px: 2,
-              bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.62)' : 'rgba(17,24,39,0.24)',
-            })}
-          >
-            <Box
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={resetConfirmTitleId}
-              aria-describedby={resetConfirmDescriptionId}
-              onClick={(event) => event.stopPropagation()}
-              sx={(theme) => ({
-                width: 'min(420px, 100%)',
-                borderRadius: '12px',
-                p: 2.5,
-                bgcolor: theme.palette.mode === 'dark' ? '#111111' : '#ffffff',
-                border: `1px solid ${theme.palette.divider}`,
-                boxShadow: theme.palette.mode === 'dark' ? '0 18px 32px rgba(0,0,0,0.6)' : '0 18px 30px rgba(0,0,0,0.16)',
-              })}
-            >
-              <Typography id={resetConfirmTitleId} sx={{ fontWeight: 700, fontSize: 18, mb: 1 }}>
-                {t('settings.resetConfirmTitle')}
-              </Typography>
-              <Typography id={resetConfirmDescriptionId} sx={{ color: 'text.secondary', fontSize: 14, lineHeight: 1.5 }}>
-                {t('settings.resetConfirmDescription', { section: sectionTitle })}
-              </Typography>
-
-              <Box sx={{ mt: 2.5, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                <Button
-                  variant="text"
-                  size="small"
-                  onClick={handleCancelResetSection}
-                  sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}
-                >
-                  {t('settings.resetConfirmCancel')}
-                </Button>
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={handleConfirmResetSection}
-                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: '8px', boxShadow: 'none' }}
-                >
-                  {t('settings.resetConfirmConfirm')}
-                </Button>
-              </Box>
-            </Box>
-          </Box>
-        )}
+        {renderResetConfirmOverlay()}
       </DialogContent>
     </Dialog>
   )

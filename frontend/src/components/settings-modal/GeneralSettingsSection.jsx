@@ -18,9 +18,10 @@ export default function GeneralSettingsSection({
   downloadAppUpdate,
   installAppUpdate,
   setAppAutoUpdateEnabled,
+  isMobileLayout = false,
 }) {
   return (
-    <Box sx={{ px: 4, pt: 4, pb: 4 }}>
+    <Box sx={{ px: isMobileLayout ? 2 : 4, pt: isMobileLayout ? 2.5 : 4, pb: isMobileLayout ? 2.5 : 4 }}>
       <SettingGroup>
         <SettingRow label={t('settings.language')}>
           <Select
