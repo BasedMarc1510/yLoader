@@ -14,6 +14,11 @@ import {
   pickAudioFormatByMaxBitrate,
   pickVideoFormatByMaxHeight,
 } from './formatUtils'
+import {
+  DOWNLOAD_SETTINGS_DEFAULTS,
+  normalizeDownloadSettings,
+  resolveDownloadFilenamePattern,
+} from '../../utils/downloadSettings'
 import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
 import {
   buildSuggestedDownloadFilename,
@@ -169,6 +174,19 @@ export function useAutoDownload({
     }
   }, [])
 
+  const fetchDownloadSettingsForNaming = React.useCallback(async () => {
+    const API_BASE = getApiBase()
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/download/settings`)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      return normalizeDownloadSettings(data)
+    } catch {
+      return { ...DOWNLOAD_SETTINGS_DEFAULTS }
+    }
+  }, [])
+
   const startAutoDownload = React.useCallback(async (rawUrl) => {
     const target = String(rawUrl || '').trim()
     const serviceKey = detectService(target)
@@ -205,16 +223,29 @@ export function useAutoDownload({
 
     try {
       const normalized = normalizeUrlForNoembed(target)
-      const [autoSettings, formatsData, noembedData, durationData] = await Promise.all([
+      const [autoSettings, downloadSettingsForNaming, formatsData, noembedData, durationData] = await Promise.all([
         fetchAutoDownloadSettingsFromServer(),
+        fetchDownloadSettingsForNaming(),
         fetchFormats(normalized).catch(() => ({ audioFormats: [], videoFormats: [] })),
         fetchNoembed(normalized).catch(() => ({})),
         fetchDuration(normalized).catch(() => ({ duration: null, durationString: null })),
       ])
 
       const isAudio = autoDownloadFormat === 'mp3'
+      const rawTitle = String(noembedData?.title || '').trim() || target
+      const rawAuthor = String(noembedData?.author_name || '').trim()
+      const suggestedBaseName = resolveDownloadFilenamePattern({
+        settings: downloadSettingsForNaming,
+        downloadType: isAudio ? 'audio' : 'video',
+        title: rawTitle,
+        artist: isAudio ? rawAuthor : '',
+        uploader: rawAuthor,
+        service: serviceKey || GENERIC_SERVICE_KEY,
+        sourceUrl: normalized,
+        fallbackBaseName: rawTitle,
+      })
       const suggestedFilename = buildSuggestedDownloadFilename(
-        String(noembedData?.title || '').trim() || target,
+        suggestedBaseName,
         isAudio ? 'mp3' : 'mp4',
       )
       const preferredDirectory = autoSettings.useFixedDownloadPath
@@ -238,7 +269,7 @@ export function useAutoDownload({
         service: serviceKey || GENERIC_SERVICE_KEY,
         type: isAudio ? 'audio' : 'video',
         duration: durationData?.duration ?? null,
-        videoTitle: String(noembedData?.title || '').trim() || target,
+        videoTitle: rawTitle,
         format: isAudio ? 'mp3' : 'mp4',
         audioFormat: isAudio
           ? pickAudioFormatByMaxBitrate(formatsData?.audioFormats, autoSettings.maxAudioBitrateKbps)
@@ -248,8 +279,8 @@ export function useAutoDownload({
           : undefined,
         metadata: isAudio && autoSettings.useMetadata
           ? {
-              title: String(noembedData?.title || '').trim(),
-              artist: String(noembedData?.author_name || '').trim(),
+              title: rawTitle,
+              artist: rawAuthor,
               album: '',
             }
           : undefined,
@@ -446,6 +477,7 @@ export function useAutoDownload({
     autoDownloadFormat,
     clearInput,
     fetchAutoDownloadSettingsFromServer,
+    fetchDownloadSettingsForNaming,
     multiModeEnabled,
     setFetchError,
     setIsResolving,

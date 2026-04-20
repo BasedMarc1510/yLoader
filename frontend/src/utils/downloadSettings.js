@@ -5,6 +5,21 @@ const STAGGER_DOWNLOAD_OPTIONS = new Set([0, 100, 150, 250, 500, 1000])
 const AUDIO_BITRATE_THRESHOLD_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const VIDEO_HEIGHT_THRESHOLD_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
 const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
+const DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH = 180
+const DOWNLOAD_FILENAME_PATTERN_DEFAULT = '{title}'
+const DOWNLOAD_FILENAME_PATTERN_TOKEN_REGEX = /\{(title|artist|uploader|service|type|id|date|time|datetime)\}/gi
+
+export const DOWNLOAD_FILENAME_PATTERN_TOKENS = Object.freeze([
+  '{title}',
+  '{artist}',
+  '{uploader}',
+  '{service}',
+  '{type}',
+  '{id}',
+  '{date}',
+  '{time}',
+  '{datetime}',
+])
 
 function getRuntimeDownloadsPath() {
   if (typeof window === 'undefined') return ''
@@ -20,6 +35,145 @@ function normalizeDownloadPath(value, fallbackPath) {
   return raw || fallback
 }
 
+function normalizeDownloadFilenamePattern(value, fallbackPattern = DOWNLOAD_FILENAME_PATTERN_DEFAULT) {
+  const fallback = String(fallbackPattern || DOWNLOAD_FILENAME_PATTERN_DEFAULT)
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH)
+
+  const raw = String(value ?? '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH)
+
+  return raw || fallback || DOWNLOAD_FILENAME_PATTERN_DEFAULT
+}
+
+function sanitizeFilenamePart(value, maxLen = 120) {
+  const sanitized = String(value || '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen)
+    .replace(/[. ]+$/g, '')
+
+  if (!sanitized || sanitized === '.' || sanitized === '..') return ''
+  return sanitized
+}
+
+function padDateTimeSegment(value) {
+  const numeric = Number(value)
+  const normalized = Number.isFinite(numeric) ? Math.max(0, Math.floor(numeric)) : 0
+  return String(normalized).padStart(2, '0')
+}
+
+function extractSourceId(rawUrl) {
+  const sourceUrl = String(rawUrl || '').trim()
+  if (!sourceUrl) return ''
+
+  try {
+    const parsed = new URL(sourceUrl)
+    const hostname = String(parsed.hostname || '').trim().toLowerCase()
+
+    if (hostname.includes('youtube.com')) {
+      const youtubeId = String(parsed.searchParams.get('v') || '').trim()
+      if (youtubeId) return sanitizeFilenamePart(youtubeId, 80)
+    }
+
+    if (hostname.includes('youtu.be')) {
+      const segment = String(parsed.pathname || '').split('/').filter(Boolean)[0] || ''
+      if (segment) return sanitizeFilenamePart(segment, 80)
+    }
+
+    const paramCandidates = ['id', 'video_id', 'track', 'song']
+    for (const key of paramCandidates) {
+      const candidate = String(parsed.searchParams.get(key) || '').trim()
+      if (candidate) return sanitizeFilenamePart(candidate, 80)
+    }
+
+    const lastSegment = String(parsed.pathname || '')
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .pop() || ''
+
+    return sanitizeFilenamePart(lastSegment, 80)
+  } catch {
+    return ''
+  }
+}
+
+function resolveFilenamePatternFieldName(downloadType = 'video') {
+  const normalizedType = String(downloadType || '').trim().toLowerCase()
+  if (normalizedType === 'audio') return 'audioFilenamePattern'
+  if (normalizedType === 'thumbnail') return 'thumbnailFilenamePattern'
+  return 'videoFilenamePattern'
+}
+
+function buildFilenameTemplateValues({
+  title,
+  artist,
+  uploader,
+  service,
+  downloadType,
+  sourceUrl,
+}) {
+  const now = new Date()
+  const date = `${now.getFullYear()}-${padDateTimeSegment(now.getMonth() + 1)}-${padDateTimeSegment(now.getDate())}`
+  const time = `${padDateTimeSegment(now.getHours())}-${padDateTimeSegment(now.getMinutes())}-${padDateTimeSegment(now.getSeconds())}`
+
+  return {
+    title: sanitizeFilenamePart(title, 120),
+    artist: sanitizeFilenamePart(artist, 120),
+    uploader: sanitizeFilenamePart(uploader, 120),
+    service: sanitizeFilenamePart(service, 80),
+    type: sanitizeFilenamePart(downloadType, 40),
+    id: extractSourceId(sourceUrl),
+    date,
+    time,
+    datetime: `${date}_${time}`,
+  }
+}
+
+export function resolveDownloadFilenamePattern({
+  settings,
+  downloadType = 'video',
+  title = '',
+  artist = '',
+  uploader = '',
+  service = '',
+  sourceUrl = '',
+  fallbackBaseName = 'download',
+}) {
+  const fieldName = resolveFilenamePatternFieldName(downloadType)
+  const patternFallback = DOWNLOAD_SETTINGS_DEFAULTS[fieldName] || DOWNLOAD_FILENAME_PATTERN_DEFAULT
+  const pattern = normalizeDownloadFilenamePattern(settings?.[fieldName], patternFallback)
+  const values = buildFilenameTemplateValues({
+    title,
+    artist,
+    uploader,
+    service,
+    downloadType,
+    sourceUrl,
+  })
+
+  const replaced = pattern.replace(DOWNLOAD_FILENAME_PATTERN_TOKEN_REGEX, (_match, tokenName) => {
+    const key = String(tokenName || '').trim().toLowerCase()
+    return values[key] || ''
+  })
+
+  const resolved = sanitizeFilenamePart(replaced, 120)
+  if (resolved) return resolved
+
+  const fallbackTitle = sanitizeFilenamePart(title, 120)
+  if (fallbackTitle) return fallbackTitle
+
+  return sanitizeFilenamePart(fallbackBaseName, 120) || 'download'
+}
+
 const RUNTIME_DOWNLOADS_PATH = getRuntimeDownloadsPath()
 
 export const DOWNLOAD_SETTINGS_DEFAULTS = Object.freeze({
@@ -30,6 +184,9 @@ export const DOWNLOAD_SETTINGS_DEFAULTS = Object.freeze({
   defaultEmbedCoverArt: true,
   maxAudioBitrateKbps: 0,
   maxVideoHeight: 0,
+  audioFilenamePattern: DOWNLOAD_FILENAME_PATTERN_DEFAULT,
+  videoFilenamePattern: DOWNLOAD_FILENAME_PATTERN_DEFAULT,
+  thumbnailFilenamePattern: DOWNLOAD_FILENAME_PATTERN_DEFAULT,
   downloadLocationMode: 'all',
   globalDownloadPath: RUNTIME_DOWNLOADS_PATH,
   globalAlwaysAsk: true,
@@ -55,6 +212,18 @@ export function normalizeDownloadSettings(value) {
   const defaultVideoContainer = String(input.defaultVideoContainer || '').trim().toLowerCase()
   const maxAudioBitrateRaw = Number(input.maxAudioBitrateKbps)
   const maxVideoHeightRaw = Number(input.maxVideoHeight)
+  const audioFilenamePattern = normalizeDownloadFilenamePattern(
+    input.audioFilenamePattern,
+    DOWNLOAD_SETTINGS_DEFAULTS.audioFilenamePattern
+  )
+  const videoFilenamePattern = normalizeDownloadFilenamePattern(
+    input.videoFilenamePattern,
+    DOWNLOAD_SETTINGS_DEFAULTS.videoFilenamePattern
+  )
+  const thumbnailFilenamePattern = normalizeDownloadFilenamePattern(
+    input.thumbnailFilenamePattern,
+    DOWNLOAD_SETTINGS_DEFAULTS.thumbnailFilenamePattern
+  )
   const downloadLocationModeRaw = String(input.downloadLocationMode || '').trim().toLowerCase()
 
   const globalDownloadPath = normalizeDownloadPath(
@@ -96,6 +265,9 @@ export function normalizeDownloadSettings(value) {
     maxVideoHeight: VIDEO_HEIGHT_THRESHOLD_OPTIONS.has(maxVideoHeightRaw)
       ? maxVideoHeightRaw
       : DOWNLOAD_SETTINGS_DEFAULTS.maxVideoHeight,
+    audioFilenamePattern,
+    videoFilenamePattern,
+    thumbnailFilenamePattern,
     downloadLocationMode: DOWNLOAD_LOCATION_MODE_OPTIONS.has(downloadLocationModeRaw)
       ? downloadLocationModeRaw
       : DOWNLOAD_SETTINGS_DEFAULTS.downloadLocationMode,

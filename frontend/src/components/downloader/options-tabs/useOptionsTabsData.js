@@ -709,6 +709,7 @@ export default function useOptionsTabsData({
     videoThumbnailUrl: normalizedVideoThumbnail,
     audioDownloadTargetSettings,
     videoDownloadTargetSettings,
+    downloadSettings,
     maxAudioBitrateKbps: downloadSettings.maxAudioBitrateKbps,
     maxVideoHeight: downloadSettings.maxVideoHeight,
 

@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Dialog, DialogContent, IconButton, List, ListItem, ListItemButton, Typography, Tooltip, Button, useMediaQuery } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
-import { X, Settings as SettingsIcon, Download as DownloadIcon, Globe as GlobeIcon, Cpu as CpuIcon, ChevronLeft } from 'lucide-react'
+import { X, Settings as SettingsIcon, Download as DownloadIcon, Globe as GlobeIcon, Cpu as CpuIcon } from 'lucide-react'
 import { Sheet } from 'react-modal-sheet'
 import { ColorModeContext } from '../providers/ColorModeProvider'
 import { SettingsContext } from '../providers/SettingsProvider'
@@ -67,6 +67,82 @@ const SECTION_DATA_DEPENDENCIES = {
   system: ['tool-status'],
 }
 
+const SETTINGS_SAVE_DEBOUNCE_MS = 180
+
+const DOWNLOAD_SUBSECTION_KEYS = Object.freeze({
+  formatQuality: 'format-quality',
+  filenameConventions: 'filename-conventions',
+  advancedDownloadSettings: 'advanced-download-settings',
+  autoDownloadDefaults: 'auto-download-defaults',
+})
+
+const DOWNLOAD_SUBSECTION_RESET_FIELDS = Object.freeze({
+  [DOWNLOAD_SUBSECTION_KEYS.formatQuality]: Object.freeze([
+    'defaultAudioContainer',
+    'defaultVideoContainer',
+    'maxVideoHeight',
+    'maxAudioBitrateKbps',
+  ]),
+  [DOWNLOAD_SUBSECTION_KEYS.filenameConventions]: Object.freeze([
+    'audioFilenamePattern',
+    'videoFilenamePattern',
+    'thumbnailFilenamePattern',
+  ]),
+  [DOWNLOAD_SUBSECTION_KEYS.advancedDownloadSettings]: Object.freeze([
+    'maxConcurrentDownloads',
+    'staggerDownloadsMs',
+    'defaultEmbedCoverArt',
+    'downloadLocationMode',
+    'globalDownloadPath',
+    'globalAlwaysAsk',
+    'audioDownloadPath',
+    'videoDownloadPath',
+    'thumbnailDownloadPath',
+    'audioAlwaysAsk',
+    'videoAlwaysAsk',
+    'thumbnailAlwaysAsk',
+  ]),
+})
+
+const AUTO_DOWNLOAD_RESET_FIELDS = Object.freeze([
+  'useMetadata',
+  'embedCoverArt',
+  'maxAudioBitrateKbps',
+  'maxVideoHeight',
+  'useFixedDownloadPath',
+  'fixedDownloadPath',
+])
+
+const RESETTABLE_DOWNLOAD_SUBSECTIONS = Object.freeze([
+  ...Object.keys(DOWNLOAD_SUBSECTION_RESET_FIELDS),
+  DOWNLOAD_SUBSECTION_KEYS.autoDownloadDefaults,
+])
+
+function pickDefaultSettings(defaults, fieldNames) {
+  return fieldNames.reduce((accumulator, key) => {
+    if (Object.prototype.hasOwnProperty.call(defaults, key)) {
+      accumulator[key] = defaults[key]
+    }
+    return accumulator
+  }, {})
+}
+
+function shallowEqualObject(left, right) {
+  if (left === right) return true
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
+
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) return false
+
+  for (const key of leftKeys) {
+    if (!Object.prototype.hasOwnProperty.call(right, key)) return false
+    if (!Object.is(left[key], right[key])) return false
+  }
+
+  return true
+}
+
 const DESKTOP_SETTINGS_DEFAULTS = Object.freeze({
   closeToTrayOnWindowClose: false,
   startOnSystemStartup: false,
@@ -126,10 +202,18 @@ function SettingsModalInner({
     return legacyMap[raw] || raw
   }, [])
 
+  const resolveDownloadsSubsectionKey = React.useCallback((key) => {
+    const raw = String(key || '').trim()
+    if (raw === 'auto-download') return DOWNLOAD_SUBSECTION_KEYS.autoDownloadDefaults
+    if (raw === 'downloader') return DOWNLOAD_SUBSECTION_KEYS.formatQuality
+    return ''
+  }, [])
+
   const [section, setSection] = useState(() => resolveSectionKey(requestedSection))
   const [sectionFocusTarget, setSectionFocusTarget] = useState(() => String(requestedFocusTarget || '').trim())
   const [sectionFocusRequestId, setSectionFocusRequestId] = useState(() => String(requestedFocusRequestId || '').trim())
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [downloadsSubsection, setDownloadsSubsection] = useState(() => resolveDownloadsSubsectionKey(requestedSection))
   const [systemDetail, setSystemDetail] = useState(() => {
     // If an old caller requested 'ffmpeg' specifically, auto-drill into the ffmpeg detail
     const raw = String(requestedSection || '').trim()
@@ -167,6 +251,7 @@ function SettingsModalInner({
   const [toolUpdateSettings, setToolUpdateSettings] = useState({ ytDlpAutoUpdate: true, ffmpegAutoUpdate: true })
   const toolUpdateSettingsRef = useRef(toolUpdateSettings)
   const toolUpdateSettingsRequestIdRef = useRef(0)
+  const toolUpdateSaveTimeoutRef = useRef(null)
   const [toolUpdateSettingsLoading, setToolUpdateSettingsLoading] = useState(false)
   const [toolUpdateSettingsSaving, setToolUpdateSettingsSaving] = useState(false)
   const [toolUpdateSettingsError, setToolUpdateSettingsError] = useState('')
@@ -175,6 +260,7 @@ function SettingsModalInner({
   const [autoDownloadSettings, setAutoDownloadSettings] = useState(() => ({ ...AUTO_DOWNLOAD_DEFAULTS }))
   const autoDownloadSettingsRef = useRef(autoDownloadSettings)
   const autoDownloadSaveRequestIdRef = useRef(0)
+  const autoDownloadSaveTimeoutRef = useRef(null)
   const [autoDownloadLoading, setAutoDownloadLoading] = useState(false)
   const [autoDownloadSaving, setAutoDownloadSaving] = useState(false)
   const [autoDownloadError, setAutoDownloadError] = useState('')
@@ -183,6 +269,7 @@ function SettingsModalInner({
   const [downloadSettings, setDownloadSettings] = useState(() => ({ ...DOWNLOAD_SETTINGS_DEFAULTS }))
   const downloadSettingsRef = useRef(downloadSettings)
   const downloadSaveRequestIdRef = useRef(0)
+  const downloadSaveTimeoutRef = useRef(null)
   const [downloadSettingsLoading, setDownloadSettingsLoading] = useState(false)
   const [downloadSettingsSaving, setDownloadSettingsSaving] = useState(false)
   const [downloadSettingsError, setDownloadSettingsError] = useState('')
@@ -190,6 +277,7 @@ function SettingsModalInner({
   /* ─── cookie settings ─── */
   const [ytCookieSettings, setYtCookieSettings] = useState(() => ({ ...YT_DLP_COOKIE_SETTINGS_DEFAULTS }))
   const ytCookieSettingsRef = useRef(ytCookieSettings)
+  const ytCookieSaveTimeoutRef = useRef(null)
   const [ytCookieSettingsLoading, setYtCookieSettingsLoading] = useState(false)
   const [ytCookieSettingsSaving, setYtCookieSettingsSaving] = useState(false)
   const [ytCookieSettingsError, setYtCookieSettingsError] = useState('')
@@ -209,6 +297,31 @@ function SettingsModalInner({
   useEffect(() => { downloadSettingsRef.current = downloadSettings }, [downloadSettings])
   useEffect(() => { ytCookieSettingsRef.current = ytCookieSettings }, [ytCookieSettings])
   useEffect(() => { desktopSettingsRef.current = desktopSettings }, [desktopSettings])
+
+  const scheduleDebouncedSave = React.useCallback((timeoutRef, action) => {
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current)
+    }
+
+    timeoutRef.current = window.setTimeout(() => {
+      timeoutRef.current = null
+      action()
+    }, SETTINGS_SAVE_DEBOUNCE_MS)
+  }, [])
+
+  useEffect(() => () => {
+    [
+      toolUpdateSaveTimeoutRef,
+      autoDownloadSaveTimeoutRef,
+      downloadSaveTimeoutRef,
+      ytCookieSaveTimeoutRef,
+    ].forEach((timeoutRef) => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+    })
+  }, [])
 
   /* ─── fetch helpers ─── */
 
@@ -247,7 +360,7 @@ function SettingsModalInner({
         ffmpegAutoUpdate: data?.ffmpegAutoUpdate !== false,
       }
       if (requestId === toolUpdateSettingsRequestIdRef.current) {
-        setToolUpdateSettings(normalized)
+        setToolUpdateSettings((current) => (shallowEqualObject(current, normalized) ? current : normalized))
       }
       return normalized
     } catch (error) {
@@ -277,10 +390,12 @@ function SettingsModalInner({
     if (tool === 'ffmpeg') {
       setFfmpegInfo((state) => ({ ...state, autoUpdateEnabled: next.ffmpegAutoUpdate }))
     }
-    saveToolUpdateSettings(next).catch(() => {
-      // error state is handled in saveToolUpdateSettings
+    scheduleDebouncedSave(toolUpdateSaveTimeoutRef, () => {
+      saveToolUpdateSettings(next).catch(() => {
+        // error state is handled in saveToolUpdateSettings
+      })
     })
-  }, [saveToolUpdateSettings])
+  }, [saveToolUpdateSettings, scheduleDebouncedSave])
 
   const fetchStatus = React.useCallback(async ({ forceLatest = false } = {}) => {
     setYtInfo((state) => ({ ...state, loading: true, localLoading: true, latestLoading: true, error: '' }))
@@ -399,7 +514,7 @@ function SettingsModalInner({
       const merged = mergeLegacyAutoDownloadFields(data, nextSettings)
       const normalized = normalizeAutoDownloadSettings(merged)
       if (requestId === autoDownloadSaveRequestIdRef.current) {
-        setAutoDownloadSettings(normalized)
+        setAutoDownloadSettings((current) => (shallowEqualObject(current, normalized) ? current : normalized))
       }
       return normalized
     } catch (error) {
@@ -422,10 +537,12 @@ function SettingsModalInner({
       ...(patch && typeof patch === 'object' ? patch : {}),
     })
     setAutoDownloadSettings(next)
-    saveAutoDownloadSettings(next).catch(() => {
-      // error state is handled in saveAutoDownloadSettings
+    scheduleDebouncedSave(autoDownloadSaveTimeoutRef, () => {
+      saveAutoDownloadSettings(next).catch(() => {
+        // error state is handled in saveAutoDownloadSettings
+      })
     })
-  }, [saveAutoDownloadSettings])
+  }, [saveAutoDownloadSettings, scheduleDebouncedSave])
 
   const fetchDownloadSettings = async () => {
     setDownloadSettingsLoading(true)
@@ -456,7 +573,7 @@ function SettingsModalInner({
       const data = await resp.json()
       const normalized = normalizeDownloadSettings(data)
       if (requestId === downloadSaveRequestIdRef.current) {
-        setDownloadSettings(normalized)
+        setDownloadSettings((current) => (shallowEqualObject(current, normalized) ? current : normalized))
       }
       try {
         const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
@@ -487,10 +604,12 @@ function SettingsModalInner({
       ...(patch && typeof patch === 'object' ? patch : {}),
     })
     setDownloadSettings(next)
-    saveDownloadSettings(next).catch(() => {
-      // error state is handled in saveDownloadSettings
+    scheduleDebouncedSave(downloadSaveTimeoutRef, () => {
+      saveDownloadSettings(next).catch(() => {
+        // error state is handled in saveDownloadSettings
+      })
     })
-  }, [saveDownloadSettings])
+  }, [saveDownloadSettings, scheduleDebouncedSave])
 
   const fetchYtCookieSettings = React.useCallback(async () => {
     setYtCookieSettingsLoading(true)
@@ -519,7 +638,7 @@ function SettingsModalInner({
       if (!response.ok) throw new Error(await parseApiError(response))
       const payload = await response.json()
       const normalized = normalizeYtDlpCookieSettings(payload)
-      setYtCookieSettings(normalized)
+      setYtCookieSettings((current) => (shallowEqualObject(current, normalized) ? current : normalized))
       return normalized
     } catch (error) {
       setYtCookieSettingsError(t('settings.cookieSettingsSaveFailed', { message: error?.message || error }))
@@ -537,10 +656,12 @@ function SettingsModalInner({
       ...(patch && typeof patch === 'object' ? patch : {}),
     })
     setYtCookieSettings(next)
-    saveYtCookieSettings(next).catch(() => {
-      // error state is handled in saveYtCookieSettings
+    scheduleDebouncedSave(ytCookieSaveTimeoutRef, () => {
+      saveYtCookieSettings(next).catch(() => {
+        // error state is handled in saveYtCookieSettings
+      })
     })
-  }, [saveYtCookieSettings])
+  }, [saveYtCookieSettings, scheduleDebouncedSave])
 
   const fetchDesktopSettings = React.useCallback(async () => {
     if (!isDesktopSettingsAvailable || typeof desktopSettingsApi?.get !== 'function') {
@@ -598,10 +719,18 @@ function SettingsModalInner({
     setSectionFocusTarget(String(requestedFocusTarget || '').trim())
     setSectionFocusRequestId(String(requestedFocusRequestId || `${Date.now()}`).trim())
     setResetConfirmOpen(false)
+    setDownloadsSubsection(resolveDownloadsSubsectionKey(requestedSection))
     // Auto-drill into ffmpeg detail if legacy 'ffmpeg' key was requested
     const rawSection = String(requestedSection || '').trim()
     setSystemDetail(rawSection === 'ffmpeg' ? 'ffmpeg' : null)
-  }, [open, requestedSection, requestedFocusRequestId, requestedFocusTarget, resolveSectionKey])
+  }, [
+    open,
+    requestedSection,
+    requestedFocusRequestId,
+    requestedFocusTarget,
+    resolveDownloadsSubsectionKey,
+    resolveSectionKey,
+  ])
 
   useEffect(() => {
     if (!open || !isDesktopSettingsAvailable) return undefined
@@ -795,20 +924,52 @@ function SettingsModalInner({
 
   const sectionTitle = sectionTitleMap[section] || t('settings.general')
 
-  /* ─── breadcrumb for system detail ─── */
-  const breadcrumbSegments = useMemo(() => {
-    if (section !== 'system' || !systemDetail) return null
-    return [
-      { label: t('settings.breadcrumbSettings'), onClick: () => { setSection('general'); setSystemDetail(null) } },
-      { label: t('settings.breadcrumbSystem'), onClick: () => setSystemDetail(null) },
-      { label: systemDetail === 'yt-dlp' ? 'yt-dlp' : 'ffmpeg' },
-    ]
-  }, [section, systemDetail, t])
+  const downloadSubsectionTitleMap = {
+    [DOWNLOAD_SUBSECTION_KEYS.formatQuality]: t('settings.downloadsFormatTitle'),
+    [DOWNLOAD_SUBSECTION_KEYS.filenameConventions]: t('settings.downloadsNamingTitle'),
+    [DOWNLOAD_SUBSECTION_KEYS.advancedDownloadSettings]: t('settings.downloadsAdvancedTitle'),
+    [DOWNLOAD_SUBSECTION_KEYS.autoDownloadDefaults]: t('settings.downloadsAutoDefaultsTitle'),
+  }
+
+  const activeDownloadsSubsectionTitle = downloadSubsectionTitleMap[downloadsSubsection] || ''
+
+  /* ─── breadcrumb for detail views ─── */
+  const activeBreadcrumbSegments = useMemo(() => {
+    if (section === 'system' && systemDetail) {
+      return [
+        { label: t('settings.breadcrumbSystem'), onClick: () => setSystemDetail(null) },
+        { label: systemDetail === 'yt-dlp' ? 'yt-dlp' : 'ffmpeg' },
+      ]
+    }
+
+    if (section === 'downloads' && downloadsSubsection) {
+      return [
+        { label: t('settings.downloadsConfig'), onClick: () => setDownloadsSubsection('') },
+        { label: activeDownloadsSubsectionTitle || t('settings.downloadsConfig') },
+      ]
+    }
+
+    return null
+  }, [activeDownloadsSubsectionTitle, downloadsSubsection, section, systemDetail, t])
 
   /* ─── reset ─── */
 
-  const canResetSection = section === 'general' || section === 'downloads'
-  const resetDisabled = section === 'downloads' ? downloadSettingsLoading : false
+  const canResetDownloadsSubsection = (
+    section === 'downloads'
+    && RESETTABLE_DOWNLOAD_SUBSECTIONS.includes(downloadsSubsection)
+  )
+
+  const canResetSection = section === 'general' || canResetDownloadsSubsection
+
+  const resetDisabled = section === 'general'
+    ? false
+    : downloadsSubsection === DOWNLOAD_SUBSECTION_KEYS.autoDownloadDefaults
+      ? autoDownloadLoading || autoDownloadSaving
+      : downloadSettingsLoading || downloadSettingsSaving
+
+  const resetSectionTitle = (section === 'downloads' && canResetDownloadsSubsection)
+    ? (activeDownloadsSubsectionTitle || t('settings.downloadsConfig'))
+    : sectionTitle
 
   const applyResetToCurrentSection = React.useCallback(() => {
     if (section === 'general') {
@@ -823,25 +984,27 @@ function SettingsModalInner({
       }
       return
     }
-    if (section === 'downloads') {
-      const defaults = { ...DOWNLOAD_SETTINGS_DEFAULTS }
-      setDownloadSettings(defaults)
-      saveDownloadSettings(defaults).catch(() => {
-        // error state is handled in saveDownloadSettings
-      })
-      const autoDefaults = { ...AUTO_DOWNLOAD_DEFAULTS }
-      setAutoDownloadSettings(autoDefaults)
-      saveAutoDownloadSettings(autoDefaults).catch(() => {
-        // error state is handled in saveAutoDownloadSettings
-      })
+
+    if (section !== 'downloads' || !canResetDownloadsSubsection) return
+
+    if (downloadsSubsection === DOWNLOAD_SUBSECTION_KEYS.autoDownloadDefaults) {
+      updateAutoDownloadSettings(pickDefaultSettings(AUTO_DOWNLOAD_DEFAULTS, AUTO_DOWNLOAD_RESET_FIELDS))
+      return
     }
+
+    const resetFields = DOWNLOAD_SUBSECTION_RESET_FIELDS[downloadsSubsection]
+    if (!Array.isArray(resetFields) || resetFields.length === 0) return
+
+    updateDownloadSettings(pickDefaultSettings(DOWNLOAD_SETTINGS_DEFAULTS, resetFields))
   }, [
+    canResetDownloadsSubsection,
+    downloadsSubsection,
     isDesktopSettingsAvailable,
     section,
-    saveAutoDownloadSettings,
-    saveDownloadSettings,
     setLanguage,
     setPreference,
+    updateAutoDownloadSettings,
+    updateDownloadSettings,
     updateDesktopSettings,
   ])
 
@@ -872,7 +1035,7 @@ function SettingsModalInner({
     onClose?.()
   }, [isCloseBlocked, onClose, resetConfirmOpen])
 
-  const selectSx = {
+  const selectSx = useMemo(() => ({
     fontSize: isMobileLayout ? 14 : 13,
     height: isMobileLayout ? 36 : 32,
     minWidth: isMobileLayout ? 0 : 140,
@@ -883,7 +1046,7 @@ function SettingsModalInner({
     '& .MuiSelect-select': { py: isMobileLayout ? '7px' : '6px', px: 1.5 },
     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'text.disabled' },
     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: 1 },
-  }
+  }), [isMobileLayout])
 
   const resetConfirmTitleId = 'settings-reset-confirm-title'
   const resetConfirmDescriptionId = 'settings-reset-confirm-description'
@@ -891,6 +1054,7 @@ function SettingsModalInner({
   const handleSectionSelect = React.useCallback((nextSection) => {
     setResetConfirmOpen(false)
     setSection(nextSection)
+    setDownloadsSubsection('')
     setSystemDetail(null)
     setSectionFocusTarget('')
     setSectionFocusRequestId(String(Date.now()))
@@ -937,6 +1101,8 @@ function SettingsModalInner({
           t={t}
           isElectronRuntime={isElectronRuntime}
           isMobileLayout={isMobileLayout}
+          activeSubsection={downloadsSubsection}
+          onNavigateToSubsection={setDownloadsSubsection}
         />
       )
     }
@@ -1027,7 +1193,7 @@ function SettingsModalInner({
             {t('settings.resetConfirmTitle')}
           </Typography>
           <Typography id={resetConfirmDescriptionId} sx={{ color: 'text.secondary', fontSize: 14, lineHeight: 1.5 }}>
-            {t('settings.resetConfirmDescription', { section: sectionTitle })}
+            {t('settings.resetConfirmDescription', { section: resetSectionTitle })}
           </Typography>
 
           <Box sx={{ mt: 2.5, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
@@ -1095,7 +1261,13 @@ function SettingsModalInner({
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                  <Typography sx={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.3px' }}>{sectionTitle}</Typography>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    {activeBreadcrumbSegments ? (
+                      <SettingsBreadcrumb segments={activeBreadcrumbSegments} isMobileLayout />
+                    ) : (
+                      <Typography sx={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.3px' }}>{sectionTitle}</Typography>
+                    )}
+                  </Box>
                   <IconButton
                     onClick={handleDialogClose}
                     disabled={isCloseBlocked}
@@ -1151,20 +1323,6 @@ function SettingsModalInner({
                     </Button>
                   ))}
                 </Box>
-
-                {section === 'system' && systemDetail && (
-                  <Box sx={{ mt: 0.75 }}>
-                    <Button
-                      variant="text"
-                      size="small"
-                      onClick={() => setSystemDetail(null)}
-                      startIcon={<ChevronLeft size={15} />}
-                      sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px', px: 0.5 }}
-                    >
-                      {t('settings.breadcrumbSystem')}
-                    </Button>
-                  </Box>
-                )}
 
                 {canResetSection && (
                   <Box sx={{ mt: 0.5, display: 'flex', justifyContent: 'flex-end' }}>
@@ -1326,25 +1484,9 @@ function SettingsModalInner({
               zIndex: 1,
               bgcolor: themeValue.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
             })}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {/* Back button for system detail */}
-                {section === 'system' && systemDetail && (
-                  <IconButton
-                    onClick={() => setSystemDetail(null)}
-                    size="small"
-                    sx={{
-                      borderRadius: '8px',
-                      p: '6px',
-                      mr: 0.5,
-                      color: 'text.secondary',
-                      '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
-                    }}
-                  >
-                    <ChevronLeft size={18} />
-                  </IconButton>
-                )}
-                {breadcrumbSegments ? (
-                  <SettingsBreadcrumb segments={breadcrumbSegments} />
+              <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                {activeBreadcrumbSegments ? (
+                  <SettingsBreadcrumb segments={activeBreadcrumbSegments} isMobileLayout={false} />
                 ) : (
                   <Typography sx={{ fontWeight: 700, fontSize: 24, letterSpacing: '-0.5px' }}>{sectionTitle}</Typography>
                 )}

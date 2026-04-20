@@ -524,7 +524,6 @@ export default function Sidebar({
                         fontWeight: sidebarNavTextWeight,
                         lineHeight: 1.2,
                         color: 'inherit',
-                        transition: 'color 180ms ease',
                       },
                     }}
                   />

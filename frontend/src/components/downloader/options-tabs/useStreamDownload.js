@@ -13,6 +13,7 @@ import {
   getPathFilename,
   resolveFullPathValue,
 } from '../../../utils/downloadPathInput'
+import { resolveDownloadFilenamePattern } from '../../../utils/downloadSettings'
 
 const METADATA_PLACEHOLDER_VALUES = new Set([
   'n/a',
@@ -121,6 +122,7 @@ export default function useStreamDownload({
   coverUpload,
   coverVideoEdit,
   hasVideoThumbnail,
+  downloadSettings,
   audioDownloadTargetSettings,
   videoDownloadTargetSettings,
   confirmOverwriteInApp,
@@ -302,8 +304,21 @@ export default function useStreamDownload({
           fallbackArtist: videoAuthor,
         })
         : null
+      const resolvedServiceKey = resolveServiceKey(serviceKey, normalized)
+      const suggestedBaseName = resolveDownloadFilenamePattern({
+        settings: downloadSettings,
+        downloadType: type,
+        title: normalizedVideoTitle,
+        artist: type === 'audio'
+          ? (audioMetadataPayload?.artist || videoAuthor || '')
+          : (videoAuthor || ''),
+        uploader: videoAuthor || '',
+        service: resolvedServiceKey,
+        sourceUrl: normalized,
+        fallbackBaseName: normalizedVideoTitle,
+      })
       const suggestedFilename = buildSuggestedDownloadFilename(
-        normalizedVideoTitle,
+        suggestedBaseName,
         suggestedExtension,
       )
       const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
@@ -323,9 +338,24 @@ export default function useStreamDownload({
       let manualElectronSavePath = ''
 
       if (usesFixedPathMode) {
-        const fallbackBaseName = scopedFilename || titleValue || videoTitle || 'download'
+        const scopedRawValue = String(scopedFilename || '').trim()
+        const scopedLooksLikePath = /[\\/]/.test(scopedRawValue)
+        const scopedResolvedName = scopedLooksLikePath
+          ? String(getPathFilename(scopedRawValue) || '').trim()
+          : scopedRawValue
+        const normalizedScopedName = sanitizeMetadataValue(
+          scopedResolvedName.replace(/\.[^/.\\]+$/, ''),
+          180,
+        )
+        const normalizedDefaultName = sanitizeMetadataValue(videoTitle || titleValue || '', 180)
+        const shouldUsePatternFallback = !scopedLooksLikePath
+          && (!normalizedScopedName || normalizedScopedName === normalizedDefaultName)
+
+        const fallbackBaseName = shouldUsePatternFallback
+          ? suggestedBaseName
+          : (scopedFilename || titleValue || videoTitle || suggestedBaseName || 'download')
         const resolvedPathValue = resolveFullPathValue({
-          inputValue: scopedFilename,
+          inputValue: shouldUsePatternFallback ? '' : scopedFilename,
           defaultDirectory: preferredDirectory,
           fallbackBaseName,
           extension: suggestedExtension,
@@ -366,7 +396,7 @@ export default function useStreamDownload({
 
       const payload = {
         url: normalized,
-        service: resolveServiceKey(serviceKey, normalized),
+        service: resolvedServiceKey,
         type,
         duration: hasDurationSeconds ? numericDurationSeconds : null,
         videoTitle: normalizedVideoTitle,
@@ -687,6 +717,7 @@ export default function useStreamDownload({
     videoAuthor,
     albumValue,
     notifyDownloadError,
+    downloadSettings,
     audioDownloadTargetSettings,
     videoDownloadTargetSettings,
     confirmOverwriteInApp,

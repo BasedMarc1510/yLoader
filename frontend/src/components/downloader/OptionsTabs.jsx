@@ -172,6 +172,7 @@ export default function OptionsTabs({
     coverUpload: data.coverUpload,
     coverVideoEdit: data.coverVideoEdit,
     hasVideoThumbnail: data.hasVideoThumbnail,
+    downloadSettings: data.downloadSettings,
     audioDownloadTargetSettings: data.audioDownloadTargetSettings,
     videoDownloadTargetSettings: data.videoDownloadTargetSettings,
     confirmOverwriteInApp,

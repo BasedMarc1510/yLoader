@@ -3,9 +3,9 @@ import { Box, Typography } from '@mui/material'
 
 export default function SettingGroup({ title, description, children, sx, allowOverflow = false }) {
   return (
-    <Box sx={{ mb: 3.5, ...sx }}>
+    <Box sx={{ mb: 3.25, ...sx }}>
       {(title || description) && (
-        <Box sx={{ px: 2, pb: 1 }}>
+        <Box sx={{ px: 0, pb: 1 }}>
           {title && (
             <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               {title}
@@ -21,7 +21,7 @@ export default function SettingGroup({ title, description, children, sx, allowOv
       <Box
         sx={(theme) => ({
           bgcolor: theme.palette.mode === 'dark' ? '#1c1c1e' : '#ffffff',
-          borderRadius: '10px',
+          borderRadius: '12px',
           overflow: allowOverflow ? 'visible' : 'hidden',
           border: `1px solid ${theme.palette.divider}`,
         })}

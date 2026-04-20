@@ -118,6 +118,8 @@ const DOWNLOAD_STAGGER_OPTIONS = new Set([0, 100, 150, 250, 500, 1000])
 const DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
 const DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
 const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
+const DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH = 180
+const DOWNLOAD_FILENAME_PATTERN_TOKEN_REGEX = /\{(title|artist|uploader|service|type|id|date|time|datetime)\}/gi
 const META_FORMATS_CACHE_TTL_MS = 3 * 60 * 1000
 const META_FORMATS_CACHE_MAX_ENTRIES = 150
 const SEARCH_PROVIDER_OPTIONS = new Set(['youtube', 'youtubemusic', 'spotify', 'soundcloud'])
@@ -144,6 +146,9 @@ const DEFAULT_DOWNLOAD_SETTINGS = Object.freeze({
   defaultEmbedCoverArt: true,
   maxAudioBitrateKbps: 0,
   maxVideoHeight: 0,
+  audioFilenamePattern: '{title}',
+  videoFilenamePattern: '{title}',
+  thumbnailFilenamePattern: '{title}',
   downloadLocationMode: 'all',
   globalDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
   globalAlwaysAsk: true,
@@ -613,6 +618,18 @@ function normalizeDownloadSettingsPayload(value) {
   const videoContainerRaw = normalizeVideoContainer(input.defaultVideoContainer)
   const maxAudioBitrateRaw = Number(input.maxAudioBitrateKbps)
   const maxVideoHeightRaw = Number(input.maxVideoHeight)
+  const audioFilenamePattern = normalizeDownloadFilenamePattern(
+    input.audioFilenamePattern,
+    DEFAULT_DOWNLOAD_SETTINGS.audioFilenamePattern
+  )
+  const videoFilenamePattern = normalizeDownloadFilenamePattern(
+    input.videoFilenamePattern,
+    DEFAULT_DOWNLOAD_SETTINGS.videoFilenamePattern
+  )
+  const thumbnailFilenamePattern = normalizeDownloadFilenamePattern(
+    input.thumbnailFilenamePattern,
+    DEFAULT_DOWNLOAD_SETTINGS.thumbnailFilenamePattern
+  )
   const downloadLocationModeRaw = String(input.downloadLocationMode || '').trim().toLowerCase()
 
   const globalDownloadPath = normalizeDownloadDirectoryPath(
@@ -650,6 +667,9 @@ function normalizeDownloadSettingsPayload(value) {
     maxVideoHeight: DOWNLOAD_VIDEO_HEIGHT_OPTIONS.has(maxVideoHeightRaw)
       ? maxVideoHeightRaw
       : DEFAULT_DOWNLOAD_SETTINGS.maxVideoHeight,
+    audioFilenamePattern,
+    videoFilenamePattern,
+    thumbnailFilenamePattern,
     downloadLocationMode: DOWNLOAD_LOCATION_MODE_OPTIONS.has(downloadLocationModeRaw)
       ? downloadLocationModeRaw
       : DEFAULT_DOWNLOAD_SETTINGS.downloadLocationMode,
@@ -1737,6 +1757,123 @@ function sanitizeFilename(str, maxLen = 200) {
 
   if (!sanitized || sanitized === '.' || sanitized === '..') return ''
   return sanitized
+}
+
+function normalizeDownloadFilenamePattern(value, fallbackPattern = '{title}') {
+  const fallback = String(fallbackPattern || '{title}')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH)
+
+  const raw = String(value ?? '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH)
+
+  return raw || fallback || '{title}'
+}
+
+function padDateTimeSegment(value) {
+  const numeric = Number(value)
+  const normalized = Number.isFinite(numeric) ? Math.max(0, Math.floor(numeric)) : 0
+  return String(normalized).padStart(2, '0')
+}
+
+function extractDownloadSourceId(rawUrl) {
+  const sourceUrl = String(rawUrl || '').trim()
+  if (!sourceUrl) return ''
+
+  try {
+    const parsed = new NodeURL(sourceUrl)
+    const hostname = String(parsed.hostname || '').trim().toLowerCase()
+
+    if (hostname.includes('youtube.com')) {
+      const youtubeId = String(parsed.searchParams.get('v') || '').trim()
+      if (youtubeId) return sanitizeFilename(youtubeId, 80)
+    }
+
+    if (hostname.includes('youtu.be')) {
+      const segment = String(parsed.pathname || '').split('/').filter(Boolean)[0] || ''
+      if (segment) return sanitizeFilename(segment, 80)
+    }
+
+    const paramCandidates = ['id', 'video_id', 'track', 'song']
+    for (const key of paramCandidates) {
+      const candidate = String(parsed.searchParams.get(key) || '').trim()
+      if (candidate) return sanitizeFilename(candidate, 80)
+    }
+
+    const lastSegment = String(parsed.pathname || '')
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .pop() || ''
+
+    return sanitizeFilename(lastSegment, 80)
+  } catch {
+    return ''
+  }
+}
+
+function buildDownloadFilenameTemplateValues({
+  title,
+  artist,
+  uploader,
+  service,
+  downloadType,
+  sourceUrl,
+}) {
+  const now = new Date()
+  const date = `${now.getFullYear()}-${padDateTimeSegment(now.getMonth() + 1)}-${padDateTimeSegment(now.getDate())}`
+  const time = `${padDateTimeSegment(now.getHours())}-${padDateTimeSegment(now.getMinutes())}-${padDateTimeSegment(now.getSeconds())}`
+
+  return {
+    title: sanitizeFilename(title, 120),
+    artist: sanitizeFilename(artist, 120),
+    uploader: sanitizeFilename(uploader, 120),
+    service: sanitizeFilename(normalizeServiceKey(service) || String(service || ''), 80),
+    type: sanitizeFilename(downloadType, 40),
+    id: extractDownloadSourceId(sourceUrl),
+    date,
+    time,
+    datetime: `${date}_${time}`,
+  }
+}
+
+function resolveDownloadFilenameFromPattern({
+  pattern,
+  title,
+  artist,
+  uploader,
+  service,
+  downloadType,
+  sourceUrl,
+  fallbackBaseName = 'download',
+}) {
+  const normalizedPattern = normalizeDownloadFilenamePattern(pattern, '{title}')
+  const templateValues = buildDownloadFilenameTemplateValues({
+    title,
+    artist,
+    uploader,
+    service,
+    downloadType,
+    sourceUrl,
+  })
+
+  const replaced = normalizedPattern.replace(DOWNLOAD_FILENAME_PATTERN_TOKEN_REGEX, (_match, tokenName) => {
+    const key = String(tokenName || '').trim().toLowerCase()
+    return templateValues[key] || ''
+  })
+
+  const resolved = sanitizeFilename(replaced, 120)
+  if (resolved) return resolved
+
+  const fallbackTitle = sanitizeFilename(title, 120)
+  if (fallbackTitle) return fallbackTitle
+
+  return sanitizeFilename(fallbackBaseName, 120) || 'download'
 }
 
 const AUDIO_METADATA_PLACEHOLDER_VALUES = new Set([
@@ -4637,7 +4774,6 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
   const requestedFormat = formatRaw ? normalizeImageContainer(formatRaw) : ''
   const requestedService = String(req.body?.service || '').trim()
   const rawTitle = String(req.body?.videoTitle || req.body?.filename || '').trim()
-  const targetTitle = sanitizeFilename(rawTitle || 'thumbnail', 120) || 'thumbnail'
 
   if (!thumbnailUrl) {
     return res.status(400).json({ error: 'Missing required field: thumbnailUrl' })
@@ -4651,6 +4787,21 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
   if (formatRaw && !requestedFormat) {
     return res.status(400).json({ error: 'Unsupported image format' })
   }
+
+  const effectiveDownloadSettings = await readDownloadSettings().catch(() => ({ ...DEFAULT_DOWNLOAD_SETTINGS }))
+  const resolvedSourceUrl = isValidHttpUrl(sourceUrl) ? sourceUrl : thumbnailUrl
+  const resolvedService = resolveServiceKey(requestedService, resolvedSourceUrl)
+  const targetTitle = sanitizeMetadataValue(rawTitle || 'thumbnail', 220) || 'thumbnail'
+  const finalBaseFilename = resolveDownloadFilenameFromPattern({
+    pattern: effectiveDownloadSettings.thumbnailFilenamePattern,
+    title: targetTitle,
+    artist: '',
+    uploader: '',
+    service: resolvedService,
+    downloadType: 'thumbnail',
+    sourceUrl: resolvedSourceUrl,
+    fallbackBaseName: 'thumbnail',
+  })
 
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -4775,14 +4926,12 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
       send('progress', { percent: 92, stage: 'processing' })
     }
 
-    const finalFilename = buildUniqueDownloadFilename(targetTitle || 'thumbnail', outputContainer)
+    const finalFilename = buildUniqueDownloadFilename(finalBaseFilename, outputContainer)
     const finalPath = path.join(DOWNLOADS_DIR, finalFilename)
     fs.writeFileSync(finalPath, outputBuffer)
 
     try {
       const timestamp = new Date().toISOString()
-      const resolvedSourceUrl = isValidHttpUrl(sourceUrl) ? sourceUrl : thumbnailUrl
-      const resolvedService = resolveServiceKey(requestedService, resolvedSourceUrl)
       const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       stmt.run(null, targetTitle || 'thumbnail', 0, timestamp, 'thumbnail', outputContainer, finalFilename, resolvedService, resolvedSourceUrl, thumbnailUrl)
       stmt.finalize()
@@ -5096,8 +5245,23 @@ app.post('/api/download/stream', async (req, res) => {
     }
 
     // Prefer explicit metadata title, then normalized video title fallback, then generic.
-    const targetTitle = normalizedMetadata.title || normalizedVideoTitle || `download_${downloadHash}`
-    const finalBaseFilename = sanitizeFilename(targetTitle) || `download_${downloadHash}`
+    const targetTitle = sanitizeMetadataValue(
+      normalizedMetadata.title || normalizedVideoTitle || `download_${downloadHash}`,
+      220,
+    ) || `download_${downloadHash}`
+    const resolvedService = resolveServiceKey(service, url)
+    const finalBaseFilename = resolveDownloadFilenameFromPattern({
+      pattern: type === 'audio'
+        ? effectiveDownloadSettings.audioFilenamePattern
+        : effectiveDownloadSettings.videoFilenamePattern,
+      title: targetTitle,
+      artist: normalizedMetadata.artist || normalizedVideoAuthor,
+      uploader: normalizedVideoAuthor,
+      service: resolvedService,
+      downloadType: type,
+      sourceUrl: url,
+      fallbackBaseName: `download_${downloadHash}`,
+    })
 
     if (!useElectronDirectTarget) {
       // Check if file already exists (cached) in FINAL destination
@@ -5664,7 +5828,7 @@ app.post('/api/download/stream', async (req, res) => {
                 ? (normalizedAudioFormatId || requestedAudioContainer || 'bestaudio')
                 : (normalizedVideoFormatId || requestedVideoContainer || 'best')
 
-              const svc = resolveServiceKey(service, url)
+              const svc = resolvedService
 
               const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
               stmt.run(videoId, targetTitle, duration || 0, timestamp, type, formatId, finalFile, svc, url, thumbnailUrl || null)

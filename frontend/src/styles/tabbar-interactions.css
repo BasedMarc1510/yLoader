@@ -380,6 +380,11 @@
   transition: none !important;
 }
 
+:root[data-runtime-target='electron'] .yl-window-controls .yl-window-btn-control,
+:root[data-runtime-target='electron'] .yl-window-controls .yl-window-btn-control * {
+  cursor: default !important;
+}
+
 .yl-window-btn:not(.yl-window-btn-notification),
 .yl-window-btn:not(.yl-window-btn-notification) * {
   cursor: default !important;

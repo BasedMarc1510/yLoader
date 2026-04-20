@@ -25,7 +25,7 @@ export default function WindowControls({
 
       <IconButton
         size="small"
-        className="yl-window-btn"
+        className="yl-window-btn yl-window-btn-control"
         disableRipple
         aria-label={t('tabs.windowMinimizeAria')}
         onClick={onMinimize}
@@ -35,7 +35,7 @@ export default function WindowControls({
 
       <IconButton
         size="small"
-        className="yl-window-btn"
+        className="yl-window-btn yl-window-btn-control"
         disableRipple
         aria-label={isWindowMaximized ? t('tabs.windowRestoreAria') : t('tabs.windowMaximizeAria')}
         onClick={onToggleMaximize}
@@ -45,7 +45,7 @@ export default function WindowControls({
 
       <IconButton
         size="small"
-        className="yl-window-btn is-close"
+        className="yl-window-btn yl-window-btn-control is-close"
         disableRipple
         aria-label={t('tabs.windowCloseAria')}
         onClick={onClose}
