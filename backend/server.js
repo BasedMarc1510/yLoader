@@ -806,7 +806,7 @@ function normalizeYtDlpCookieSettingsPayload(value, { browserImportSupported = Y
   const defaults = createDefaultYtDlpCookieSettings()
   const input = (value && typeof value === 'object') ? value : {}
 
-  const cookiesFileEnabled = input.cookiesFileEnabled !== undefined
+  const cookiesFileEnabledRaw = input.cookiesFileEnabled !== undefined
     ? Boolean(input.cookiesFileEnabled)
     : defaults.cookiesFileEnabled
 
@@ -855,6 +855,8 @@ function normalizeYtDlpCookieSettingsPayload(value, { browserImportSupported = Y
     && browserEnabledFromInput
     && browserName
   )
+
+  const cookiesFileEnabled = Boolean(cookiesFileEnabledRaw && !cookiesFromBrowserEnabled)
 
   return {
     cookiesFileEnabled,

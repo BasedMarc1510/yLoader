@@ -396,6 +396,7 @@ const de = {
     failedLoadFfmpegStatus: 'FFmpeg-Status konnte nicht geladen werden: {message}',
     yes: 'Ja',
     no: 'Nein',
+    moreActionsAria: 'Weitere Aktionen',
     sectionDownloads: 'Downloads',
     sectionNetwork: 'Netzwerk & Auth',
     sectionSystem: 'System',

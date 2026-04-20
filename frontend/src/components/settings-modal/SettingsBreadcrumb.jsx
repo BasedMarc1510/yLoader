@@ -12,6 +12,7 @@ export default function SettingsBreadcrumb({ segments = [], isMobileLayout = fal
   const headingSize = isMobileLayout ? 20 : 24
   const headingSpacing = isMobileLayout ? '-0.3px' : '-0.5px'
   const chevronSize = isMobileLayout ? 17 : 19
+  const segmentHeight = isMobileLayout ? 24 : 28
 
   return (
     <Box
@@ -20,6 +21,7 @@ export default function SettingsBreadcrumb({ segments = [], isMobileLayout = fal
         alignItems: 'center',
         gap: isMobileLayout ? 0.55 : 0.7,
         minWidth: 0,
+        height: '100%',
       }}
     >
       {segments.map((segment, index) => {
@@ -35,8 +37,17 @@ export default function SettingsBreadcrumb({ segments = [], isMobileLayout = fal
               />
             )}
             <Typography
-              component={isClickable ? 'button' : 'span'}
+              component="span"
               onClick={isClickable ? segment.onClick : undefined}
+              role={isClickable ? 'button' : undefined}
+              tabIndex={isClickable ? 0 : undefined}
+              onKeyDown={isClickable
+                ? (event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return
+                  event.preventDefault()
+                  segment.onClick?.()
+                }
+                : undefined}
               sx={{
                 fontWeight: 700,
                 fontSize: headingSize,
@@ -48,12 +59,21 @@ export default function SettingsBreadcrumb({ segments = [], isMobileLayout = fal
                 border: 'none',
                 p: 0,
                 fontFamily: 'inherit',
-                lineHeight: 1.15,
+                lineHeight: 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                height: segmentHeight,
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 '&:hover': isClickable
                   ? { opacity: 1 }
+                  : {},
+                '&:focus-visible': isClickable
+                  ? {
+                    outline: 'none',
+                    opacity: 1,
+                  }
                   : {},
               }}
             >

@@ -39,6 +39,13 @@ function normalizeMultiModeValue(rawValue) {
     .join('\n')
 }
 
+function parseMultiModeLinks(rawValue) {
+  return normalizeMultiModeValue(rawValue)
+    .split('\n')
+    .map((line) => String(line || '').trim())
+    .filter(Boolean)
+}
+
 function isLikelyValidHttpLink(rawValue) {
   const input = String(rawValue || '').trim()
   if (!input) return false
@@ -256,7 +263,21 @@ export default function HomePage({ onOpenDownloader, routeSearch = '', routeToke
   const handleSubmit = React.useCallback(() => {
     const target = String(value || '').trim()
     if (!target) return
-    if (multiModeEnabled || interactionLocked) return
+    if (interactionLocked) return
+
+    if (multiModeEnabled) {
+      const links = parseMultiModeLinks(value)
+      if (links.length !== 1) return
+
+      const singleTarget = links[0]
+      if (!isLikelyValidHttpLink(singleTarget)) {
+        showNotification(t('home.invalidUrlNotification'), 'warning')
+        return
+      }
+
+      resolveAndOpenDownloader(singleTarget)
+      return
+    }
 
     if (!isLikelyValidHttpLink(target)) {
       showNotification(t('home.invalidUrlNotification'), 'warning')

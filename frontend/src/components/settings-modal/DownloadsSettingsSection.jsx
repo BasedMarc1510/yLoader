@@ -68,6 +68,8 @@ function DownloadsSubsectionMenu({ t, onSelect, disabled = false }) {
       {DOWNLOAD_SUBSECTIONS.map((item) => (
         <ButtonBase
           key={item.key}
+          disableRipple
+          disableTouchRipple
           disabled={disabled}
           onClick={() => onSelect(item.key)}
           sx={(theme) => ({
@@ -84,13 +86,23 @@ function DownloadsSubsectionMenu({ t, onSelect, disabled = false }) {
             border: `1px solid ${theme.palette.divider}`,
             bgcolor: theme.palette.mode === 'dark' ? '#1c1c1e' : '#ffffff',
             cursor: disabled ? 'default' : 'pointer',
-            transition: 'background-color 180ms ease, border-color 180ms ease',
+            transition: 'background-color 90ms ease-out, border-color 90ms ease-out',
             '&:hover': disabled
               ? {}
               : {
-                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)',
-                borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)',
+                bgcolor: `${theme.palette.mode === 'dark' ? '#222226' : '#f8f9fb'} !important`,
               },
+            '&.Mui-focusVisible': {
+              bgcolor: `${theme.palette.mode === 'dark' ? '#232328' : '#f6f8fb'} !important`,
+            },
+            '&:active': disabled
+              ? {}
+              : {
+                bgcolor: `${theme.palette.mode === 'dark' ? '#25252a' : '#f2f5fa'} !important`,
+              },
+            '& .MuiTouchRipple-root': {
+              display: 'none',
+            },
           })}
         >
           <Box sx={{ minWidth: 0, pr: 0.5 }}>

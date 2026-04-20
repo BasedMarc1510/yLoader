@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Dialog, DialogContent, IconButton, List, ListItem, ListItemButton, Typography, Tooltip, Button, useMediaQuery } from '@mui/material'
+import { Box, Dialog, DialogContent, IconButton, List, ListItem, ListItemButton, Typography, Tooltip, Button, Menu, MenuItem, useMediaQuery } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
-import { X, Settings as SettingsIcon, Download as DownloadIcon, Globe as GlobeIcon, Cpu as CpuIcon } from 'lucide-react'
+import { X, MoreHorizontal, Settings as SettingsIcon, Download as DownloadIcon, Globe as GlobeIcon, Cpu as CpuIcon } from 'lucide-react'
 import { Sheet } from 'react-modal-sheet'
 import { ColorModeContext } from '../providers/ColorModeProvider'
 import { SettingsContext } from '../providers/SettingsProvider'
@@ -68,6 +68,9 @@ const SECTION_DATA_DEPENDENCIES = {
 }
 
 const SETTINGS_SAVE_DEBOUNCE_MS = 180
+const SETTINGS_INTERACTION_TRANSITION_MS = 90
+const SETTINGS_CONTENT_SWITCH_ANIMATION_MS = 120
+const SETTINGS_SECTION_ORDER = Object.freeze(['general', 'downloads', 'network', 'system'])
 
 const DOWNLOAD_SUBSECTION_KEYS = Object.freeze({
   formatQuality: 'format-quality',
@@ -213,6 +216,8 @@ function SettingsModalInner({
   const [sectionFocusTarget, setSectionFocusTarget] = useState(() => String(requestedFocusTarget || '').trim())
   const [sectionFocusRequestId, setSectionFocusRequestId] = useState(() => String(requestedFocusRequestId || '').trim())
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [sectionActionsAnchorEl, setSectionActionsAnchorEl] = useState(null)
+  const [contentSwitchDirection, setContentSwitchDirection] = useState('forward')
   const [downloadsSubsection, setDownloadsSubsection] = useState(() => resolveDownloadsSubsectionKey(requestedSection))
   const [systemDetail, setSystemDetail] = useState(() => {
     // If an old caller requested 'ffmpeg' specifically, auto-drill into the ffmpeg detail
@@ -919,7 +924,7 @@ function SettingsModalInner({
     general: t('settings.general'),
     downloads: t('settings.downloadsConfig'),
     network: t('settings.networkConfig'),
-    system: t('settings.systemConfig'),
+    system: t('settings.sectionSystem'),
   }
 
   const sectionTitle = sectionTitleMap[section] || t('settings.general')
@@ -933,24 +938,58 @@ function SettingsModalInner({
 
   const activeDownloadsSubsectionTitle = downloadSubsectionTitleMap[downloadsSubsection] || ''
 
+  const handleNavigateToDownloadsSubsection = React.useCallback((nextSubsection) => {
+    const next = String(nextSubsection || '').trim()
+    const leavingSubsection = Boolean(downloadsSubsection) && !next
+    const enteringSubsection = !downloadsSubsection && Boolean(next)
+
+    if (leavingSubsection) setContentSwitchDirection('backward')
+    else if (enteringSubsection) setContentSwitchDirection('forward')
+
+    setDownloadsSubsection(next)
+  }, [downloadsSubsection])
+
+  const handleNavigateToSystemDetail = React.useCallback((detail) => {
+    const nextDetail = String(detail || '').trim()
+    if (!nextDetail) return
+
+    setContentSwitchDirection('forward')
+    setSystemDetail(nextDetail)
+  }, [])
+
+  const handleNavigateBackFromSystemDetail = React.useCallback(() => {
+    if (!systemDetail) return
+
+    setContentSwitchDirection('backward')
+    setSystemDetail(null)
+  }, [systemDetail])
+
   /* ─── breadcrumb for detail views ─── */
   const activeBreadcrumbSegments = useMemo(() => {
     if (section === 'system' && systemDetail) {
       return [
-        { label: t('settings.breadcrumbSystem'), onClick: () => setSystemDetail(null) },
+        { label: t('settings.breadcrumbSystem'), onClick: handleNavigateBackFromSystemDetail },
         { label: systemDetail === 'yt-dlp' ? 'yt-dlp' : 'ffmpeg' },
       ]
     }
 
     if (section === 'downloads' && downloadsSubsection) {
       return [
-        { label: t('settings.downloadsConfig'), onClick: () => setDownloadsSubsection('') },
+        { label: t('settings.downloadsConfig'), onClick: () => handleNavigateToDownloadsSubsection('') },
         { label: activeDownloadsSubsectionTitle || t('settings.downloadsConfig') },
       ]
     }
 
     return null
-  }, [activeDownloadsSubsectionTitle, downloadsSubsection, section, systemDetail, t])
+  }, [
+    activeDownloadsSubsectionTitle,
+    downloadsSubsection,
+    handleNavigateBackFromSystemDetail,
+    handleNavigateToDownloadsSubsection,
+    section,
+    systemDetail,
+    t,
+  ])
 
   /* ─── reset ─── */
 
@@ -966,6 +1005,8 @@ function SettingsModalInner({
     : downloadsSubsection === DOWNLOAD_SUBSECTION_KEYS.autoDownloadDefaults
       ? autoDownloadLoading || autoDownloadSaving
       : downloadSettingsLoading || downloadSettingsSaving
+
+  const canShowSectionActions = canResetSection && !resetDisabled
 
   const resetSectionTitle = (section === 'downloads' && canResetDownloadsSubsection)
     ? (activeDownloadsSubsectionTitle || t('settings.downloadsConfig'))
@@ -1032,8 +1073,64 @@ function SettingsModalInner({
       return
     }
     if (isCloseBlocked) return
+    setSectionActionsAnchorEl(null)
     onClose?.()
   }, [isCloseBlocked, onClose, resetConfirmOpen])
+
+  const sectionActionsMenuOpen = Boolean(sectionActionsAnchorEl)
+
+  const handleOpenSectionActionsMenu = React.useCallback((event) => {
+    if (!canShowSectionActions) return
+    setSectionActionsAnchorEl(event.currentTarget)
+  }, [canShowSectionActions])
+
+  const handleCloseSectionActionsMenu = React.useCallback(() => {
+    setSectionActionsAnchorEl(null)
+  }, [])
+
+  const handleRequestResetFromActionsMenu = React.useCallback(() => {
+    setSectionActionsAnchorEl(null)
+    handleRequestResetSection()
+  }, [handleRequestResetSection])
+
+  useEffect(() => {
+    if (canShowSectionActions || !sectionActionsAnchorEl) return
+    setSectionActionsAnchorEl(null)
+  }, [canShowSectionActions, sectionActionsAnchorEl])
+
+  const reducedHoverTransitionSx = useMemo(() => ({
+    '& .MuiButtonBase-root, & .MuiButton-root, & .MuiIconButton-root, & .MuiListItemButton-root, & .MuiOutlinedInput-root, & .MuiOutlinedInput-notchedOutline, & .MuiPaper-root, & .MuiSwitch-switchBase, & .MuiSlider-thumb, & .MuiSlider-track, & .MuiSlider-rail, & .MuiChip-root': {
+      transitionDuration: `${SETTINGS_INTERACTION_TRANSITION_MS}ms !important`,
+      transitionTimingFunction: 'ease-out !important',
+    },
+  }), [])
+
+  const sectionSwitchAnimationSx = useMemo(() => ({
+    animation: `${contentSwitchDirection === 'backward' ? 'settingsContentSlideBackward' : 'settingsContentSlideForward'} ${SETTINGS_CONTENT_SWITCH_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+    willChange: 'opacity, transform',
+    minWidth: 0,
+    maxWidth: '100%',
+    '@keyframes settingsContentSlideForward': {
+      from: {
+        opacity: 0,
+        transform: 'translateX(14px)',
+      },
+      to: {
+        opacity: 1,
+        transform: 'translateX(0)',
+      },
+    },
+    '@keyframes settingsContentSlideBackward': {
+      from: {
+        opacity: 0,
+        transform: 'translateX(-14px)',
+      },
+      to: {
+        opacity: 1,
+        transform: 'translateX(0)',
+      },
+    },
+  }), [contentSwitchDirection])
 
   const selectSx = useMemo(() => ({
     fontSize: isMobileLayout ? 14 : 13,
@@ -1041,8 +1138,8 @@ function SettingsModalInner({
     minWidth: isMobileLayout ? 0 : 140,
     width: isMobileLayout ? '100%' : 'auto',
     borderRadius: '4px',
-    '& .MuiOutlinedInput-root': { transition: 'border-color 180ms ease, background-color 180ms ease' },
-    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider', transition: 'border-color 180ms ease' },
+    '& .MuiOutlinedInput-root': { transition: `border-color ${SETTINGS_INTERACTION_TRANSITION_MS}ms ease-out, background-color ${SETTINGS_INTERACTION_TRANSITION_MS}ms ease-out` },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider', transition: `border-color ${SETTINGS_INTERACTION_TRANSITION_MS}ms ease-out` },
     '& .MuiSelect-select': { py: isMobileLayout ? '7px' : '6px', px: 1.5 },
     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'text.disabled' },
     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: 1 },
@@ -1053,12 +1150,24 @@ function SettingsModalInner({
 
   const handleSectionSelect = React.useCallback((nextSection) => {
     setResetConfirmOpen(false)
+    setSectionActionsAnchorEl(null)
+
+    const currentIndex = SETTINGS_SECTION_ORDER.indexOf(section)
+    const nextIndex = SETTINGS_SECTION_ORDER.indexOf(nextSection)
+    if (currentIndex !== -1 && nextIndex !== -1) {
+      setContentSwitchDirection(nextIndex >= currentIndex ? 'forward' : 'backward')
+    } else {
+      setContentSwitchDirection('forward')
+    }
+
     setSection(nextSection)
     setDownloadsSubsection('')
     setSystemDetail(null)
     setSectionFocusTarget('')
     setSectionFocusRequestId(String(Date.now()))
-  }, [])
+  }, [section])
+
+  const activeContentViewKey = `${section}:${downloadsSubsection || 'overview'}:${systemDetail || 'overview'}`
 
   const renderSectionContent = () => {
     if (section === 'general') {
@@ -1102,7 +1211,7 @@ function SettingsModalInner({
           isElectronRuntime={isElectronRuntime}
           isMobileLayout={isMobileLayout}
           activeSubsection={downloadsSubsection}
-          onNavigateToSubsection={setDownloadsSubsection}
+          onNavigateToSubsection={handleNavigateToDownloadsSubsection}
         />
       )
     }
@@ -1129,8 +1238,8 @@ function SettingsModalInner({
       return (
         <SystemSettingsSection
           activeDetail={systemDetail}
-          onNavigateToDetail={(detail) => setSystemDetail(detail)}
-          onNavigateBack={() => setSystemDetail(null)}
+          onNavigateToDetail={handleNavigateToSystemDetail}
+          onNavigateBack={handleNavigateBackFromSystemDetail}
           ytInfo={ytInfo}
           ffmpegInfo={ffmpegInfo}
           ytAutoUpdateEnabled={toolUpdateSettings.ytDlpAutoUpdate}
@@ -1219,6 +1328,38 @@ function SettingsModalInner({
     )
   }
 
+  const renderSectionActionsMenu = () => {
+    if (!canShowSectionActions) return null
+
+    return (
+    <Menu
+      id="settings-section-actions-menu"
+      anchorEl={sectionActionsAnchorEl}
+      open={sectionActionsMenuOpen}
+      onClose={handleCloseSectionActionsMenu}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      PaperProps={{
+        sx: {
+          minWidth: 200,
+          borderRadius: '10px',
+          border: `1px solid ${theme.palette.divider}`,
+          boxShadow: theme.palette.mode === 'dark'
+            ? '0 12px 26px rgba(0,0,0,0.45)'
+            : '0 10px 22px rgba(0,0,0,0.15)',
+        },
+      }}
+    >
+      <MenuItem
+        onClick={handleRequestResetFromActionsMenu}
+        sx={{ fontSize: 13.5 }}
+      >
+        {t('settings.resetToDefaults')}
+      </MenuItem>
+    </Menu>
+    )
+  }
+
   if (isMobileLayout) {
     return (
       <Sheet
@@ -1249,6 +1390,7 @@ function SettingsModalInner({
                 flexDirection: 'column',
                 minHeight: 0,
                 height: '100%',
+                ...reducedHoverTransitionSx,
               }}
             >
               <Box
@@ -1261,27 +1403,44 @@ function SettingsModalInner({
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Box sx={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', height: 24 }}>
                     {activeBreadcrumbSegments ? (
                       <SettingsBreadcrumb segments={activeBreadcrumbSegments} isMobileLayout />
                     ) : (
-                      <Typography sx={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.3px' }}>{sectionTitle}</Typography>
+                      <Typography sx={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.3px', lineHeight: 1, display: 'inline-flex', alignItems: 'center', height: '100%' }}>{sectionTitle}</Typography>
                     )}
                   </Box>
-                  <IconButton
-                    onClick={handleDialogClose}
-                    disabled={isCloseBlocked}
-                    size="small"
-                    aria-label={t('settings.closeAria')}
-                    sx={{
-                      borderRadius: '8px',
-                      p: '6px',
-                      color: 'text.secondary',
-                      '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
-                    }}
-                  >
-                    <X size={18} />
-                  </IconButton>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35 }}>
+                    {canShowSectionActions && (
+                      <IconButton
+                        onClick={handleOpenSectionActionsMenu}
+                        size="small"
+                        aria-label={t('settings.moreActionsAria')}
+                        sx={{
+                          borderRadius: '8px',
+                          p: '6px',
+                          color: 'text.secondary',
+                          '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                        }}
+                      >
+                        <MoreHorizontal size={17} />
+                      </IconButton>
+                    )}
+                    <IconButton
+                      onClick={handleDialogClose}
+                      disabled={isCloseBlocked}
+                      size="small"
+                      aria-label={t('settings.closeAria')}
+                      sx={{
+                        borderRadius: '8px',
+                        p: '6px',
+                        color: 'text.secondary',
+                        '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                      }}
+                    >
+                      <X size={18} />
+                    </IconButton>
+                  </Box>
                 </Box>
 
                 <Box
@@ -1324,19 +1483,6 @@ function SettingsModalInner({
                   ))}
                 </Box>
 
-                {canResetSection && (
-                  <Box sx={{ mt: 0.5, display: 'flex', justifyContent: 'flex-end' }}>
-                    <Button
-                      variant="text"
-                      size="small"
-                      disabled={resetDisabled}
-                      onClick={handleRequestResetSection}
-                      sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px', color: 'primary.main' }}
-                    >
-                      {t('settings.resetToDefaults')}
-                    </Button>
-                  </Box>
-                )}
               </Box>
 
               <Box
@@ -1344,14 +1490,21 @@ function SettingsModalInner({
                   flex: 1,
                   minHeight: 0,
                   overflowY: 'auto',
+                  overflowX: 'hidden',
                   WebkitOverflowScrolling: 'touch',
                   pb: 'calc(0.5rem + env(safe-area-inset-bottom))',
                 }}
               >
-                {renderSectionContent()}
+                <Box sx={{ overflow: 'hidden', minWidth: 0, maxWidth: '100%' }}>
+                  <Box key={activeContentViewKey} sx={sectionSwitchAnimationSx}>
+                    {renderSectionContent()}
+                  </Box>
+                </Box>
               </Box>
 
               {renderResetConfirmOverlay(true)}
+
+              {renderSectionActionsMenu()}
             </Box>
           </Sheet.Content>
         </Sheet.Container>
@@ -1381,7 +1534,14 @@ function SettingsModalInner({
         }),
       }}
     >
-      <DialogContent sx={{ p: 0, position: 'relative', '&:first-of-type': { pt: 0 } }}>
+      <DialogContent
+        sx={{
+          p: 0,
+          position: 'relative',
+          '&:first-of-type': { pt: 0 },
+          ...reducedHoverTransitionSx,
+        }}
+      >
         <Box sx={{ display: 'flex', height: 640 }}>
           {/* ─── SIDEBAR ─── */}
           <Box sx={(themeValue) => ({
@@ -1484,40 +1644,44 @@ function SettingsModalInner({
               zIndex: 1,
               bgcolor: themeValue.palette.mode === 'dark' ? '#000000' : '#f2f2f7',
             })}>
-              <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0, height: 28 }}>
                 {activeBreadcrumbSegments ? (
                   <SettingsBreadcrumb segments={activeBreadcrumbSegments} isMobileLayout={false} />
                 ) : (
-                  <Typography sx={{ fontWeight: 700, fontSize: 24, letterSpacing: '-0.5px' }}>{sectionTitle}</Typography>
+                  <Typography sx={{ fontWeight: 700, fontSize: 24, letterSpacing: '-0.5px', lineHeight: 1, display: 'inline-flex', alignItems: 'center', height: '100%' }}>{sectionTitle}</Typography>
                 )}
               </Box>
 
-              {canResetSection && (
-                <Button
-                  variant="text"
+              {canShowSectionActions && (
+                <IconButton
+                  onClick={handleOpenSectionActionsMenu}
                   size="small"
-                  disabled={resetDisabled}
-                  onClick={handleRequestResetSection}
+                  aria-label={t('settings.moreActionsAria')}
                   sx={{
-                    textTransform: 'none',
-                    fontWeight: 600,
                     borderRadius: '8px',
-                    color: 'primary.main',
-                    '&:hover': { bgcolor: 'action.hover' },
+                    p: '6px',
+                    color: 'text.secondary',
+                    '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
                   }}
                 >
-                  {t('settings.resetToDefaults')}
-                </Button>
+                  <MoreHorizontal size={17} />
+                </IconButton>
               )}
             </Box>
 
-            <SimpleBarScrollArea sx={{ flex: 1, minHeight: 0 }}>
-              {renderSectionContent()}
+            <SimpleBarScrollArea sx={{ flex: 1, minHeight: 0 }} hideHorizontal>
+              <Box sx={{ overflow: 'hidden', minWidth: 0, maxWidth: '100%' }}>
+                <Box key={activeContentViewKey} sx={sectionSwitchAnimationSx}>
+                  {renderSectionContent()}
+                </Box>
+              </Box>
             </SimpleBarScrollArea>
           </Box>
         </Box>
 
         {renderResetConfirmOverlay()}
+
+        {renderSectionActionsMenu()}
       </DialogContent>
     </Dialog>
   )

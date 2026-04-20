@@ -1,8 +1,6 @@
 import React from 'react'
-import { Box, Chip, IconButton, Stack, TextField, Tooltip } from '@mui/material'
+import { Box, Chip, IconButton, Stack, TextField, Tooltip, Typography } from '@mui/material'
 import { RotateCcw } from 'lucide-react'
-import SettingGroup from './SettingGroup'
-import SettingRow from './SettingRow'
 import {
   DOWNLOAD_FILENAME_PATTERN_TOKENS,
   DOWNLOAD_SETTINGS_DEFAULTS,
@@ -57,30 +55,28 @@ export default function DownloadNamingSettingsGroup({
   }, [downloadSettings, updateDownloadSettings])
 
   return (
-    <SettingGroup allowOverflow>
-      {FIELD_CONFIG.map((fieldConfig, index) => {
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.4 }}>
+      {FIELD_CONFIG.map((fieldConfig) => {
         const fieldName = fieldConfig.field
         const fieldValue = getPatternValue(downloadSettings, fieldName)
         const fieldLabel = t(fieldConfig.labelKey)
         const resetAriaLabel = t('settings.downloadFilenamePatternResetAria', { field: fieldLabel })
 
         return (
-          <SettingRow
-            key={fieldName}
-            label={fieldLabel}
-            stacked
-            noDivider={index === FIELD_CONFIG.length - 1}
-          >
+          <Box key={fieldName}>
             <Box
               sx={(theme) => ({
                 width: '100%',
                 p: 1.25,
-                borderRadius: '8px',
+                borderRadius: '12px',
                 border: `1px solid ${theme.palette.divider}`,
-                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+                bgcolor: theme.palette.mode === 'dark' ? '#1c1c1e' : '#ffffff',
               })}
             >
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.6 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.6 }}>
+                <Typography variant="body2" sx={{ fontWeight: 500, fontSize: 14.5, color: 'text.primary', lineHeight: 1.25 }}>
+                  {fieldLabel}
+                </Typography>
                 <Tooltip title={resetAriaLabel}>
                   <span>
                     <IconButton
@@ -145,9 +141,9 @@ export default function DownloadNamingSettingsGroup({
                 ))}
               </Stack>
             </Box>
-          </SettingRow>
+          </Box>
         )
       })}
-    </SettingGroup>
+    </Box>
   )
 }

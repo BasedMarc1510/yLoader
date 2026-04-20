@@ -27,6 +27,35 @@ export default function NetworkSettingsSection({
   const cookieControlsDisabled = Boolean(cookieSettingsLoading || cookieSettingsSaving)
   const cookieSectionRef = React.useRef(null)
   const showBrowserImport = isElectronRuntime && cookieState.browserImportSupported
+  const fileModeActive = Boolean(cookieState.cookiesFileEnabled)
+  const browserModeActive = Boolean(showBrowserImport && cookieState.cookiesFromBrowserEnabled)
+  const cookieFilePanelDisabled = Boolean(cookieControlsDisabled || browserModeActive)
+  const cookieBrowserPanelDisabled = Boolean(cookieControlsDisabled || fileModeActive)
+
+  const updateCookieSettingsExclusive = React.useCallback((changes) => {
+    const patch = (changes && typeof changes === 'object') ? changes : {}
+    const nextPatch = { ...patch }
+
+    if (nextPatch.cookiesFileEnabled === true) {
+      nextPatch.cookiesFromBrowserEnabled = false
+    }
+
+    if (nextPatch.cookiesFromBrowserEnabled === true) {
+      nextPatch.cookiesFileEnabled = false
+    }
+
+    onUpdateCookieSettings?.(nextPatch)
+  }, [onUpdateCookieSettings])
+
+  React.useEffect(() => {
+    if (!showBrowserImport) return
+    if (!(cookieState.cookiesFileEnabled && cookieState.cookiesFromBrowserEnabled)) return
+
+    onUpdateCookieSettings?.({
+      cookiesFileEnabled: false,
+      cookiesFromBrowserEnabled: true,
+    })
+  }, [cookieState.cookiesFileEnabled, cookieState.cookiesFromBrowserEnabled, onUpdateCookieSettings, showBrowserImport])
 
   React.useEffect(() => {
     const focusTarget = String(requestedFocusTarget || '').trim().toLowerCase()
@@ -60,27 +89,45 @@ export default function NetworkSettingsSection({
       </Box>
 
       {/* Cookie file import — always available */}
-      <SettingGroup title={t('settings.networkCookieFileTitle')}>
-        <YtDlpCookieFileSettingsGroup
-          cookieState={cookieState}
-          cookieControlsDisabled={cookieControlsDisabled}
-          cookieSettingsLoading={cookieSettingsLoading}
-          cookieSettingsSaving={cookieSettingsSaving}
-          onUpdateCookieSettings={onUpdateCookieSettings}
-          t={t}
-        />
-      </SettingGroup>
-
-      {/* Browser cookie extraction — Electron only */}
-      {showBrowserImport && (
-        <SettingGroup title={t('settings.networkCookieBrowserTitle')}>
-          <YtDlpCookieBrowserSettingsGroup
+      <Box
+        sx={{
+          opacity: cookieFilePanelDisabled ? 0.42 : 1,
+          filter: cookieFilePanelDisabled ? 'grayscale(0.25)' : 'none',
+          transition: 'opacity 160ms ease, filter 160ms ease',
+          pointerEvents: cookieFilePanelDisabled ? 'none' : 'auto',
+        }}
+      >
+        <SettingGroup title={t('settings.networkCookieFileTitle')}>
+          <YtDlpCookieFileSettingsGroup
             cookieState={cookieState}
-            cookieControlsDisabled={cookieControlsDisabled}
-            onUpdateCookieSettings={onUpdateCookieSettings}
+            cookieControlsDisabled={cookieFilePanelDisabled}
+            cookieSettingsLoading={cookieSettingsLoading}
+            cookieSettingsSaving={cookieSettingsSaving}
+            onUpdateCookieSettings={updateCookieSettingsExclusive}
             t={t}
           />
         </SettingGroup>
+      </Box>
+
+      {/* Browser cookie extraction — Electron only */}
+      {showBrowserImport && (
+        <Box
+          sx={{
+            opacity: cookieBrowserPanelDisabled ? 0.42 : 1,
+            filter: cookieBrowserPanelDisabled ? 'grayscale(0.25)' : 'none',
+            transition: 'opacity 160ms ease, filter 160ms ease',
+            pointerEvents: cookieBrowserPanelDisabled ? 'none' : 'auto',
+          }}
+        >
+          <SettingGroup title={t('settings.networkCookieBrowserTitle')}>
+            <YtDlpCookieBrowserSettingsGroup
+              cookieState={cookieState}
+              cookieControlsDisabled={cookieBrowserPanelDisabled}
+              onUpdateCookieSettings={updateCookieSettingsExclusive}
+              t={t}
+            />
+          </SettingGroup>
+        </Box>
       )}
 
       {/* Unsupported hint for web mode */}

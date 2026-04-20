@@ -396,6 +396,7 @@ const en = {
     failedLoadFfmpegStatus: 'Failed to load ffmpeg status: {message}',
     yes: 'Yes',
     no: 'No',
+    moreActionsAria: 'More actions',
     sectionDownloads: 'Downloads',
     sectionNetwork: 'Network & Auth',
     sectionSystem: 'System',

@@ -270,6 +270,7 @@ export function useAutoDownload({
         type: isAudio ? 'audio' : 'video',
         duration: durationData?.duration ?? null,
         videoTitle: rawTitle,
+        videoAuthor: rawAuthor,
         format: isAudio ? 'mp3' : 'mp4',
         audioFormat: isAudio
           ? pickAudioFormatByMaxBitrate(formatsData?.audioFormats, autoSettings.maxAudioBitrateKbps)

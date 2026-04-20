@@ -60,8 +60,13 @@ export function normalizeYtDlpCookieSettings(value) {
     && browserSupported
   )
 
+  const cookiesFileEnabledRaw = input.cookiesFileEnabled !== undefined
+    ? Boolean(input.cookiesFileEnabled)
+    : YT_DLP_COOKIE_SETTINGS_DEFAULTS.cookiesFileEnabled
+  const cookiesFileEnabled = Boolean(cookiesFileEnabledRaw && !cookiesFromBrowserEnabled)
+
   return {
-    cookiesFileEnabled: Boolean(input.cookiesFileEnabled),
+    cookiesFileEnabled,
     cookiesFilePath: normalizeText(input.cookiesFilePath, 4096),
     cookiesFromBrowserEnabled,
     browserName: browserSupported ? browserName : '',
