@@ -24,7 +24,7 @@ import { resolveServiceKey } from './utils/metadata'
 import {
   getPanelDomId,
   getTabDomId,
-  hasUrlInSearch,
+  hasDownloaderInSearch,
 } from './utils/tabState'
 import { useTabsController } from './hooks/useTabsController'
 import { useGlobalTabShortcuts } from './hooks/useGlobalTabShortcuts'
@@ -204,7 +204,7 @@ export default function App() {
       )
     }
 
-    if (normalizedPath === '/' && hasUrlInSearch(normalizedSearch)) {
+    if (normalizedPath === '/' && hasDownloaderInSearch(normalizedSearch)) {
       const serviceKey = getServiceForPath(normalizedPath, tab.search) || 'generic'
       return (
         <Downloader

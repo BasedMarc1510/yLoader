@@ -100,6 +100,7 @@ export default function useOptionsTabsData({
   onFetchError,
   defaultDownloadType = 'video',
   disabledDownloadTypes = [],
+  downloadSettingsOverride = null,
 }) {
   const normalizedDisabledDownloadTypes = React.useMemo(
     () => normalizeDisabledDownloadTypes(disabledDownloadTypes),
@@ -165,8 +166,16 @@ export default function useOptionsTabsData({
     () => String(videoThumbnail || '').trim(),
     [videoThumbnail]
   )
-  const [downloadSettings, setDownloadSettings] = React.useState(() => ({ ...DOWNLOAD_SETTINGS_DEFAULTS }))
-  const [downloadSettingsLoaded, setDownloadSettingsLoaded] = React.useState(false)
+  const normalizedDownloadSettingsOverride = React.useMemo(() => {
+    if (!downloadSettingsOverride || typeof downloadSettingsOverride !== 'object') return null
+    return normalizeDownloadSettings(downloadSettingsOverride)
+  }, [downloadSettingsOverride])
+  const [downloadSettings, setDownloadSettings] = React.useState(
+    () => normalizedDownloadSettingsOverride || { ...DOWNLOAD_SETTINGS_DEFAULTS }
+  )
+  const [downloadSettingsLoaded, setDownloadSettingsLoaded] = React.useState(
+    () => Boolean(normalizedDownloadSettingsOverride)
+  )
   const defaultsAppliedRef = React.useRef(false)
   const previousVideoUrlRef = React.useRef(videoUrl)
   const activeSection = activeSections[tab] || null
@@ -309,6 +318,14 @@ export default function useOptionsTabsData({
   }, [videoTitle, videoAuthor])
 
   React.useEffect(() => {
+    if (!normalizedDownloadSettingsOverride) return
+    setDownloadSettings(normalizedDownloadSettingsOverride)
+    setDownloadSettingsLoaded(true)
+  }, [normalizedDownloadSettingsOverride])
+
+  React.useEffect(() => {
+    if (normalizedDownloadSettingsOverride) return undefined
+
     let cancelled = false
 
     const loadDownloadSettings = async () => {
@@ -330,7 +347,7 @@ export default function useOptionsTabsData({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [normalizedDownloadSettingsOverride])
 
   React.useEffect(() => {
     if (!downloadSettingsLoaded || defaultsAppliedRef.current) return

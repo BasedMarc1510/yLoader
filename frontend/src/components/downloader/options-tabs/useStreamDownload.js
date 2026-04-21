@@ -100,6 +100,7 @@ export default function useStreamDownload({
   i18nT,
   showNotification,
   onDownloadStateChange,
+  onDownloadEvent,
   videoUrl,
   serviceKey,
   durationSeconds,
@@ -125,6 +126,7 @@ export default function useStreamDownload({
   downloadSettings,
   audioDownloadTargetSettings,
   videoDownloadTargetSettings,
+  forcedDownloadDirectory,
   confirmOverwriteInApp,
   onOpenCookieSettings,
 }) {
@@ -213,7 +215,16 @@ export default function useStreamDownload({
   }, [i18nT, onOpenCookieSettings, showNotification])
 
   const handleDownload = React.useCallback(async (type) => {
-    if (downloading) return
+    const emitDownloadEvent = (event) => {
+      if (typeof onDownloadEvent !== 'function') return
+      try {
+        onDownloadEvent(event)
+      } catch {
+        // external handlers should never break the download flow
+      }
+    }
+
+    if (downloading) return false
 
     const editedVideoCoverUpload = coverEmbedEnabled
       && coverSource === 'video'
@@ -241,13 +252,17 @@ export default function useStreamDownload({
       && (effectiveCoverSource !== 'video' || hasVideoThumbnail)
 
     if (type === 'audio' && coverEmbedEnabled && effectiveCoverSource === 'video' && !hasVideoThumbnail) {
-      notifyDownloadError(i18nT('downloader.errorVideoThumbUnavailable'), { persistent: true })
-      return
+      const message = i18nT('downloader.errorVideoThumbUnavailable')
+      notifyDownloadError(message, { persistent: true })
+      emitDownloadEvent({ type: 'error', message, downloadType: type, sourceUrl: videoUrl })
+      return false
     }
 
     if (type === 'audio' && coverEmbedEnabled && effectiveCoverSource === 'upload' && !effectiveCoverUpload?.dataUrl) {
-      notifyDownloadError(i18nT('downloader.errorSelectCover'), { persistent: true })
-      return
+      const message = i18nT('downloader.errorSelectCover')
+      notifyDownloadError(message, { persistent: true })
+      emitDownloadEvent({ type: 'error', message, downloadType: type, sourceUrl: videoUrl })
+      return false
     }
 
     setActiveDownloadType(type)
@@ -257,10 +272,12 @@ export default function useStreamDownload({
 
     let completed = false
     let finalized = false
+    let completionPayload = null
 
     try {
       const apiBase = getApiBase()
       const normalized = normalizeUrlForNoembed(videoUrl)
+      emitDownloadEvent({ type: 'start', downloadType: type, sourceUrl: normalized })
       const selectedCuts = type === 'audio' ? audioCutsData : videoCutsData
       const numericDurationSeconds = Number(durationSeconds)
       const hasDurationSeconds = Number.isFinite(numericDurationSeconds) && numericDurationSeconds > 0
@@ -323,11 +340,23 @@ export default function useStreamDownload({
       )
       const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
       const isElectronRuntime = Boolean(runtime?.isElectron)
-      const resolvedDownloadTargetSettings = type === 'video'
-        ? videoDownloadTargetSettings
-        : audioDownloadTargetSettings
+      const normalizedForcedDownloadDirectory = String(forcedDownloadDirectory || '').trim()
+      const hasForcedDownloadDirectory = Boolean(
+        isElectronRuntime
+        && normalizedForcedDownloadDirectory
+      )
+      const resolvedDownloadTargetSettings = hasForcedDownloadDirectory
+        ? {
+          directoryPath: normalizedForcedDownloadDirectory,
+          alwaysAsk: false,
+        }
+        : (type === 'video'
+          ? videoDownloadTargetSettings
+          : audioDownloadTargetSettings)
       const preferredDirectory = String(
-        resolvedDownloadTargetSettings?.directoryPath || runtime?.downloadsPath || ''
+        (hasForcedDownloadDirectory
+          ? normalizedForcedDownloadDirectory
+          : (resolvedDownloadTargetSettings?.directoryPath || runtime?.downloadsPath || ''))
       ).trim()
       const usesFixedPathMode = Boolean(
         isElectronRuntime
@@ -365,14 +394,16 @@ export default function useStreamDownload({
         if (!resolvedFilename) {
           const message = i18nT('downloader.errorFilePathRequired')
           notifyDownloadError(message, { persistent: true })
-          return
+          emitDownloadEvent({ type: 'error', message, downloadType: type, sourceUrl: normalized })
+          return false
         }
 
         const directoryToValidate = String(getPathDirectory(resolvedPathValue) || preferredDirectory).trim()
         if (!directoryToValidate) {
           const message = i18nT('downloader.errorDownloadPathInvalid', { path: resolvedPathValue })
           notifyDownloadError(message, { persistent: true })
-          return
+          emitDownloadEvent({ type: 'error', message, downloadType: type, sourceUrl: normalized })
+          return false
         }
 
         const canValidateDirectory = typeof runtime?.downloads?.validateDirectory === 'function'
@@ -382,12 +413,14 @@ export default function useStreamDownload({
             if (!validation?.valid) {
               const message = resolvePathValidationMessage(i18nT, validation, directoryToValidate)
               notifyDownloadError(message, { persistent: true })
-              return
+              emitDownloadEvent({ type: 'error', message, downloadType: type, sourceUrl: normalized })
+              return false
             }
           } catch {
             const message = i18nT('downloader.errorDownloadPathInvalid', { path: directoryToValidate })
             notifyDownloadError(message, { persistent: true })
-            return
+            emitDownloadEvent({ type: 'error', message, downloadType: type, sourceUrl: normalized })
+            return false
           }
         }
 
@@ -452,7 +485,7 @@ export default function useStreamDownload({
 
       if (electronDestination.enabled) {
         if (electronDestination.canceled) {
-          return
+          return false
         }
 
         if (usesFixedPathMode && manualElectronSavePath) {
@@ -485,7 +518,8 @@ export default function useStreamDownload({
           if (overwriteTargetExists && !overwriteTargetIsFile) {
             const message = i18nT('downloader.errorDownloadPathInvalid', { path: overwriteTargetPath })
             notifyDownloadError(message, { persistent: true })
-            return
+            emitDownloadEvent({ type: 'error', message, downloadType: type, sourceUrl: normalized })
+            return false
           }
 
           if (overwriteTargetExists && overwriteTargetIsFile) {
@@ -510,7 +544,7 @@ export default function useStreamDownload({
             }
 
             if (overwriteAction !== 'replace') {
-              return
+              return false
             }
 
             payload.electronAllowOverwrite = true
@@ -551,6 +585,7 @@ export default function useStreamDownload({
             includeRawForUnknown: true,
           })
           notifyDownloadError(msg)
+          emitDownloadEvent({ type: 'error', message: msg, downloadType: type, sourceUrl: normalized })
           return
         }
 
@@ -581,6 +616,19 @@ export default function useStreamDownload({
             setDownloadProgress(100)
             setDownloadStage('complete')
 
+            completionPayload = {
+              filename,
+              savePath: String(data?.savePath || '').trim(),
+              relativeUrl,
+              downloadUrl: relativeUrl ? `${apiBase}${relativeUrl}` : '',
+            }
+            emitDownloadEvent({
+              type: 'complete',
+              downloadType: type,
+              sourceUrl: normalized,
+              payload: completionPayload,
+            })
+
             if (!isElectronRuntime && relativeUrl) {
               const a = document.createElement('a')
               a.href = `${apiBase}${relativeUrl}`
@@ -607,6 +655,7 @@ export default function useStreamDownload({
           if (dataStr.trim() === 'failed' && !completed) {
             const msg = i18nT('downloader.errorDownloadFailed')
             notifyDownloadError(msg)
+            emitDownloadEvent({ type: 'error', message: msg, downloadType: type, sourceUrl: normalized })
           }
         }
       }
@@ -676,6 +725,8 @@ export default function useStreamDownload({
       if (!completed && !finalized) {
         throw new Error(i18nT('downloader.errorDownloadFailed'))
       }
+
+      return completionPayload || completed
     } catch (err) {
       const directMessage = String(err?.message || '').trim()
       const msg = directMessage || formatYtDlpErrorMessage(i18nT, err, {
@@ -683,6 +734,8 @@ export default function useStreamDownload({
         includeRawForUnknown: true,
       })
       notifyDownloadError(msg)
+      emitDownloadEvent({ type: 'error', message: msg, downloadType: type, sourceUrl: videoUrl })
+      return false
     } finally {
       if (!completed) {
         setDownloading(false)
@@ -717,9 +770,11 @@ export default function useStreamDownload({
     videoAuthor,
     albumValue,
     notifyDownloadError,
+    onDownloadEvent,
     downloadSettings,
     audioDownloadTargetSettings,
     videoDownloadTargetSettings,
+    forcedDownloadDirectory,
     confirmOverwriteInApp,
   ])
 

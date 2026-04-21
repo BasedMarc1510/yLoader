@@ -59,6 +59,23 @@ function hasUrlInSearch(search) {
   return Boolean(getDownloaderSourceFromParams(params))
 }
 
+function hasMultiDownloadInSearch(search) {
+  const normalizedSearch = normalizeTabSearch(search)
+  if (!normalizedSearch) return false
+
+  const params = new URLSearchParams(normalizedSearch)
+  const multiFlag = String(params.get('multiDownload') || '').trim()
+  if (multiFlag !== '1') return false
+
+  const token = String(params.get('multiImportToken') || '').trim()
+  const inlineLinks = String(params.get('links') || '').trim()
+  return Boolean(token || inlineLinks)
+}
+
+function hasDownloaderInSearch(search) {
+  return hasUrlInSearch(search) || hasMultiDownloadInSearch(search)
+}
+
 function getServiceFromSearch(search) {
   const normalizedSearch = normalizeTabSearch(search)
   if (!normalizedSearch) return null
@@ -123,7 +140,9 @@ export function getRouteTitle(path, t, search = '') {
   if (normalized === '/search') return t('routes.search')
   if (normalized === '/downloads') return t('routes.downloads')
   if (normalized === '/support') return t('routes.support')
-  if (normalized === '/' && hasUrlInSearch(search)) {
+  if (normalized === '/' && hasDownloaderInSearch(search)) {
+    if (!hasUrlInSearch(search)) return t('routes.downloader')
+
     const service = getServiceFromSearch(search) || GENERIC_SERVICE_KEY
     if (service === GENERIC_SERVICE_KEY) return t('routes.genericDownloader')
     return t('downloader.title', { service: getServiceDisplayName(service) })
@@ -136,7 +155,8 @@ export function getRouteIconKey(path, search = '') {
   if (normalized === '/search') return 'search'
   if (normalized === '/downloads') return 'downloads'
   if (normalized === '/support') return 'support'
-  if (normalized === '/' && hasUrlInSearch(search)) {
+  if (normalized === '/' && hasDownloaderInSearch(search)) {
+    if (!hasUrlInSearch(search)) return 'downloads'
     return getServiceFromSearch(search) || GENERIC_SERVICE_KEY
   }
   return 'home'

@@ -12,6 +12,15 @@ import {
 import { detectService, isLikelyValidUrlFor } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import { useNotification } from '../providers/NotificationProvider'
+import {
+  isLikelyValidHttpLink,
+  normalizeMultiLinksValue,
+  parseMultiLinks,
+} from '../utils/multiLinks'
+import {
+  consumeMultiImportPayload,
+  HOME_MULTI_IMPORT_STORAGE_PREFIX,
+} from '../utils/multiImportStorage'
 import HomeQuickActions from './home/HomeQuickActions'
 import HomeMultiInput from './home/HomeMultiInput'
 import HomeSingleInput from './home/HomeSingleInput'
@@ -22,55 +31,6 @@ import { useAutoDownload } from './home/useAutoDownload'
 import { openSettingsModal } from './home/settingsBridge'
 
 const INPUT_BORDER_RUNNER_ANIMATION = 'input-border-runner 3.4s ease-in-out infinite'
-const HOME_MULTI_IMPORT_STORAGE_PREFIX = 'yloader.home.multiImport.'
-
-function normalizeMultiModeValue(rawValue) {
-  const text = String(rawValue || '').replace(/\r/g, '')
-  if (!text) return ''
-
-  const commaSeparatedAsLines = text.replace(
-    /(\S)\s*,\s*(?=\S)/g,
-    '$1\n'
-  )
-
-  return commaSeparatedAsLines
-    .split('\n')
-    .map((line) => line.trim())
-    .join('\n')
-}
-
-function parseMultiModeLinks(rawValue) {
-  return normalizeMultiModeValue(rawValue)
-    .split('\n')
-    .map((line) => String(line || '').trim())
-    .filter(Boolean)
-}
-
-function isLikelyValidHttpLink(rawValue) {
-  const input = String(rawValue || '').trim()
-  if (!input) return false
-
-  const candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `https://${input}`
-
-  let parsed
-  try {
-    parsed = new URL(candidate)
-  } catch {
-    return false
-  }
-
-  const protocol = String(parsed.protocol || '').toLowerCase()
-  if (protocol !== 'http:' && protocol !== 'https:') return false
-
-  const hostname = String(parsed.hostname || '').trim().toLowerCase()
-  if (!hostname) return false
-
-  if (hostname === 'localhost') return true
-  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) return true
-  if (hostname.includes(':')) return true
-
-  return hostname.includes('.')
-}
 
 export default function HomePage({ onOpenDownloader, routeSearch = '', routeToken = 0 }) {
   const { t } = useI18n()
@@ -167,8 +127,7 @@ export default function HomePage({ onOpenDownloader, routeSearch = '', routeToke
     let importedLinks = ''
     if (importToken && typeof window !== 'undefined' && window.sessionStorage) {
       try {
-        importedLinks = String(window.sessionStorage.getItem(`${HOME_MULTI_IMPORT_STORAGE_PREFIX}${importToken}`) || '')
-        window.sessionStorage.removeItem(`${HOME_MULTI_IMPORT_STORAGE_PREFIX}${importToken}`)
+        importedLinks = consumeMultiImportPayload(HOME_MULTI_IMPORT_STORAGE_PREFIX, importToken)
       } catch {
         importedLinks = ''
       }
@@ -178,7 +137,7 @@ export default function HomePage({ onOpenDownloader, routeSearch = '', routeToke
       importedLinks = inlineLinks
     }
 
-    const normalizedLinks = normalizeMultiModeValue(importedLinks)
+    const normalizedLinks = normalizeMultiLinksValue(importedLinks)
     if (!normalizedLinks.trim()) {
       consumedRouteImportRef.current = importToken || `inline-${routeToken}`
       return
@@ -218,7 +177,7 @@ export default function HomePage({ onOpenDownloader, routeSearch = '', routeToke
     if (fetchError) setFetchError(null)
 
     const normalizedValue = multiModeEnabled
-      ? normalizeMultiModeValue(nextValue)
+      ? normalizeMultiLinksValue(nextValue)
       : nextValue
 
     setValue(normalizedValue)
@@ -248,7 +207,7 @@ export default function HomePage({ onOpenDownloader, routeSearch = '', routeToke
 
     if (autoDownloadEnabled) setAutoDownloadEnabled(false)
     setMultiModeEnabled(true)
-    setValue((previous) => normalizeMultiModeValue(previous))
+    setValue((previous) => normalizeMultiLinksValue(previous))
     setMenuAnchorEl(null)
   }, [autoDownloadEnabled, disableMultiModeNow, hasMultiInput, interactionLocked, multiModeEnabled])
 
@@ -266,7 +225,15 @@ export default function HomePage({ onOpenDownloader, routeSearch = '', routeToke
     if (interactionLocked) return
 
     if (multiModeEnabled) {
-      const links = parseMultiModeLinks(value)
+      const links = parseMultiLinks(value)
+      if (links.length > 1) {
+        setFetchError(null)
+        onOpenDownloader?.('generic', '', {
+          multiUrls: links,
+        })
+        return
+      }
+
       if (links.length !== 1) return
 
       const singleTarget = links[0]
@@ -294,6 +261,7 @@ export default function HomePage({ onOpenDownloader, routeSearch = '', routeToke
     autoDownloadEnabled,
     interactionLocked,
     multiModeEnabled,
+    onOpenDownloader,
     resolveAndOpenDownloader,
     showNotification,
     startAutoDownload,

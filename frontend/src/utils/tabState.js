@@ -418,3 +418,20 @@ export function hasUrlInSearch(search) {
   const params = new URLSearchParams(normalizedSearch)
   return Boolean(String(params.get('source') || params.get('url') || '').trim())
 }
+
+export function hasMultiDownloadInSearch(search) {
+  const normalizedSearch = normalizeTabSearch(search)
+  if (!normalizedSearch) return false
+
+  const params = new URLSearchParams(normalizedSearch)
+  const multiFlag = String(params.get('multiDownload') || '').trim()
+  if (multiFlag !== '1') return false
+
+  const token = String(params.get('multiImportToken') || '').trim()
+  const inlineLinks = String(params.get('links') || '').trim()
+  return Boolean(token || inlineLinks)
+}
+
+export function hasDownloaderInSearch(search) {
+  return hasUrlInSearch(search) || hasMultiDownloadInSearch(search)
+}

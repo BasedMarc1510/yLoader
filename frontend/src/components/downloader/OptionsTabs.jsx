@@ -59,6 +59,11 @@ export default function OptionsTabs({
   autostartFormat = '',
   defaultDownloadType = 'video',
   disabledDownloadTypes = [],
+  onRegisterController = null,
+  onDownloadEvent = null,
+  forcedDownloadDirectory = '',
+  downloadSettingsOverride = null,
+  onOpenCookieSettings = null,
 }) {
   const theme = useTheme()
   const { t: i18nT } = useI18n()
@@ -98,14 +103,19 @@ export default function OptionsTabs({
     onFetchError,
     defaultDownloadType: normalizeDownloadType(defaultDownloadType, 'video'),
     disabledDownloadTypes: normalizedDisabledDownloadTypes,
+    downloadSettingsOverride,
   })
 
   const overwriteConfirmResolverRef = React.useRef(null)
   const [overwriteDialogData, setOverwriteDialogData] = React.useState(null)
 
   const openCookieSettings = React.useCallback(() => {
+    if (typeof onOpenCookieSettings === 'function') {
+      onOpenCookieSettings()
+      return
+    }
     openSettingsModal('yt-dlp', 'cookies')
-  }, [])
+  }, [onOpenCookieSettings])
 
   const resolveOverwriteDialog = React.useCallback((action = 'cancel') => {
     const resolver = overwriteConfirmResolverRef.current
@@ -175,9 +185,24 @@ export default function OptionsTabs({
     downloadSettings: data.downloadSettings,
     audioDownloadTargetSettings: data.audioDownloadTargetSettings,
     videoDownloadTargetSettings: data.videoDownloadTargetSettings,
+    forcedDownloadDirectory,
     confirmOverwriteInApp,
     onOpenCookieSettings: openCookieSettings,
+    onDownloadEvent,
   })
+
+  React.useEffect(() => {
+    if (typeof onRegisterController !== 'function') return undefined
+
+    onRegisterController({
+      startDownload: (downloadType) => download.handleDownload(downloadType),
+      isDownloading: () => Boolean(download.downloading),
+    })
+
+    return () => {
+      onRegisterController(null)
+    }
+  }, [download.downloading, download.handleDownload, onRegisterController])
 
   const interactionsDisabled = download.downloading || loadingState
 

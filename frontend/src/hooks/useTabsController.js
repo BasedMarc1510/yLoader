@@ -10,7 +10,7 @@ import {
   TAB_STATE_LOCAL_STORAGE_KEY,
   createDefaultTab,
   createTabFromCurrentLocation,
-  hasUrlInSearch,
+  hasDownloaderInSearch,
   normalizeClientTabState,
   normalizeDownloadState,
   normalizeTabRuntimeState,
@@ -18,6 +18,10 @@ import {
   readLocalTabState,
   serializeTabState,
 } from '../utils/tabState'
+import {
+  DOWNLOADER_MULTI_IMPORT_STORAGE_PREFIX,
+  persistMultiImportPayload,
+} from '../utils/multiImportStorage'
 
 function isFileProtocolRuntime() {
   if (typeof window === 'undefined') return false
@@ -39,26 +43,32 @@ function buildBrowserUrl(path, search) {
   return `#${normalizedPath}${normalizedSearch}`
 }
 
-const HOME_MULTI_IMPORT_STORAGE_PREFIX = 'yloader.home.multiImport.'
+function buildMultiLinksSearch(rawUrls = [], {
+  flagParam,
+  storagePrefix,
+}) {
+  const urls = Array.isArray(rawUrls)
+    ? Array.from(new Set(
+        rawUrls
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      ))
+    : []
 
-function createRuntimeToken() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
+  if (!urls.length) return ''
+
+  const linksBlock = urls.join('\n')
+  const params = new URLSearchParams()
+  params.set(String(flagParam || 'multi'), '1')
+
+  const token = persistMultiImportPayload(storagePrefix, linksBlock)
+  if (token) {
+    params.set('multiImportToken', token)
+  } else {
+    params.set('links', linksBlock)
   }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
-}
 
-function persistHomeMultiImportPayload(rawText) {
-  const text = String(rawText || '').replace(/\r/g, '').trim()
-  if (!text || typeof window === 'undefined' || !window.sessionStorage) return ''
-
-  const token = createRuntimeToken()
-  try {
-    window.sessionStorage.setItem(`${HOME_MULTI_IMPORT_STORAGE_PREFIX}${token}`, text)
-    return token
-  } catch {
-    return ''
-  }
+  return `?${params.toString()}`
 }
 
 export function useTabsController({ t }) {
@@ -227,6 +237,21 @@ export function useTabsController({ t }) {
   }, [activeTabId, navigateTab])
 
   const openDownloaderInTab = React.useCallback((tabId, serviceKey, rawUrl, options = {}) => {
+    const multiUrls = Array.isArray(options?.multiUrls)
+      ? options.multiUrls
+      : []
+
+    if (multiUrls.length > 1) {
+      const multiSearch = buildMultiLinksSearch(multiUrls, {
+        flagParam: 'multiDownload',
+        storagePrefix: DOWNLOADER_MULTI_IMPORT_STORAGE_PREFIX,
+      })
+      if (multiSearch) {
+        navigateTab(tabId, '/', multiSearch)
+        return
+      }
+    }
+
     const path = getPathForService(serviceKey)
     const trimmedUrl = String(rawUrl || '').trim()
     const detected = resolveServiceKey(serviceKey, trimmedUrl)
@@ -241,38 +266,20 @@ export function useTabsController({ t }) {
     navigateTab(tabId, path, search)
   }, [navigateTab])
 
-  const openDownloaderInNewTab = React.useCallback((serviceKey, rawUrl) => {
+  const openDownloaderInNewTab = React.useCallback((serviceKey, rawUrl, options = {}) => {
     const newTab = createDefaultTab()
     setTabs((prevTabs) => [...prevTabs, newTab])
     setActiveTabId(newTab.id)
     setTimeout(() => {
-      openDownloaderInTab(newTab.id, serviceKey, rawUrl)
+      openDownloaderInTab(newTab.id, serviceKey, rawUrl, options)
     }, 0)
   }, [openDownloaderInTab])
 
   const buildHomeMultiSearch = React.useCallback((rawUrls = []) => {
-    const urls = Array.isArray(rawUrls)
-      ? Array.from(new Set(
-          rawUrls
-            .map((value) => String(value || '').trim())
-            .filter(Boolean)
-        ))
-      : []
-
-    if (!urls.length) return ''
-
-    const linksBlock = urls.join('\n')
-    const params = new URLSearchParams()
-    params.set('multi', '1')
-
-    const token = persistHomeMultiImportPayload(linksBlock)
-    if (token) {
-      params.set('multiImportToken', token)
-    } else {
-      params.set('links', linksBlock)
-    }
-
-    return `?${params.toString()}`
+    return buildMultiLinksSearch(rawUrls, {
+      flagParam: 'multiDownload',
+      storagePrefix: DOWNLOADER_MULTI_IMPORT_STORAGE_PREFIX,
+    })
   }, [])
 
   const openHomeMultiInTab = React.useCallback((tabId, rawUrls = []) => {
@@ -341,7 +348,7 @@ export function useTabsController({ t }) {
 
   const getDisplayTabTitle = React.useCallback((tab) => {
     const routeTitle = getRouteTitle(tab.path, t, tab.search)
-    if (normalizeTabPath(tab.path) !== '/' || !hasUrlInSearch(tab.search)) return routeTitle
+    if (normalizeTabPath(tab.path) !== '/' || !hasDownloaderInSearch(tab.search)) return routeTitle
 
     const candidate = tab.download?.title || tab.pageTitle
     if (!candidate) return routeTitle
