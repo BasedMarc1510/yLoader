@@ -4,27 +4,28 @@ import {
   Button,
   Chip,
   Container,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
+  IconButton,
+  InputAdornment,
   Paper,
+  Popover,
   Stack,
   TextField,
   Typography,
 } from '@mui/material'
-import { Check, Copy, ExternalLink, Heart, Wallet } from 'lucide-react'
+import { Check, Copy, ExternalLink, Github, Heart, QrCode } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useI18n } from '../providers/I18nProvider'
 import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
 
 const COFFEE_URL = 'https://buymeacoffee.com/michaelsant0s'
 const REPOSITORY_URL = 'https://github.com/BasedMarc1510/yLoader'
+const SUPPORT_ICON_BASE = `${String(import.meta.env.BASE_URL || '/').replace(/\/?$/, '/')}icons/support/`
 const DONATION_OPTIONS = [
   {
     key: 'btc',
     labelKey: 'support.currencyBitcoin',
     code: 'BTC',
+    iconPath: `${SUPPORT_ICON_BASE}bitcoin.svg`,
     address: 'bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f',
     walletUrl: 'bitcoin:bc1q273jxf4xq87qggcjfw6d8v038rwqyygcsxmw8f',
   },
@@ -32,6 +33,7 @@ const DONATION_OPTIONS = [
     key: 'doge',
     labelKey: 'support.currencyDogecoin',
     code: 'DOGE',
+    iconPath: `${SUPPORT_ICON_BASE}dogecoin.svg`,
     address: 'DASGta7VgHuxUCvDh9v5cfRCFLirjs611B',
     walletUrl: 'dogecoin:DASGta7VgHuxUCvDh9v5cfRCFLirjs611B',
   },
@@ -60,9 +62,20 @@ export default function SupportPage() {
   const { t } = useI18n()
   const [copiedKey, setCopiedKey] = React.useState('')
   const [qrCodes, setQrCodes] = React.useState({})
-  const [activeCurrencyKey, setActiveCurrencyKey] = React.useState(DONATION_OPTIONS[0].key)
-  const [qrDialogOpen, setQrDialogOpen] = React.useState(false)
+  const [qrDropdown, setQrDropdown] = React.useState({ key: '', anchorEl: null })
   const resetTimerRef = React.useRef(null)
+
+  const selectWalletAddress = React.useCallback((event) => {
+    const input = event?.target
+    if (!(input instanceof HTMLInputElement)) return
+
+    input.select()
+    try {
+      input.setSelectionRange(0, input.value.length)
+    } catch {
+      // Ignore selection range errors in uncommon input engines.
+    }
+  }, [])
 
   React.useEffect(() => () => {
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
@@ -79,7 +92,7 @@ export default function SupportPage() {
             await QRCode.toDataURL(option.walletUrl, {
               errorCorrectionLevel: 'M',
               margin: 1,
-              width: 260,
+              width: 176,
               color: {
                 dark: '#111111',
                 light: '#FFFFFFFF',
@@ -113,11 +126,19 @@ export default function SupportPage() {
     }
   }
 
-  const activeDonation = React.useMemo(() => {
-    return DONATION_OPTIONS.find((option) => option.key === activeCurrencyKey) || DONATION_OPTIONS[0]
-  }, [activeCurrencyKey])
+  const handleQrToggle = (key, event) => {
+    setQrDropdown((prev) => {
+      if (prev.key === key && prev.anchorEl) {
+        return { key: '', anchorEl: null }
+      }
 
-  const isCopied = copiedKey === activeDonation.key
+      return { key, anchorEl: event.currentTarget }
+    })
+  }
+
+  const handleQrClose = () => {
+    setQrDropdown({ key: '', anchorEl: null })
+  }
 
   return (
     <SimpleBarScrollArea sx={{ height: '100%' }}>
@@ -126,7 +147,7 @@ export default function SupportPage() {
           elevation={0}
           sx={{
             p: { xs: 2.5, md: 4 },
-            borderRadius: 2,
+            borderRadius: 2.5,
             border: '1px solid',
             borderColor: 'divider',
             bgcolor: 'background.paper',
@@ -154,24 +175,39 @@ export default function SupportPage() {
             <Stack spacing={1.25}>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
                 <Button
-                  variant="contained"
-                  color="error"
+                  variant="outlined"
+                  color="inherit"
                   component="a"
                   href={COFFEE_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  endIcon={<ExternalLink size={18} />}
+                  aria-label={t('support.coffeeButton')}
                   sx={{
-                    width: { xs: '100%', sm: 'fit-content' },
-                    borderRadius: 999,
-                    px: 2.25,
-                    py: 1.1,
-                    fontWeight: 700,
-                    textTransform: 'none',
+                    width: { xs: '100%', sm: 170 },
+                    minWidth: { xs: 0, sm: 170 },
+                    minHeight: 44,
+                    height: 44,
+                    borderRadius: 1.25,
+                    borderColor: 'divider',
+                    bgcolor: '#ffdd00',
+                    px: 0,
+                    py: 0,
+                    overflow: 'hidden',
+                    '&:hover': {
+                      bgcolor: '#f4d100',
+                      borderColor: 'divider',
+                    },
                   }}
                 >
-                  {t('support.coffeeButton')}
+                  <Box
+                    component="img"
+                    src={`${SUPPORT_ICON_BASE}buy-me-a-coffee.svg`}
+                    alt=""
+                    aria-hidden="true"
+                    sx={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
                 </Button>
+
                 <Button
                   variant="outlined"
                   color="inherit"
@@ -179,11 +215,14 @@ export default function SupportPage() {
                   href={REPOSITORY_URL}
                   target="_blank"
                   rel="noopener noreferrer"
+                  startIcon={<Github size={18} />}
                   endIcon={<ExternalLink size={18} />}
                   sx={{
                     width: { xs: '100%', sm: 'fit-content' },
-                    borderRadius: 999,
-                    px: 2,
+                    minHeight: 44,
+                    height: 44,
+                    borderRadius: 1.25,
+                    px: 2.25,
                     py: 1.1,
                     fontWeight: 700,
                     textTransform: 'none',
@@ -203,14 +242,14 @@ export default function SupportPage() {
           elevation={0}
           sx={{
             mt: { xs: 4, md: 5.5 },
-            p: { xs: 2.25, md: 3 },
-            borderRadius: 2,
+            p: { xs: 2.25, md: 3.25 },
+            borderRadius: 2.5,
             bgcolor: 'background.paper',
             border: '1px solid',
             borderColor: 'divider',
           }}
         >
-          <Stack spacing={2.25}>
+          <Stack spacing={2.5}>
             <Box>
               <Typography variant="h5" component="h2" sx={{ fontWeight: 800 }}>
                 {t('support.cryptoTitle')}
@@ -222,153 +261,211 @@ export default function SupportPage() {
 
             <Box
               sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 0.75,
-                p: 0.75,
-                borderRadius: 999,
-                bgcolor: 'action.hover',
-                width: 'fit-content',
+                display: 'grid',
+                gap: 2,
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  lg: 'repeat(2, minmax(0, 1fr))',
+                },
               }}
             >
               {DONATION_OPTIONS.map((option) => {
-                const isActive = option.key === activeCurrencyKey
+                const isCopied = copiedKey === option.key
+                const qrSrc = qrCodes[option.key]
+                const qrOpen = qrDropdown.key === option.key && Boolean(qrDropdown.anchorEl)
+
                 return (
-                  <Button
+                  <Paper
                     key={option.key}
-                    size="small"
-                    onClick={() => setActiveCurrencyKey(option.key)}
-                    variant={isActive ? 'contained' : 'text'}
-                    color={isActive ? 'error' : 'inherit'}
+                    elevation={0}
                     sx={{
-                      minWidth: 120,
-                      borderRadius: 999,
-                      textTransform: 'none',
-                      fontWeight: 700,
-                      boxShadow: isActive ? 'none' : 'none',
+                      p: { xs: 2, md: 2.25 },
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.default',
                     }}
                   >
-                    {t(option.labelKey)}
-                  </Button>
+                    <Stack spacing={1.6} sx={{ height: '100%' }}>
+                      <Stack spacing={1} alignItems="center" textAlign="center">
+                        <Box
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: 2,
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            bgcolor: '#ffffff',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Box
+                            component="img"
+                            src={option.iconPath}
+                            alt=""
+                            aria-hidden="true"
+                            sx={{ width: 28, height: 28 }}
+                          />
+                        </Box>
+
+                        <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.25 }}>
+                          {t(option.labelKey)}
+                        </Typography>
+
+                        <Chip
+                          label={option.code}
+                          size="small"
+                          sx={{
+                            fontWeight: 800,
+                            bgcolor: 'action.hover',
+                          }}
+                        />
+                      </Stack>
+
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          textAlign: 'center',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.12em',
+                        }}
+                      >
+                        {t('support.donationAddress')}
+                      </Typography>
+
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={option.address}
+                        inputProps={{
+                          readOnly: true,
+                          onFocus: selectWalletAddress,
+                          onClick: selectWalletAddress,
+                          onMouseUp: (event) => {
+                            event.preventDefault()
+                            selectWalletAddress(event)
+                          },
+                        }}
+                        sx={{
+                          '& .MuiInputBase-input': {
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: 'text.primary',
+                            overflowWrap: 'anywhere',
+                          },
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'action.hover',
+                          },
+                        }}
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                size="small"
+                                onClick={(event) => handleQrToggle(option.key, event)}
+                                aria-label={t('support.showQr')}
+                              >
+                                <QrCode size={16} />
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+
+                      <Popover
+                        open={qrOpen}
+                        anchorEl={qrDropdown.anchorEl}
+                        onClose={handleQrClose}
+                        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                      >
+                        <Stack spacing={0.75} alignItems="center" sx={{ p: 1.2 }}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.12em',
+                              color: '#374151',
+                            }}
+                          >
+                            {t('support.qrCode')}
+                          </Typography>
+
+                          {qrSrc ? (
+                            <Box
+                              component="img"
+                              src={qrSrc}
+                              alt={t('support.qrImageAlt', { currency: t(option.labelKey) })}
+                              sx={{
+                                display: 'block',
+                                width: 112,
+                                height: 112,
+                                p: 0.6,
+                                borderRadius: 1.5,
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                bgcolor: '#ffffff',
+                              }}
+                            />
+                          ) : (
+                            <Box
+                              sx={{
+                                width: 112,
+                                height: 112,
+                                borderRadius: 1.5,
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                bgcolor: 'action.hover',
+                              }}
+                            />
+                          )}
+                        </Stack>
+                      </Popover>
+
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={1.1}
+                        sx={{
+                          '& > *': {
+                            minHeight: 44,
+                            height: 44,
+                          },
+                        }}
+                      >
+                        <Button
+                          variant={isCopied ? 'contained' : 'outlined'}
+                          color={isCopied ? 'success' : 'inherit'}
+                          startIcon={isCopied ? <Check size={17} /> : <Copy size={17} />}
+                          onClick={() => { void handleCopy(option.key, option.address) }}
+                          sx={{ borderRadius: 1.25, fontWeight: 700, textTransform: 'none', width: { xs: '100%', sm: 'fit-content' } }}
+                        >
+                          {isCopied ? t('support.copiedAddress') : t('support.copyAddress')}
+                        </Button>
+
+                        <Button
+                          variant="outlined"
+                          component="a"
+                          href={option.walletUrl}
+                          endIcon={<ExternalLink size={16} />}
+                          sx={{ borderRadius: 1.25, fontWeight: 700, textTransform: 'none', width: { xs: '100%', sm: 'fit-content' } }}
+                        >
+                          {t('support.openWallet')}
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Paper>
                 )
               })}
-            </Box>
-
-            <Box
-              sx={{
-                p: { xs: 1.6, md: 2 },
-                borderRadius: 2,
-                bgcolor: 'background.default',
-                border: '1px solid',
-                borderColor: 'divider',
-              }}
-            >
-              <Stack spacing={1.5}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-                    {t(activeDonation.labelKey)}
-                  </Typography>
-                  <Chip
-                    label={activeDonation.code}
-                    size="small"
-                    sx={{
-                      fontWeight: 800,
-                      bgcolor: 'action.hover',
-                    }}
-                  />
-                </Stack>
-
-                <TextField
-                  fullWidth
-                  size="small"
-                  value={activeDonation.address}
-                  inputProps={{ readOnly: true }}
-                  label={t('support.donationAddress')}
-                  sx={{
-                    '& .MuiInputBase-input': {
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                      fontSize: 13,
-                    },
-                  }}
-                />
-
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.1}>
-                  <Button
-                    variant={isCopied ? 'contained' : 'outlined'}
-                    color={isCopied ? 'success' : 'inherit'}
-                    startIcon={isCopied ? <Check size={17} /> : <Copy size={17} />}
-                    onClick={() => { void handleCopy(activeDonation.key, activeDonation.address) }}
-                    sx={{ borderRadius: 999, fontWeight: 700, textTransform: 'none' }}
-                  >
-                    {isCopied ? t('support.copiedAddress') : t('support.copyAddress')}
-                  </Button>
-
-                  <Button
-                    variant="outlined"
-                    onClick={() => setQrDialogOpen(true)}
-                    sx={{ borderRadius: 999, fontWeight: 700, textTransform: 'none' }}
-                  >
-                    {t('support.showQr')}
-                  </Button>
-
-                  <Button
-                    variant="text"
-                    component="a"
-                    href={activeDonation.walletUrl}
-                    startIcon={<Wallet size={17} />}
-                    sx={{ borderRadius: 999, fontWeight: 700, textTransform: 'none', width: { xs: '100%', sm: 'fit-content' } }}
-                  >
-                    {t('support.openWallet')}
-                  </Button>
-                </Stack>
-              </Stack>
             </Box>
           </Stack>
         </Paper>
       </Container>
-
-      <Dialog
-        open={qrDialogOpen}
-        onClose={() => setQrDialogOpen(false)}
-        fullWidth
-        maxWidth="xs"
-      >
-        <DialogTitle>
-          {t('support.qrDialogTitle', { currency: t(activeDonation.labelKey) })}
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={1.5} alignItems="center" sx={{ pt: 0.25 }}>
-            <Box
-              sx={{
-                p: 1,
-                borderRadius: 2,
-                bgcolor: '#ffffff',
-                border: '1px solid',
-                borderColor: 'divider',
-              }}
-            >
-              {qrCodes[activeDonation.key] ? (
-                <Box
-                  component="img"
-                  src={qrCodes[activeDonation.key]}
-                  alt={t('support.qrImageAlt', { currency: t(activeDonation.labelKey) })}
-                  sx={{ display: 'block', width: 230, height: 230 }}
-                />
-              ) : (
-                <Box sx={{ width: 230, height: 230, bgcolor: '#f3f4f6' }} />
-              )}
-            </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-              {t('support.qrDialogHint')}
-            </Typography>
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={() => setQrDialogOpen(false)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-            {t('support.closeQr')}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </SimpleBarScrollArea>
   )
 }

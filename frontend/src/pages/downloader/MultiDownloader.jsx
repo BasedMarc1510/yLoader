@@ -3,22 +3,19 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
-  FormControl,
+  Collapse,
   IconButton,
-  InputAdornment,
-  InputLabel,
   LinearProgress,
+  Menu,
   MenuItem,
   Paper,
-  Select,
   Stack,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
-import { AlertTriangle, FolderOpen, Play, Plus } from 'lucide-react'
+import { AlertTriangle, FolderOpen, MoreHorizontal, Play, Plus } from 'lucide-react'
 import { useI18n } from '../../providers/I18nProvider'
 import { getApiBase } from '../../utils/metadata'
 import { normalizeMultiLinksValue } from '../../utils/multiLinks'
@@ -40,6 +37,14 @@ import {
   countUnsupportedEntries,
   normalizeDownloadType,
 } from './multi/entryUtils'
+
+const DOWNLOAD_TYPE_CHOICES = ['audio', 'video', 'thumbnail']
+
+function getDownloadTypeLabel(i18nT, type) {
+  if (type === 'audio') return i18nT('downloader.tabAudio')
+  if (type === 'video') return i18nT('downloader.tabVideo')
+  return i18nT('downloader.downloadThumbnail')
+}
 
 function normalizeProgress(value) {
   const numeric = Number(value)
@@ -84,6 +89,8 @@ export default function MultiDownloader({
   const [downloadDirectory, setDownloadDirectory] = React.useState('')
   const [downloadSettings, setDownloadSettings] = React.useState(() => normalizeDownloadSettings({}))
   const [settingsLoaded, setSettingsLoaded] = React.useState(false)
+  const [controlsExpanded, setControlsExpanded] = React.useState(false)
+  const [actionsAnchorEl, setActionsAnchorEl] = React.useState(null)
 
   const importedRouteKeyRef = React.useRef('')
   const controllersRef = React.useRef(new Map())
@@ -183,6 +190,15 @@ export default function MultiDownloader({
     () => entries.filter((entry) => entry.download?.status === ENTRY_DOWNLOAD_STATUS.complete).length,
     [entries]
   )
+  const queueSummary = React.useMemo(() => (
+    [
+      i18nT('multiDownloader.counterReady', { count: readyCount }),
+      i18nT('multiDownloader.counterLoading', { count: loadingCount }),
+      i18nT('multiDownloader.counterInvalid', { count: invalidCount }),
+      i18nT('multiDownloader.counterActive', { count: activeCount }),
+      i18nT('multiDownloader.counterComplete', { count: completeCount }),
+    ].join(' | ')
+  ), [activeCount, completeCount, i18nT, invalidCount, loadingCount, readyCount])
 
   const downloadableEntries = React.useMemo(() => entries.filter((entry) => (
     entry.metaState === ENTRY_META_STATE.ready
@@ -484,15 +500,43 @@ export default function MultiDownloader({
     openSettingsModal('yt-dlp', 'cookies')
   }, [])
 
+  const handleToggleControls = React.useCallback(() => {
+    setControlsExpanded((previous) => !previous)
+  }, [])
+
+  const handleOpenActionsMenu = React.useCallback((event) => {
+    setActionsAnchorEl(event.currentTarget)
+  }, [])
+
+  const handleCloseActionsMenu = React.useCallback(() => {
+    setActionsAnchorEl(null)
+  }, [])
+
+  const handleCloseInterface = React.useCallback(() => {
+    onNavigate?.('/', '')
+  }, [onNavigate])
+
   const startAllDisabled = !settingsLoaded || startableEntries.length === 0 || activeCount > 0
+  const actionsMenuOpen = Boolean(actionsAnchorEl)
 
   return (
     <Box className="yl-native-scroll" sx={{ height: '100%', overflowX: 'hidden', overflowY: 'auto' }}>
-      <Box sx={{ maxWidth: 1220, mx: 'auto', py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 1.5 }, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <Box
+        sx={{
+          maxWidth: 450,
+          mx: 'auto',
+          py: { xs: 1.5, sm: 2 },
+          px: { xs: 1, sm: 1.5 },
+          pb: { xs: 9.5, sm: 10.5 },
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1.25,
+        }}
+      >
         <Paper variant="outlined" sx={{ p: { xs: 1.25, sm: 1.5 }, borderRadius: 2 }}>
-          <Stack spacing={1.2}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
-              <Box>
+          <Stack spacing={1.15}>
+            <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center">
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
                   {i18nT('multiDownloader.title')}
                 </Typography>
@@ -501,116 +545,177 @@ export default function MultiDownloader({
                 </Typography>
               </Box>
 
-              <Button
-                variant="outlined"
-                onClick={() => onNavigate?.('/', '')}
+              <IconButton
+                size="small"
+                onClick={handleOpenActionsMenu}
+                aria-label={i18nT('multiDownloader.moreActions')}
               >
-                {i18nT('downloader.close')}
-              </Button>
+                <MoreHorizontal size={18} />
+              </IconButton>
             </Stack>
 
-            <Stack direction="row" spacing={0.7} flexWrap="wrap">
-              <Chip size="small" label={i18nT('multiDownloader.counterReady', { count: readyCount })} />
-              <Chip size="small" label={i18nT('multiDownloader.counterLoading', { count: loadingCount })} />
-              <Chip size="small" label={i18nT('multiDownloader.counterInvalid', { count: invalidCount })} />
-              <Chip size="small" label={i18nT('multiDownloader.counterActive', { count: activeCount })} />
-              <Chip size="small" label={i18nT('multiDownloader.counterComplete', { count: completeCount })} />
-            </Stack>
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              maxRows={6}
+              label={i18nT('multiDownloader.addLinksLabel')}
+              placeholder={i18nT('placeholders.homeMultiUrls')}
+              value={linkInput}
+              onChange={(event) => setLinkInput(event.target.value)}
+            />
 
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'center' }}>
-              <FormControl size="small" sx={{ minWidth: 220 }}>
-                <InputLabel id="multi-global-download-type-label">
-                  {i18nT('multiDownloader.globalTypeLabel')}
-                </InputLabel>
-                <Select
-                  labelId="multi-global-download-type-label"
-                  value={globalDownloadType}
-                  label={i18nT('multiDownloader.globalTypeLabel')}
-                  onChange={handleGlobalTypeChange}
-                  endAdornment={unsupportedCountForGlobalType > 0 ? (
-                    <InputAdornment position="end" sx={{ mr: 3.5 }}>
-                      <Tooltip title={i18nT('multiDownloader.globalTypeUnsupported', { count: unsupportedCountForGlobalType })}>
-                        <IconButton size="small" edge="end" tabIndex={-1}>
-                          <AlertTriangle size={14} />
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ) : null}
-                >
-                  <MenuItem value="audio">{i18nT('downloader.tabAudio')}</MenuItem>
-                  <MenuItem value="video">{i18nT('downloader.tabVideo')}</MenuItem>
-                  <MenuItem value="thumbnail">{i18nT('downloader.downloadThumbnail')}</MenuItem>
-                </Select>
-              </FormControl>
-
+            <Stack direction="row" spacing={0.8} alignItems="center">
               <Button
                 variant="contained"
-                startIcon={<Play size={16} />}
-                onClick={handleStartAllDownloads}
-                disabled={startAllDisabled}
-              >
-                {i18nT('multiDownloader.startAll')}
-              </Button>
-            </Stack>
-
-            {isElectronRuntime ? (
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'center' }}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label={i18nT('multiDownloader.downloadDirectoryLabel')}
-                  value={downloadDirectory}
-                  onChange={(event) => {
-                    directoryCustomizedRef.current = true
-                    setDownloadDirectory(String(event.target.value || ''))
-                  }}
-                  placeholder={runtimeDownloadsPath || i18nT('multiDownloader.downloadDirectoryPlaceholder')}
-                />
-                <Button
-                  variant="outlined"
-                  startIcon={<FolderOpen size={16} />}
-                  onClick={handlePickDirectory}
-                >
-                  {i18nT('multiDownloader.browseDirectory')}
-                </Button>
-              </Stack>
-            ) : (
-              <Alert severity="info">{i18nT('multiDownloader.webDirectoryHint')}</Alert>
-            )}
-
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'flex-start' }}>
-              <TextField
-                fullWidth
-                multiline
-                minRows={2}
-                maxRows={6}
-                label={i18nT('multiDownloader.addLinksLabel')}
-                placeholder={i18nT('placeholders.homeMultiUrls')}
-                value={linkInput}
-                onChange={(event) => setLinkInput(event.target.value)}
-              />
-              <Button
-                variant="outlined"
                 startIcon={<Plus size={16} />}
-                sx={{ whiteSpace: 'nowrap' }}
+                sx={{ flex: 1 }}
                 onClick={handleAddLinks}
                 disabled={!normalizeMultiLinksValue(linkInput)}
               >
                 {i18nT('multiDownloader.addLinksButton')}
               </Button>
+
+              <Button
+                variant="text"
+                size="small"
+                onClick={handleToggleControls}
+                sx={{ whiteSpace: 'nowrap', minWidth: 'fit-content' }}
+              >
+                {controlsExpanded
+                  ? i18nT('multiDownloader.hideControls')
+                  : i18nT('multiDownloader.showControls')}
+              </Button>
             </Stack>
 
-            <Stack spacing={0.5}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="body2" color="text.secondary">
-                  {i18nT('multiDownloader.overallProgress')}
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {overallProgress}%
-                </Typography>
+            <Collapse in={controlsExpanded} timeout="auto" unmountOnExit>
+              <Stack spacing={1} sx={{ pt: 0.2 }}>
+                <Box
+                  sx={(currentTheme) => ({
+                    borderRadius: 1.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: currentTheme.palette.mode === 'dark'
+                      ? 'rgba(255,255,255,0.03)'
+                      : 'rgba(0,0,0,0.015)',
+                    p: 0.9,
+                  })}
+                >
+                  <Stack spacing={0.65}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, letterSpacing: '0.04em' }}>
+                        {i18nT('multiDownloader.globalTypeLabel')}
+                      </Typography>
+                      {unsupportedCountForGlobalType > 0 && (
+                        <Tooltip title={i18nT('multiDownloader.globalTypeUnsupported', { count: unsupportedCountForGlobalType })}>
+                          <Box
+                            sx={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 0.4,
+                              px: 0.75,
+                              py: 0.35,
+                              borderRadius: 999,
+                              bgcolor: 'warning.light',
+                              color: 'warning.contrastText',
+                              fontSize: 11,
+                              fontWeight: 800,
+                              lineHeight: 1,
+                            }}
+                          >
+                            <AlertTriangle size={12} />
+                            {unsupportedCountForGlobalType}
+                          </Box>
+                        </Tooltip>
+                      )}
+                    </Stack>
+
+                    <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                      {DOWNLOAD_TYPE_CHOICES.map((type) => {
+                        const selected = globalDownloadType === type
+
+                        return (
+                          <Button
+                            key={type}
+                            size="small"
+                            variant={selected ? 'contained' : 'text'}
+                            onClick={() => handleGlobalTypeChange({ target: { value: type } })}
+                            sx={{
+                              borderRadius: 999,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              px: 1.2,
+                              minHeight: 30,
+                              bgcolor: selected ? 'primary.main' : 'transparent',
+                              color: selected ? 'primary.contrastText' : 'text.secondary',
+                              '&:hover': {
+                                bgcolor: selected ? 'primary.dark' : 'action.hover',
+                              },
+                            }}
+                          >
+                            {getDownloadTypeLabel(i18nT, type)}
+                          </Button>
+                        )
+                      })}
+                    </Stack>
+                  </Stack>
+                </Box>
+
+                {isElectronRuntime ? (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={i18nT('multiDownloader.downloadDirectoryLabel')}
+                      value={downloadDirectory}
+                      onChange={(event) => {
+                        directoryCustomizedRef.current = true
+                        setDownloadDirectory(String(event.target.value || ''))
+                      }}
+                      placeholder={runtimeDownloadsPath || i18nT('multiDownloader.downloadDirectoryPlaceholder')}
+                    />
+                    <Button
+                      variant="outlined"
+                      startIcon={<FolderOpen size={16} />}
+                      onClick={handlePickDirectory}
+                      sx={{ minWidth: 'fit-content' }}
+                    >
+                      {i18nT('multiDownloader.browseDirectory')}
+                    </Button>
+                  </Stack>
+                ) : (
+                  <Alert severity="info" sx={{ py: 0.2 }}>
+                    {i18nT('multiDownloader.webDirectoryHint')}
+                  </Alert>
+                )}
+
+                <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                  {[
+                    i18nT('multiDownloader.counterReady', { count: readyCount }),
+                    i18nT('multiDownloader.counterLoading', { count: loadingCount }),
+                    i18nT('multiDownloader.counterInvalid', { count: invalidCount }),
+                    i18nT('multiDownloader.counterActive', { count: activeCount }),
+                    i18nT('multiDownloader.counterComplete', { count: completeCount }),
+                  ].map((counterText) => (
+                    <Box
+                      key={counterText}
+                      sx={{
+                        px: 0.75,
+                        py: 0.3,
+                        borderRadius: 999,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        bgcolor: 'background.paper',
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                        {counterText}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
               </Stack>
-              <LinearProgress value={overallProgress} variant="determinate" sx={{ borderRadius: 999 }} />
-            </Stack>
+            </Collapse>
           </Stack>
         </Paper>
 
@@ -629,7 +734,72 @@ export default function MultiDownloader({
           onOpenCompleted={handleOpenCompleted}
           onOpenCookieSettings={openCookieSettings}
         />
+
+        <Paper
+          variant="outlined"
+          sx={(currentTheme) => ({
+            position: 'sticky',
+            bottom: { xs: 10, sm: 14 },
+            borderRadius: 2,
+            p: 1.05,
+            zIndex: 3,
+            bgcolor: currentTheme.palette.background.paper,
+            boxShadow: currentTheme.palette.mode === 'dark'
+              ? '0 10px 28px rgba(0,0,0,0.4)'
+              : '0 10px 28px rgba(0,0,0,0.09)',
+          })}
+        >
+          <Stack spacing={0.7}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {i18nT('multiDownloader.overallProgress')}: {overallProgress}%
+              </Typography>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<Play size={14} />}
+                onClick={handleStartAllDownloads}
+                disabled={startAllDisabled}
+              >
+                {i18nT('multiDownloader.startAll')}
+              </Button>
+            </Stack>
+
+            <LinearProgress value={overallProgress} variant="determinate" sx={{ borderRadius: 999 }} />
+
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+              {queueSummary}
+            </Typography>
+          </Stack>
+        </Paper>
       </Box>
+
+      <Menu
+        anchorEl={actionsAnchorEl}
+        open={actionsMenuOpen}
+        onClose={handleCloseActionsMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          onClick={() => {
+            handleCloseActionsMenu()
+            handleToggleControls()
+          }}
+        >
+          {controlsExpanded
+            ? i18nT('multiDownloader.hideControls')
+            : i18nT('multiDownloader.showControls')}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleCloseActionsMenu()
+            handleCloseInterface()
+          }}
+        >
+          {i18nT('downloader.close')}
+        </MenuItem>
+      </Menu>
     </Box>
   )
 }

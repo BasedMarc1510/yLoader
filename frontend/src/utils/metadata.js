@@ -61,10 +61,10 @@ export function youtubeThumb(id, size = 'mqdefault') {
   return `https://img.youtube.com/vi/${id}/${size}.jpg`
 }
 
-export async function fetchNoembed(rawUrl) {
+export async function fetchNoembed(rawUrl, fetchOptions = undefined) {
   const url = normalizeUrlForNoembed(rawUrl)
   const endpoint = `${NOEMBED_ENDPOINT}${encodeURIComponent(url)}`
-  const res = await fetch(endpoint)
+  const res = await fetch(endpoint, fetchOptions)
   if (!res.ok) throw new Error(`noembed HTTP ${res.status}`)
   const data = await res.json()
   return data
@@ -102,10 +102,10 @@ export async function fetchDuration(rawUrl) {
   return data // { duration, durationString }
 }
 
-export async function fetchFormats(rawUrl) {
+export async function fetchFormats(rawUrl, fetchOptions = undefined) {
   const API_BASE = getApiBase()
   const url = normalizeUrlForNoembed(rawUrl)
-  const res = await fetch(`${API_BASE}/api/meta/formats?url=${encodeURIComponent(url)}`)
+  const res = await fetch(`${API_BASE}/api/meta/formats?url=${encodeURIComponent(url)}`, fetchOptions)
   if (!res.ok) {
     let errMsg = `HTTP ${res.status}`
     let payload = null

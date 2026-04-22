@@ -3,14 +3,8 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
-  FormControl,
   IconButton,
-  InputLabel,
   LinearProgress,
-  MenuItem,
-  Paper,
-  Select,
   Stack,
   Tooltip,
   Typography,
@@ -111,9 +105,21 @@ function mergeDisabledDownloadTypes(entry, serviceConfig) {
   return Array.from(disabled)
 }
 
-function statusChipSx(tone) {
+function statusLabelSx(tone) {
+  const base = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    px: 0.9,
+    py: 0.35,
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 800,
+    lineHeight: 1,
+  }
+
   if (tone === 'success') {
     return {
+      ...base,
       bgcolor: 'success.main',
       color: 'success.contrastText',
     }
@@ -121,6 +127,7 @@ function statusChipSx(tone) {
 
   if (tone === 'error') {
     return {
+      ...base,
       bgcolor: 'error.main',
       color: 'error.contrastText',
     }
@@ -128,6 +135,7 @@ function statusChipSx(tone) {
 
   if (tone === 'warning') {
     return {
+      ...base,
       bgcolor: 'warning.main',
       color: 'warning.contrastText',
     }
@@ -135,12 +143,17 @@ function statusChipSx(tone) {
 
   if (tone === 'info') {
     return {
+      ...base,
       bgcolor: 'info.main',
       color: 'info.contrastText',
     }
   }
 
-  return {}
+  return {
+    ...base,
+    bgcolor: 'action.hover',
+    color: 'text.secondary',
+  }
 }
 
 export default function MultiEntryGroups({
@@ -165,17 +178,19 @@ export default function MultiEntryGroups({
 
   if (!entries.length) {
     return (
-      <Paper
-        variant="outlined"
+      <Box
         sx={{
           p: 2,
           borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
         }}
       >
         <Typography variant="body2" color="text.secondary">
           {i18nT('multiDownloader.emptyState')}
         </Typography>
-      </Paper>
+      </Box>
     )
   }
 
@@ -186,25 +201,32 @@ export default function MultiEntryGroups({
         const groupServiceName = getServiceDisplayName(groupServiceKey)
 
         return (
-          <Paper
+          <Box
             key={groupServiceKey}
-            variant="outlined"
             sx={{
-              borderRadius: 2,
+              borderRadius: 2.5,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
               p: { xs: 1.25, sm: 1.5 },
             }}
           >
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.25 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.95 }}>
               <Stack direction="row" spacing={1} alignItems="center">
                 <ServiceIcon serviceKey={groupServiceKey} size={16} />
                 <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                   {groupServiceName}
                 </Typography>
               </Stack>
-              <Chip size="small" label={i18nT('multiDownloader.groupCount', { count: group.entries.length })} />
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                {i18nT('multiDownloader.groupCount', { count: group.entries.length })}
+              </Typography>
             </Stack>
 
-            <Stack spacing={1.25}>
+            <Stack
+              spacing={1.1}
+              divider={<Box sx={{ borderTop: (theme) => `1px solid ${theme.palette.divider}` }} />}
+            >
               {group.entries.map((entry) => {
                 const serviceConfig = services[String(entry.serviceKey || 'generic').trim() || 'generic'] || services.generic
                 const status = resolveEntryStatus(i18nT, entry)
@@ -227,165 +249,177 @@ export default function MultiEntryGroups({
                   && typeof onOpenCompleted === 'function'
 
                 return (
-                  <Paper
+                  <Box
                     key={entry.id}
-                    variant="outlined"
-                    sx={{
-                      p: { xs: 1, sm: 1.25 },
-                      borderRadius: 2,
-                    }}
+                    sx={(theme) => ({
+                      pt: 0.2,
+                      borderRadius: 1.6,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: theme.palette.mode === 'dark'
+                        ? 'rgba(255,255,255,0.02)'
+                        : 'rgba(0,0,0,0.01)',
+                      p: 1,
+                    })}
                   >
-                    <Stack
-                      direction={{ xs: 'column', md: 'row' }}
-                      spacing={1}
-                      alignItems={{ xs: 'stretch', md: 'center' }}
-                      justifyContent="space-between"
-                      sx={{ mb: 1 }}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={0.8} sx={{ minWidth: 0 }}>
-                        <Chip
-                          size="small"
-                          label={status.label}
-                          sx={{
-                            fontWeight: 600,
-                            ...statusChipSx(status.tone),
-                          }}
-                        />
-                        {showProgress && (
-                          <Typography variant="caption" color="text.secondary">
-                            {progressLabel}
-                          </Typography>
-                        )}
-                      </Stack>
+                    <Stack spacing={1}>
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={0.8}
+                        alignItems={{ xs: 'stretch', sm: 'center' }}
+                      >
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <MediaSummary
+                            thumbnail={entry.meta?.thumbnail || ''}
+                            title={entry.meta?.title || entry.rawInput}
+                            author={entry.meta?.author || ''}
+                            duration={entry.meta?.duration || null}
+                            durationLoading={Boolean(entry.meta?.durationLoading)}
+                            url={entry.url || ''}
+                            loading={entry.metaState === ENTRY_META_STATE.loading}
+                          />
+                        </Box>
 
-                      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
-                        <FormControl size="small" sx={{ minWidth: 164 }} disabled={!isReady}>
-                          <InputLabel id={`${entry.id}-download-type-label`}>
-                            {i18nT('multiDownloader.entryTypeLabel')}
-                          </InputLabel>
-                          <Select
-                            labelId={`${entry.id}-download-type-label`}
-                            value={selectedType}
-                            label={i18nT('multiDownloader.entryTypeLabel')}
-                            onChange={(event) => onEntryTypeChange?.(entry.id, event.target.value)}
-                          >
-                            {DOWNLOAD_TYPE_ORDER.map((type) => (
-                              <MenuItem key={type} value={type} disabled={!entry.supportedTypes?.includes(type)}>
-                                {getDownloadTypeLabel(i18nT, type)}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
+                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <Box sx={statusLabelSx(status.tone)}>{status.label}</Box>
 
-                        {showOpenCompleted && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<FolderOpen size={14} />}
-                            onClick={() => onOpenCompleted(entry)}
-                          >
-                            {i18nT('multiDownloader.openCompleted')}
-                          </Button>
-                        )}
+                          <Stack direction="row" spacing={0.45} sx={{ flexWrap: 'wrap' }}>
+                            {DOWNLOAD_TYPE_ORDER.map((type) => {
+                              const supported = entry.supportedTypes?.includes(type)
+                              const active = selectedType === type
 
-                        <Tooltip title={i18nT('multiDownloader.removeEntry')}>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => onRemoveEntry?.(entry.id)}
-                            aria-label={i18nT('multiDownloader.removeEntry')}
-                          >
-                            <Trash2 size={16} />
-                          </IconButton>
-                        </Tooltip>
+                              return (
+                                <Button
+                                  key={type}
+                                  size="small"
+                                  variant={active ? 'contained' : 'text'}
+                                  onClick={() => onEntryTypeChange?.(entry.id, type)}
+                                  disabled={!isReady || !supported}
+                                  sx={{
+                                    minHeight: 28,
+                                    borderRadius: 999,
+                                    px: 1,
+                                    textTransform: 'none',
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    bgcolor: active ? 'primary.main' : 'transparent',
+                                    color: active ? 'primary.contrastText' : 'text.secondary',
+                                    border: active ? 'none' : '1px solid',
+                                    borderColor: active ? 'transparent' : 'divider',
+                                  }}
+                                >
+                                  {getDownloadTypeLabel(i18nT, type)}
+                                </Button>
+                              )
+                            })}
+                          </Stack>
 
-                        <Tooltip
-                          title={entry.expanded
-                            ? i18nT('multiDownloader.collapseEntry')
-                            : i18nT('multiDownloader.expandEntry')}
-                        >
-                          <IconButton
-                            size="small"
-                            onClick={() => onToggleExpanded?.(entry.id)}
-                            aria-label={entry.expanded
+                          {showOpenCompleted && (
+                            <Tooltip title={i18nT('multiDownloader.openCompleted')}>
+                              <IconButton
+                                size="small"
+                                onClick={() => onOpenCompleted(entry)}
+                                aria-label={i18nT('multiDownloader.openCompleted')}
+                              >
+                                <FolderOpen size={16} />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+
+                          <Tooltip title={i18nT('multiDownloader.removeEntry')}>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => onRemoveEntry?.(entry.id)}
+                              aria-label={i18nT('multiDownloader.removeEntry')}
+                            >
+                              <Trash2 size={16} />
+                            </IconButton>
+                          </Tooltip>
+
+                          <Tooltip
+                            title={entry.expanded
                               ? i18nT('multiDownloader.collapseEntry')
                               : i18nT('multiDownloader.expandEntry')}
-                            disabled={!isReady}
                           >
-                            {entry.expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                          </IconButton>
-                        </Tooltip>
+                            <IconButton
+                              size="small"
+                              onClick={() => onToggleExpanded?.(entry.id)}
+                              aria-label={entry.expanded
+                                ? i18nT('multiDownloader.collapseEntry')
+                                : i18nT('multiDownloader.expandEntry')}
+                              disabled={!isReady}
+                            >
+                              {entry.expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
                       </Stack>
+
+                      {showProgress && (
+                        <Box>
+                          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.35 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                              {progressLabel}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                              {progress}%
+                            </Typography>
+                          </Stack>
+                          <LinearProgress
+                            sx={{ borderRadius: 999 }}
+                            variant="determinate"
+                            value={progress}
+                          />
+                        </Box>
+                      )}
+
+                      {hasMetaError && (
+                        <Alert severity="error">
+                          {String(entry.errorMessage || i18nT('multiDownloader.statusNotRetrievable')).trim()}
+                        </Alert>
+                      )}
+
+                      {downloadFailed && entry.download?.errorMessage && (
+                        <Alert severity="error">
+                          {entry.download.errorMessage}
+                        </Alert>
+                      )}
+
+                      {isReady && entry.expanded && (
+                        <Box
+                          sx={{
+                            borderTop: (theme) => `1px dashed ${theme.palette.divider}`,
+                            pt: 1.1,
+                          }}
+                        >
+                          <OptionsTabs
+                            brandColor={serviceConfig?.yColor || '#df2f2f'}
+                            videoTitle={entry.meta?.title || entry.rawInput}
+                            videoAuthor={entry.meta?.author || ''}
+                            videoUrl={entry.url || ''}
+                            videoThumbnail={entry.meta?.thumbnail || ''}
+                            duration={entry.meta?.duration || null}
+                            durationSeconds={entry.meta?.durationSeconds ?? null}
+                            initialFormats={entry.meta?.preloadedFormats || null}
+                            loadingState={entry.metaState === ENTRY_META_STATE.loading}
+                            defaultDownloadType={selectedType}
+                            disabledDownloadTypes={disabledDownloadTypes}
+                            forcedDownloadDirectory={forcedDownloadDirectory}
+                            downloadSettingsOverride={downloadSettingsOverride}
+                            onRegisterController={(controller) => onRegisterController?.(entry.id, controller)}
+                            onDownloadStateChange={(state) => onDownloadStateChange?.(entry.id, state)}
+                            onDownloadEvent={(event) => onDownloadEvent?.(entry.id, event)}
+                            onOpenCookieSettings={onOpenCookieSettings}
+                          />
+                        </Box>
+                      )}
                     </Stack>
-
-                    <MediaSummary
-                      thumbnail={entry.meta?.thumbnail || ''}
-                      title={entry.meta?.title || entry.rawInput}
-                      author={entry.meta?.author || ''}
-                      duration={entry.meta?.duration || null}
-                      durationLoading={Boolean(entry.meta?.durationLoading)}
-                      url={entry.url || ''}
-                      loading={entry.metaState === ENTRY_META_STATE.loading}
-                    />
-
-                    {showProgress && (
-                      <LinearProgress
-                        sx={{ mt: 1, borderRadius: 999 }}
-                        variant="determinate"
-                        value={progress}
-                      />
-                    )}
-
-                    {hasMetaError && (
-                      <Alert severity="error" sx={{ mt: 1 }}>
-                        {String(entry.errorMessage || i18nT('multiDownloader.statusNotRetrievable')).trim()}
-                      </Alert>
-                    )}
-
-                    {downloadFailed && entry.download?.errorMessage && (
-                      <Alert severity="error" sx={{ mt: 1 }}>
-                        {entry.download.errorMessage}
-                      </Alert>
-                    )}
-
-                    {isReady && (
-                      <Box
-                        sx={{
-                          mt: 1.25,
-                          borderTop: (theme) => `1px solid ${theme.palette.divider}`,
-                          pt: entry.expanded ? 1.25 : 0,
-                          height: entry.expanded ? 'auto' : 0,
-                          overflow: 'hidden',
-                          visibility: entry.expanded ? 'visible' : 'hidden',
-                          pointerEvents: entry.expanded ? 'auto' : 'none',
-                        }}
-                      >
-                        <OptionsTabs
-                          brandColor={serviceConfig?.yColor || '#df2f2f'}
-                          videoTitle={entry.meta?.title || entry.rawInput}
-                          videoAuthor={entry.meta?.author || ''}
-                          videoUrl={entry.url || ''}
-                          videoThumbnail={entry.meta?.thumbnail || ''}
-                          duration={entry.meta?.duration || null}
-                          durationSeconds={entry.meta?.durationSeconds ?? null}
-                          initialFormats={entry.meta?.preloadedFormats || null}
-                          loadingState={entry.metaState === ENTRY_META_STATE.loading}
-                          defaultDownloadType={selectedType}
-                          disabledDownloadTypes={disabledDownloadTypes}
-                          forcedDownloadDirectory={forcedDownloadDirectory}
-                          downloadSettingsOverride={downloadSettingsOverride}
-                          onRegisterController={(controller) => onRegisterController?.(entry.id, controller)}
-                          onDownloadStateChange={(state) => onDownloadStateChange?.(entry.id, state)}
-                          onDownloadEvent={(event) => onDownloadEvent?.(entry.id, event)}
-                          onOpenCookieSettings={onOpenCookieSettings}
-                        />
-                      </Box>
-                    )}
-                  </Paper>
+                  </Box>
                 )
               })}
             </Stack>
-          </Paper>
+          </Box>
         )
       })}
     </Stack>

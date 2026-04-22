@@ -2,6 +2,7 @@ import React from 'react'
 import { Box } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import DownloaderShell from '../components/downloader/DownloaderShell'
+import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
 import { detectService, toMetaModel, isLikelyValidUrlFor, fetchDuration, fetchFormats, fetchNoembed, normalizeServiceKey } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import DownloaderLanding from './downloader/DownloaderLanding'
@@ -501,11 +502,26 @@ export default function SingleDownloader({
   const hasValidRouteUrl = hasRouteUrl && isLikelyValidUrlFor(routeService, queryUrl)
   const showLanding = !meta && !fetchError && !hasValidRouteUrl
   const showLoadingShell = !meta && !fetchError && hasValidRouteUrl
+  const downloaderScrollNodeProps = React.useMemo(() => (
+    showLanding
+      ? {
+          style: {
+            overflowX: 'hidden',
+            overflowY: 'hidden',
+          },
+        }
+      : {
+          style: {
+            overflowX: 'hidden',
+          },
+        }
+  ), [showLanding])
 
   return (
-    <Box
-      className="yl-native-scroll"
-      sx={{ position: 'relative', height: '100%', overflowX: 'hidden', overflowY: showLanding ? 'hidden' : 'auto' }}
+    <SimpleBarScrollArea
+      sx={{ position: 'relative', height: '100%' }}
+      hideHorizontal
+      scrollableNodeProps={downloaderScrollNodeProps}
     >
       <DownloaderLanding
         showLanding={showLanding}
@@ -555,6 +571,6 @@ export default function SingleDownloader({
           i18nT={i18nT}
         />
       )}
-    </Box>
+    </SimpleBarScrollArea>
   )
 }

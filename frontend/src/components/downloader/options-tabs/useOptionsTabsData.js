@@ -287,8 +287,7 @@ export default function useOptionsTabsData({
       setVideoThumbnailChecking(false)
     }
 
-    const cacheBusterSeparator = source.includes('?') ? '&' : '?'
-    probe.src = `${source}${cacheBusterSeparator}v=${Date.now()}`
+    probe.src = source
 
     return () => {
       cancelled = true

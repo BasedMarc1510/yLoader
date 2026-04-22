@@ -14,6 +14,57 @@ import {
 } from './entryUtils'
 
 const DEFAULT_METADATA_CONCURRENCY = 4
+const NOEMBED_TIMEOUT_MS = 2200
+const FORMATS_TIMEOUT_MS = 12000
+
+async function fetchNoembedWithTimeout(url, timeoutMs = NOEMBED_TIMEOUT_MS) {
+  const supportsAbort = typeof AbortController !== 'undefined'
+  const controller = supportsAbort ? new AbortController() : null
+  let timeoutId = null
+
+  if (controller && timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      controller.abort()
+    }, timeoutMs)
+  }
+
+  try {
+    return await fetchNoembed(url, controller ? { signal: controller.signal } : undefined)
+  } catch {
+    return null
+  } finally {
+    if (timeoutId != null) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
+async function fetchFormatsWithTimeout(url, timeoutMs = FORMATS_TIMEOUT_MS) {
+  const supportsAbort = typeof AbortController !== 'undefined'
+  const controller = supportsAbort ? new AbortController() : null
+  let timeoutId = null
+
+  if (controller && timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      controller.abort()
+    }, timeoutMs)
+  }
+
+  try {
+    return await fetchFormats(url, controller ? { signal: controller.signal } : undefined)
+  } catch (error) {
+    if (controller?.signal?.aborted) {
+      const timeoutError = new Error('formats timeout')
+      timeoutError.cause = error
+      throw timeoutError
+    }
+    throw error
+  } finally {
+    if (timeoutId != null) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
 
 function createEmptyDownloadState() {
   return {
@@ -84,7 +135,7 @@ export default function useMultiEntries({
 }) {
   const [entries, setEntries] = React.useState([])
   const entriesRef = React.useRef(entries)
-  const sessionRef = React.useRef(0)
+  const sessionRef = React.useRef(1)
   const pendingQueueRef = React.useRef([])
   const activeCountRef = React.useRef(0)
 
@@ -97,23 +148,20 @@ export default function useMultiEntries({
     if (!currentEntry || currentEntry.metaState !== ENTRY_META_STATE.loading || !currentEntry.url) return
 
     const entryService = currentEntry.serviceKey || detectService(currentEntry.url) || 'generic'
-    const [formatsResult, noembedResult] = await Promise.allSettled([
-      fetchFormats(currentEntry.url),
-      fetchNoembed(currentEntry.url),
-    ])
+    const noembedPromise = fetchNoembedWithTimeout(currentEntry.url)
+    let formatsPayload = null
 
-    if (sessionRef.current !== sessionId) return
-
-    const noembedPayload = noembedResult.status === 'fulfilled'
-      ? noembedResult.value
-      : null
-    const fallbackMeta = toMetaModel(entryService, currentEntry.url, noembedPayload)
-
-    if (formatsResult.status !== 'fulfilled') {
-      const message = formatYtDlpErrorMessage(i18nT, formatsResult.reason, {
+    try {
+      formatsPayload = await fetchFormatsWithTimeout(currentEntry.url)
+    } catch (reason) {
+      const message = formatYtDlpErrorMessage(i18nT, reason, {
         fallbackKey: 'multiDownloader.entryNotRetrievable',
         includeRawForUnknown: true,
       })
+
+      if (sessionRef.current !== sessionId) return
+
+      const fallbackMeta = toMetaModel(entryService, currentEntry.url, null)
 
       setEntries((previousEntries) => previousEntries.map((entry) => {
         if (entry.id !== entryId) return entry
@@ -138,7 +186,11 @@ export default function useMultiEntries({
       return
     }
 
-    const preloadedFormats = normalizePreloadedFormats(formatsResult.value, fallbackMeta)
+    if (sessionRef.current !== sessionId) return
+
+    const noembedPayload = await noembedPromise
+    const fallbackMeta = toMetaModel(entryService, currentEntry.url, noembedPayload)
+    const preloadedFormats = normalizePreloadedFormats(formatsPayload, fallbackMeta)
     const supportedTypes = resolveSupportedDownloadTypes(entryService, preloadedFormats)
     const durationLabel = String(preloadedFormats.durationString || '').trim() || null
 
@@ -225,8 +277,7 @@ export default function useMultiEntries({
     if (!parsedLinks.length) return 0
 
     const nextEntries = parsedLinks.map((link) => createBaseEntry(link, preferredDownloadType, i18nT))
-    const nextSession = sessionRef.current + 1
-    sessionRef.current = nextSession
+    const activeSession = sessionRef.current
 
     setEntries((previousEntries) => ([...previousEntries, ...nextEntries]))
 
@@ -234,7 +285,7 @@ export default function useMultiEntries({
       nextEntries
         .filter((entry) => entry.metaState === ENTRY_META_STATE.loading)
         .map((entry) => entry.id),
-      nextSession,
+      activeSession,
     )
 
     return nextEntries.length

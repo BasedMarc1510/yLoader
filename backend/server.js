@@ -3227,10 +3227,19 @@ function cleanupOldFiles() {
     const files = fs.readdirSync(DOWNLOADS_DIR)
     for (const file of files) {
       const filePath = path.join(DOWNLOADS_DIR, file)
-      const stats = fs.statSync(filePath)
-      if (now - stats.mtimeMs > CACHE_DURATION_MS) {
-        fs.unlinkSync(filePath)
+      try {
+        const stats = fs.statSync(filePath)
+        if (now - stats.mtimeMs <= CACHE_DURATION_MS) continue
+
+        if (stats.isDirectory()) {
+          fs.rmSync(filePath, { recursive: true, force: true })
+        } else {
+          fs.unlinkSync(filePath)
+        }
+
         console.log(`Cleaned up old file: ${file}`)
+      } catch (entryErr) {
+        console.warn(`Cleanup skipped for ${file}: ${entryErr.message}`)
       }
     }
   } catch (err) {

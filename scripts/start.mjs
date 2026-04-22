@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename)
 const ROOT_DIR = path.resolve(__dirname, '..')
 const BACKEND_DIR = path.join(ROOT_DIR, 'backend')
 const FRONTEND_DIR = path.join(ROOT_DIR, 'frontend')
+const FRONTEND_VITE_CLI = path.join(FRONTEND_DIR, 'node_modules', 'vite', 'bin', 'vite.js')
 const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads')
 const BACKEND_DATA_DIR = path.join(ROOT_DIR, 'backend-data')
 const LOCAL_TOOLS_DIR = path.join(ROOT_DIR, '.tools')
@@ -221,23 +222,46 @@ async function extractArchive(archivePath, destinationPath, archiveType) {
 }
 
 async function ensurePortFree(port, serviceName) {
-  await new Promise((resolve, reject) => {
-    const tester = net.createServer()
+  const hostsToCheck = [
+    { host: undefined, label: 'default' },
+    { host: '127.0.0.1', label: 'IPv4' },
+    { host: '::1', label: 'IPv6' },
+  ]
 
-    tester.once('error', (error) => {
-      if (error && error.code === 'EADDRINUSE') {
-        reject(new Error(`Port ${port} is already in use. Stop the existing process before starting ${serviceName}.`))
-        return
+  for (const entry of hostsToCheck) {
+    const result = await new Promise((resolve, reject) => {
+      const tester = net.createServer()
+
+      tester.once('error', (error) => {
+        if (error && error.code === 'EADDRINUSE') {
+          resolve({ available: false })
+          return
+        }
+
+        // Some hosts (especially ::1 on specific runners) may be unavailable.
+        if (error && error.code === 'EADDRNOTAVAIL') {
+          resolve({ available: true })
+          return
+        }
+
+        reject(error)
+      })
+
+      tester.once('listening', () => {
+        tester.close(() => resolve({ available: true }))
+      })
+
+      if (entry.host) {
+        tester.listen(port, entry.host)
+      } else {
+        tester.listen(port)
       }
-      reject(error)
     })
 
-    tester.once('listening', () => {
-      tester.close(() => resolve())
-    })
-
-    tester.listen(port, '127.0.0.1')
-  })
+    if (!result.available) {
+      throw new Error(`Port ${port} is already in use (${entry.label}). Stop the existing process before starting ${serviceName}.`)
+    }
+  }
 }
 
 async function ensureNodeDependencies(projectDir, label) {
@@ -532,8 +556,8 @@ async function waitForHttp(url, timeoutMs) {
   return false
 }
 
-function startService(name, cwd, args, env) {
-  const child = spawn(NPM_CMD, npmArgs(args), {
+function startService(name, cwd, command, args, env) {
+  const child = spawn(command, args, {
     cwd,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -543,6 +567,62 @@ function startService(name, cwd, args, env) {
   streamWithPrefix(child.stderr, name, process.stderr)
 
   return child
+}
+
+function waitForChildExit(child, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    if (!child || child.exitCode !== null) {
+      resolve()
+      return
+    }
+
+    const timeout = setTimeout(resolve, timeoutMs)
+    timeout.unref?.()
+
+    child.once('exit', () => {
+      clearTimeout(timeout)
+      resolve()
+    })
+  })
+}
+
+async function terminateServiceProcess(service) {
+  const child = service?.proc
+  if (!child || child.exitCode !== null) return
+
+  if (IS_WINDOWS && child.pid) {
+    try {
+      await runCommand('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+        captureOutput: true,
+      })
+    } catch {
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // ignore termination errors
+      }
+    }
+
+    await waitForChildExit(child, 1800)
+    return
+  }
+
+  try {
+    child.kill('SIGTERM')
+  } catch {
+    // ignore termination errors
+  }
+
+  await waitForChildExit(child, 1800)
+
+  if (child.exitCode === null) {
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      // ignore termination errors
+    }
+    await waitForChildExit(child, 1200)
+  }
 }
 
 async function main() {
@@ -618,8 +698,12 @@ async function main() {
 
   info('Starting backend and frontend...')
 
-  const backend = startService('backend', BACKEND_DIR, ['start'], sharedEnv)
-  const frontend = startService('frontend', FRONTEND_DIR, ['run', 'dev'], sanitizeEnv({
+  if (!fs.existsSync(FRONTEND_VITE_CLI)) {
+    throw new Error(`Frontend dev runner not found at ${FRONTEND_VITE_CLI}. Run dependency installation first.`)
+  }
+
+  const backend = startService('backend', BACKEND_DIR, process.execPath, ['server.js'], sharedEnv)
+  const frontend = startService('frontend', FRONTEND_DIR, process.execPath, [FRONTEND_VITE_CLI], sanitizeEnv({
     ...sharedEnv,
     VITE_BACKEND_URL: 'http://localhost:4000',
   }))
@@ -630,34 +714,41 @@ async function main() {
   ]
 
   let shuttingDown = false
-  const shutdown = (exitCode) => {
-    if (shuttingDown) return
+  let shutdownPromise = null
+
+  const shutdown = async (exitCode) => {
+    if (shuttingDown && shutdownPromise) return shutdownPromise
     shuttingDown = true
 
-    info('Stopping services...')
-    for (const child of children) {
-      if (child.proc.exitCode === null) {
-        try {
-          child.proc.kill('SIGTERM')
-        } catch {
-          // ignore termination errors
-        }
-      }
-    }
+    shutdownPromise = (async () => {
+      info('Stopping services...')
 
-    setTimeout(() => process.exit(exitCode), 300)
+      const forceExitTimer = setTimeout(() => process.exit(exitCode), 6000)
+      forceExitTimer.unref?.()
+
+      await Promise.all(children.map((child) => terminateServiceProcess(child)))
+
+      clearTimeout(forceExitTimer)
+      process.exit(exitCode)
+    })()
+
+    return shutdownPromise
   }
 
   for (const child of children) {
     child.proc.on('exit', (code, signal) => {
       if (shuttingDown) return
       fail(`${child.name} exited unexpectedly (code=${code ?? 'null'}, signal=${signal ?? 'none'}).`)
-      shutdown(code && code > 0 ? code : 1)
+      void shutdown(code && code > 0 ? code : 1)
     })
   }
 
-  process.on('SIGINT', () => shutdown(0))
-  process.on('SIGTERM', () => shutdown(0))
+  process.on('SIGINT', () => {
+    void shutdown(0)
+  })
+  process.on('SIGTERM', () => {
+    void shutdown(0)
+  })
 
   info('Waiting for services to become reachable...')
   const backendReady = await waitForHttp('http://127.0.0.1:4000/health', 90000)
