@@ -1,3 +1,5 @@
+import { isUsableVideoFormat } from '../../../utils/videoFormatSupport'
+
 function readVideoHeight(format) {
   const directHeight = Number(format?.height)
   if (Number.isFinite(directHeight) && directHeight > 0) return directHeight
@@ -17,6 +19,7 @@ export const buildVideoOptions = (formats = [], maxVideoHeight = 0) => {
   const byHeight = new Map()
 
   for (const f of formats || []) {
+    if (!isUsableVideoFormat(f)) continue
     const height = readVideoHeight(f)
     if (!height) continue
 

@@ -106,6 +106,9 @@ npm install
 npm run start
 ```
 
+If the local dev backend on `:4000` or frontend on `:5173` is already running, `npm run start` reuses the existing yLoader service and only starts what is missing.
+Local web dev started via `npm run start` also enables yt-dlp browser-cookie import on the same machine, matching local Electron behavior. Container/runtime deployments still depend on their own environment setup.
+
 ### Option 5: Local Electron App
 
 ```bash

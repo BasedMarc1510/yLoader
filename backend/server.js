@@ -2543,6 +2543,20 @@ function compareVideoFormatQuality(a, b) {
   })
 }
 
+function isUsableVideoFormatCandidate(value) {
+  const formatId = String(value?.formatId || value?.format_id || '').trim().toLowerCase()
+  const ext = String(value?.ext || '').trim().toLowerCase()
+  const vcodec = String(value?.vcodec || 'none').trim().toLowerCase() || 'none'
+  const acodec = String(value?.acodec || 'none').trim().toLowerCase() || 'none'
+
+  if (!formatId) return false
+  if (formatId.startsWith('sb')) return false
+  if (ext === 'mhtml') return false
+  if (vcodec === 'none' && acodec === 'none') return false
+
+  return true
+}
+
 function hasUsableMetaFormats(data) {
   const formats = Array.isArray(data?.formats) ? data.formats : []
   for (const rawFormat of formats) {
@@ -2791,6 +2805,10 @@ function buildMetaFormatsPayloadFromYtDlpData(data, fallbackData = null) {
         requiresMerge: acodec === 'none',
       }
 
+      if (!isUsableVideoFormatCandidate(videoCandidate)) {
+        continue
+      }
+
       const videoKey = `${formatId}:${ext}:${acodec}`
       const currentVideo = videoByKey.get(videoKey)
       if (!currentVideo || compareVideoFormatQuality(videoCandidate, currentVideo) < 0) {
@@ -2939,7 +2957,14 @@ function readCachedMetaFormats(url) {
     return null
   }
 
-  return cached.payload
+  if (!cached.payload || typeof cached.payload !== 'object') return null
+
+  return {
+    ...cached.payload,
+    videoFormats: Array.isArray(cached.payload.videoFormats)
+      ? cached.payload.videoFormats.filter(isUsableVideoFormatCandidate)
+      : [],
+  }
 }
 
 function writeCachedMetaFormats(url, payload) {

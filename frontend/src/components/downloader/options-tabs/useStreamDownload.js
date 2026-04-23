@@ -5,6 +5,10 @@ import {
   shouldSuggestCookieSettings,
 } from '../../../utils/ytDlpErrorPresentation'
 import {
+  appendDownloadDiagnostic,
+  resolveDownloadDiagnosticMessage,
+} from '../../../utils/downloadStreamDiagnostics'
+import {
   buildSuggestedDownloadFilename,
   resolveElectronDownloadDestination,
 } from '../../../utils/electronDownloadDestination'
@@ -273,6 +277,7 @@ export default function useStreamDownload({
     let completed = false
     let finalized = false
     let completionPayload = null
+    let recentDiagnostics = []
 
     try {
       const apiBase = getApiBase()
@@ -589,6 +594,11 @@ export default function useStreamDownload({
           return
         }
 
+        if (eventName === 'info' || eventName === 'message') {
+          recentDiagnostics = appendDownloadDiagnostic(recentDiagnostics, dataStr)
+          return
+        }
+
         if (eventName === 'progress') {
           try {
             const data = JSON.parse(dataStr)
@@ -653,7 +663,7 @@ export default function useStreamDownload({
         if (eventName === 'end') {
           finalized = true
           if (dataStr.trim() === 'failed' && !completed) {
-            const msg = i18nT('downloader.errorDownloadFailed')
+            const msg = resolveDownloadDiagnosticMessage(i18nT, recentDiagnostics)
             notifyDownloadError(msg)
             emitDownloadEvent({ type: 'error', message: msg, downloadType: type, sourceUrl: normalized })
           }
@@ -723,7 +733,7 @@ export default function useStreamDownload({
       }
 
       if (!completed && !finalized) {
-        throw new Error(i18nT('downloader.errorDownloadFailed'))
+        throw new Error(resolveDownloadDiagnosticMessage(i18nT, recentDiagnostics))
       }
 
       return completionPayload || completed

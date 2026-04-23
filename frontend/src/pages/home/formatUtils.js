@@ -1,4 +1,5 @@
 import { AUTO_DOWNLOAD_SETTINGS_DEFAULTS } from './constants'
+import { isUsableVideoFormat } from '../../utils/videoFormatSupport'
 
 function normalizeDownloadPath(value, fallbackPath) {
   const fallback = String(fallbackPath || '').trim()
@@ -80,7 +81,7 @@ export function pickVideoFormatByMaxHeight(formats, maxVideoHeight) {
   const cap = Number.isFinite(normalizedCap) ? normalizedCap : 0
 
   const candidates = list
-    .filter((fmt) => fmt && typeof fmt.formatId === 'string' && fmt.formatId.trim())
+    .filter((fmt) => fmt && typeof fmt.formatId === 'string' && fmt.formatId.trim() && isUsableVideoFormat(fmt))
     .map((fmt) => ({
       formatId: fmt.formatId,
       height: readVideoFormatHeight(fmt),

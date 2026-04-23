@@ -17,7 +17,29 @@ export default function MetadataInput({
   isDark = true
 }) {
   const [isFocused, setIsFocused] = React.useState(false)
-  const hasValue = value && value.length > 0
+  const [localValue, setLocalValue] = React.useState(value || '')
+  const timeoutRef = React.useRef(null)
+
+  React.useEffect(() => {
+    setLocalValue(value || '')
+  }, [value])
+
+  const handleChange = React.useCallback((e) => {
+    const val = e.target.value
+    setLocalValue(val)
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    timeoutRef.current = setTimeout(() => {
+      onChange({ target: { value: val } })
+    }, 300)
+  }, [onChange])
+
+  React.useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  const hasValue = localValue && localValue.length > 0
 
   return (
     <Box
@@ -33,8 +55,8 @@ export default function MetadataInput({
         component="input"
         id={id}
         type={type}
-        value={value}
-        onChange={onChange}
+        value={localValue}
+        onChange={handleChange}
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
         // onClick handler removed to prevent auto-selection

@@ -20,6 +20,10 @@ import {
 } from '../../utils/downloadSettings'
 import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
 import {
+  appendDownloadDiagnostic,
+  resolveDownloadDiagnosticMessage,
+} from '../../utils/downloadStreamDiagnostics'
+import {
   buildSuggestedDownloadFilename,
   resolveElectronDownloadDestination,
 } from '../../utils/electronDownloadDestination'
@@ -209,6 +213,7 @@ export function useAutoDownload({
     let failed = false
     let abortedByUser = false
     let explicitErrorMessage = ''
+    let recentDiagnostics = []
 
     const applyProgress = (rawPercent) => {
       const nextPercent = Number(rawPercent)
@@ -345,6 +350,7 @@ export function useAutoDownload({
         }
 
         if (eventName === 'info' || eventName === 'message') {
+          recentDiagnostics = appendDownloadDiagnostic(recentDiagnostics, dataStr)
           applyProgress(extractPercent(dataStr))
           return
         }
@@ -431,6 +437,12 @@ export function useAutoDownload({
           ended = true
           if (dataStr.trim() === 'failed') {
             failed = true
+            if (!explicitErrorMessage) {
+              const message = resolveDownloadDiagnosticMessage(t, recentDiagnostics)
+              explicitErrorMessage = message
+              setFetchError({ url: target, message })
+              showNotification(message, 'error')
+            }
           }
         }
       }
@@ -461,7 +473,10 @@ export function useAutoDownload({
     } finally {
       inFlightRef.current = false
       if (!completed && !explicitErrorMessage && !abortedByUser && (failed || !ended)) {
-        setFetchError({ url: target, message: t('downloader.errorDownloadFailed') })
+        setFetchError({
+          url: target,
+          message: resolveDownloadDiagnosticMessage(t, recentDiagnostics),
+        })
       }
       setAutoDownloadInFlight(false)
       if (completed) {

@@ -264,9 +264,30 @@ async function ensurePortFree(port, serviceName) {
   }
 }
 
+function getDeclaredPackageNames(projectDir) {
+  const packageJsonPath = path.join(projectDir, 'package.json')
+  const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+  const dependencyNames = Object.keys(manifest.dependencies || {})
+  const devDependencyNames = Object.keys(manifest.devDependencies || {})
+
+  return [...new Set([...dependencyNames, ...devDependencyNames])]
+}
+
+function getMissingDeclaredPackages(projectDir) {
+  const nodeModulesDir = path.join(projectDir, 'node_modules')
+  if (!fs.existsSync(nodeModulesDir)) {
+    return getDeclaredPackageNames(projectDir)
+  }
+
+  return getDeclaredPackageNames(projectDir).filter((packageName) => {
+    const packagePath = path.join(nodeModulesDir, ...packageName.split('/'), 'package.json')
+    return !fs.existsSync(packagePath)
+  })
+}
+
 async function ensureNodeDependencies(projectDir, label) {
-  const nodeModules = path.join(projectDir, 'node_modules')
-  if (fs.existsSync(nodeModules)) {
+  const missingPackages = getMissingDeclaredPackages(projectDir)
+  if (missingPackages.length === 0) {
     info(`${label}: dependencies already installed.`)
     return
   }
@@ -282,6 +303,12 @@ async function ensureNodeDependencies(projectDir, label) {
   })
 
   fs.mkdirSync(LOCAL_NPM_CACHE_DIR, { recursive: true })
+
+  if (missingPackages.length > 0) {
+    const preview = missingPackages.slice(0, 4).join(', ')
+    const suffix = missingPackages.length > 4 ? ` (+${missingPackages.length - 4} more)` : ''
+    info(`${label}: refreshing dependencies because packages are missing (${preview}${suffix}).`)
+  }
 
   info(`${label}: installing dependencies (${installArgs[0]})...`)
   await runCommand(NPM_CMD, npmArgs(installArgs), {
@@ -536,13 +563,64 @@ async function ensureLocalFfmpeg() {
   }
 }
 
-async function waitForHttp(url, timeoutMs) {
+async function requestHttpText(url, timeoutMs = 1500) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  timeout.unref?.()
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    })
+
+    return {
+      ok: true,
+      statusCode: Number(response.status || 0),
+      body: await response.text(),
+    }
+  } catch {
+    return { ok: false, statusCode: 0, body: '' }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function isYLoaderBackendRunning(healthUrl, timeoutMs = 1500) {
+  const probe = await requestHttpText(healthUrl, timeoutMs)
+  if (!probe.ok || !probe.body) return false
+
+  try {
+    const payload = JSON.parse(probe.body)
+    const checks = payload?.checks
+
+    return Boolean(
+      payload
+      && typeof payload.status === 'string'
+      && checks
+      && typeof checks === 'object'
+      && typeof checks.db === 'boolean'
+      && typeof checks.ytDlp === 'boolean'
+    )
+  } catch {
+    return false
+  }
+}
+
+async function waitForHttp(url, timeoutMs, options = {}) {
+  const { accept } = options
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
       // eslint-disable-next-line no-await-in-loop
       const response = await fetch(url)
-      if (response.ok || response.status < 500) {
+      const isAccepted = typeof accept === 'function'
+        ? Boolean(accept(response))
+        : (response.ok || response.status < 500)
+
+      if (isAccepted) {
         return true
       }
     } catch {
@@ -640,9 +718,23 @@ async function main() {
   fs.mkdirSync(BACKEND_DATA_DIR, { recursive: true })
   fs.mkdirSync(LOCAL_TOOLS_DIR, { recursive: true })
 
+  const backendHealthUrl = 'http://127.0.0.1:4000/health'
+  const frontendUrl = 'http://127.0.0.1:5173'
+  let backendAlreadyRunning = false
+  let frontendAlreadyRunning = false
+
   if (!PREPARE_ONLY) {
-    await ensurePortFree(4000, 'backend')
-    await ensurePortFree(5173, 'frontend')
+    backendAlreadyRunning = await isYLoaderBackendRunning(backendHealthUrl, 1500)
+    frontendAlreadyRunning = await waitForHttp(frontendUrl, 1500, {
+      accept: (response) => response.ok || response.status < 500,
+    })
+
+    if (!backendAlreadyRunning) {
+      await ensurePortFree(4000, 'backend')
+    }
+    if (!frontendAlreadyRunning) {
+      await ensurePortFree(5173, 'frontend')
+    }
   }
 
   await ensureNodeDependencies(BACKEND_DIR, 'backend')
@@ -672,7 +764,10 @@ async function main() {
     sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '1'
   } else {
     sharedEnv.YLOADER_RUNTIME_TARGET = 'server'
-    sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '0'
+    // Local web dev runs on the same machine as the browser profile, so allow
+    // yt-dlp browser cookie import here too. Docker/runtime-packaged server
+    // builds still control this independently via their own environment.
+    sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '1'
   }
 
   if (!SKIP_TOOLS) {
@@ -696,22 +791,36 @@ async function main() {
     return
   }
 
-  info('Starting backend and frontend...')
+  if (backendAlreadyRunning && frontendAlreadyRunning) {
+    info('Local stack is already running. Reusing existing backend and frontend.')
+  } else if (backendAlreadyRunning || frontendAlreadyRunning) {
+    info('Detected existing local services. Starting only missing services...')
+  } else {
+    info('Starting backend and frontend...')
+  }
 
   if (!fs.existsSync(FRONTEND_VITE_CLI)) {
     throw new Error(`Frontend dev runner not found at ${FRONTEND_VITE_CLI}. Run dependency installation first.`)
   }
 
-  const backend = startService('backend', BACKEND_DIR, process.execPath, ['server.js'], sharedEnv)
-  const frontend = startService('frontend', FRONTEND_DIR, process.execPath, [FRONTEND_VITE_CLI], sanitizeEnv({
-    ...sharedEnv,
-    VITE_BACKEND_URL: 'http://localhost:4000',
-  }))
+  const children = []
 
-  const children = [
-    { name: 'backend', proc: backend },
-    { name: 'frontend', proc: frontend },
-  ]
+  if (backendAlreadyRunning) {
+    info('Reusing existing backend on :4000.')
+  } else {
+    const backend = startService('backend', BACKEND_DIR, process.execPath, ['server.js'], sharedEnv)
+    children.push({ name: 'backend', proc: backend })
+  }
+
+  if (frontendAlreadyRunning) {
+    info('Reusing existing frontend on :5173.')
+  } else {
+    const frontend = startService('frontend', FRONTEND_DIR, process.execPath, [FRONTEND_VITE_CLI], sanitizeEnv({
+      ...sharedEnv,
+      VITE_BACKEND_URL: 'http://localhost:4000',
+    }))
+    children.push({ name: 'frontend', proc: frontend })
+  }
 
   let shuttingDown = false
   let shutdownPromise = null
@@ -751,8 +860,12 @@ async function main() {
   })
 
   info('Waiting for services to become reachable...')
-  const backendReady = await waitForHttp('http://127.0.0.1:4000/health', 90000)
-  const frontendReady = await waitForHttp('http://127.0.0.1:5173', 90000)
+  const backendReady = await waitForHttp(backendHealthUrl, 90000, {
+    accept: (response) => response.ok,
+  })
+  const frontendReady = await waitForHttp(frontendUrl, 90000, {
+    accept: (response) => response.ok || response.status < 500,
+  })
 
   if (!backendReady) {
     warn('Backend health endpoint did not become ready in time.')
@@ -766,7 +879,11 @@ async function main() {
   process.stdout.write('  Frontend: http://localhost:5173\n')
   process.stdout.write('  Backend : http://localhost:4000\n')
   process.stdout.write('  Health  : http://localhost:4000/health\n')
-  process.stdout.write('  Stop    : Ctrl+C\n\n')
+  if (children.length > 0) {
+    process.stdout.write('  Stop    : Ctrl+C\n\n')
+  } else {
+    process.stdout.write('\n')
+  }
 }
 
 main().catch((error) => {

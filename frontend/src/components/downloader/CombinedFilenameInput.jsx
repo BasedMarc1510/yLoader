@@ -24,6 +24,31 @@ export default function CombinedFilenameInput({
     const inputRef = React.useRef(null)
     const [showLeftFade, setShowLeftFade] = React.useState(false)
     const [showRightFade, setShowRightFade] = React.useState(false)
+    const [localValue, setLocalValue] = React.useState(value || '')
+    const timeoutRef = React.useRef(null)
+
+    React.useEffect(() => {
+        setLocalValue(value || '')
+    }, [value])
+
+    const handleChange = React.useCallback((event) => {
+        const val = event.target.value
+        setLocalValue(val)
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        timeoutRef.current = setTimeout(() => {
+            onChange(val)
+        }, 300)
+        
+        if (typeof window !== 'undefined') {
+            window.requestAnimationFrame(updateFadeState)
+        }
+    }, [onChange, updateFadeState])
+
+    React.useEffect(() => {
+        return () => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        }
+    }, [])
 
     const handlePickPath = React.useCallback(() => {
         if (typeof onPickPath === 'function') {
@@ -115,13 +140,8 @@ export default function CombinedFilenameInput({
                 <Box
                     component="input"
                     ref={inputRef}
-                    value={value}
-                    onChange={(event) => {
-                        onChange(event.target.value)
-                        if (typeof window !== 'undefined') {
-                            window.requestAnimationFrame(updateFadeState)
-                        }
-                    }}
+                    value={localValue}
+                    onChange={handleChange}
                     onScroll={updateFadeState}
                     onKeyUp={updateFadeState}
                     onClick={updateFadeState}
