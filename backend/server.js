@@ -2076,6 +2076,27 @@ function isValidHttpUrl(value) {
   }
 }
 
+function readFirstQueryString(query, keys = []) {
+  const input = (query && typeof query === 'object') ? query : {}
+
+  for (const key of keys) {
+    const rawValue = input[key]
+    const normalized = Array.isArray(rawValue)
+      ? rawValue.map((entry) => String(entry || '').replace(/\u0000/g, '').trim()).find(Boolean) || ''
+      : String(rawValue || '').replace(/\u0000/g, '').trim()
+
+    if (normalized) return normalized
+  }
+
+  return ''
+}
+
+function readHttpUrlQuery(req, keys = ['url']) {
+  // Accept `source` as a defensive fallback because the dev server once rewrote
+  // legacy downloader page URLs too broadly and touched API requests as well.
+  return readFirstQueryString(req?.query, keys)
+}
+
 function parseYtDlpJson(raw) {
   const input = String(raw || '').trim()
   if (!input) return {}
@@ -4802,7 +4823,7 @@ app.get('/api/ffmpeg/status', async (req, res) => {
 // GET /api/meta/duration?url=...
 // Returns { duration: number|null, durationString: string|null }
 app.get('/api/meta/duration', async (req, res) => {
-  const url = (req.query.url || '').toString().trim()
+  const url = readHttpUrlQuery(req, ['url', 'source'])
   if (!url) return res.status(400).json({ error: 'Missing url' })
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
 
@@ -4866,7 +4887,7 @@ app.get('/api/meta/duration', async (req, res) => {
 // GET /api/meta/formats?url=...
 // Returns available audio and video formats with quality info
 app.get('/api/meta/formats', async (req, res) => {
-  const url = (req.query.url || '').toString().trim()
+  const url = readHttpUrlQuery(req, ['url', 'source'])
   if (!url) return res.status(400).json({ error: 'Missing url' })
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
 
@@ -4888,7 +4909,7 @@ app.get('/api/meta/formats', async (req, res) => {
 // GET /api/meta/thumbnails?url=...
 // Returns only curated thumbnail choices for the downloader thumbnail tab.
 app.get('/api/meta/thumbnails', async (req, res) => {
-  const url = (req.query.url || '').toString().trim()
+  const url = readHttpUrlQuery(req, ['url', 'source'])
   if (!url) return res.status(400).json({ error: 'Missing url' })
   if (!isValidHttpUrl(url)) return res.status(400).json({ error: 'Invalid url' })
 
@@ -5025,7 +5046,7 @@ app.get('/api/ffmpeg/update/stream', async (req, res) => {
 // Proxies an external image to force same-origin download with a provided filename and optional format conversion
 app.get('/api/proxy-image', async (req, res) => {
   try {
-    const rawUrl = (req.query.url || '').toString()
+    const rawUrl = readHttpUrlQuery(req, ['url', 'source'])
     const targetFormatRaw = (req.query.format || '').toString().trim().toLowerCase()
     const targetFormat = targetFormatRaw ? normalizeImageContainer(targetFormatRaw) : ''
 

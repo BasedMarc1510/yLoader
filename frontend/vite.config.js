@@ -1,19 +1,35 @@
 import { defineConfig, splitVendorChunkPlugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
+function shouldRewriteLegacyDownloaderQuery(req) {
+  const rawUrl = String(req?.url || '')
+  if (!rawUrl || !rawUrl.includes('?') || !rawUrl.includes('url=')) return false
+
+  const method = String(req?.method || 'GET').trim().toUpperCase()
+  if (method !== 'GET' && method !== 'HEAD') return false
+
+  try {
+    const parsed = new URL(rawUrl, 'http://localhost')
+    const pathname = String(parsed.pathname || '')
+    // Only rewrite browser page URLs. API calls still use `url=...`.
+    return pathname !== '/api' && !pathname.startsWith('/api/')
+  } catch {
+    return false
+  }
+}
+
 function rewriteLegacyDownloaderUrlQuery() {
   return {
     name: 'yloader-rewrite-legacy-downloader-url-query',
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
-        const rawUrl = String(req.url || '')
-        if (!rawUrl || !rawUrl.includes('?') || !rawUrl.includes('url=')) {
+        if (!shouldRewriteLegacyDownloaderQuery(req)) {
           next()
           return
         }
 
         try {
-          const parsed = new URL(rawUrl, 'http://localhost')
+          const parsed = new URL(String(req.url || ''), 'http://localhost')
           const sourceParam = String(parsed.searchParams.get('source') || '').trim()
           const legacyUrlParam = String(parsed.searchParams.get('url') || '').trim()
 
