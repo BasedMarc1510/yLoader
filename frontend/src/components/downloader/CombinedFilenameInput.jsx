@@ -31,6 +31,23 @@ export default function CombinedFilenameInput({
         setLocalValue(value || '')
     }, [value])
 
+    const updateFadeState = React.useCallback(() => {
+        const node = inputRef.current
+        if (!node) return
+
+        const maxScroll = Math.max(0, node.scrollWidth - node.clientWidth)
+        if (maxScroll <= 1) {
+            setShowLeftFade(false)
+            setShowRightFade(false)
+            return
+        }
+
+        const scrollLeft = Math.max(0, node.scrollLeft)
+        const epsilon = 1
+        setShowLeftFade(scrollLeft > epsilon)
+        setShowRightFade(scrollLeft < (maxScroll - epsilon))
+    }, [])
+
     const handleChange = React.useCallback((event) => {
         const val = event.target.value
         setLocalValue(val)
@@ -63,23 +80,6 @@ export default function CombinedFilenameInput({
     const rightFadeGradient = isDark
         ? 'linear-gradient(to left, #1b1b1b 36%, rgba(27,27,27,0))'
         : 'linear-gradient(to left, #ffffff 36%, rgba(255,255,255,0))'
-
-    const updateFadeState = React.useCallback(() => {
-        const node = inputRef.current
-        if (!node) return
-
-        const maxScroll = Math.max(0, node.scrollWidth - node.clientWidth)
-        if (maxScroll <= 1) {
-            setShowLeftFade(false)
-            setShowRightFade(false)
-            return
-        }
-
-        const scrollLeft = Math.max(0, node.scrollLeft)
-        const epsilon = 1
-        setShowLeftFade(scrollLeft > epsilon)
-        setShowRightFade(scrollLeft < (maxScroll - epsilon))
-    }, [])
 
     React.useEffect(() => {
         if (typeof window === 'undefined') return undefined

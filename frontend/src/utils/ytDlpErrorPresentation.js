@@ -42,32 +42,53 @@ function parseStructuredValue(value) {
 }
 
 function resolvePayload(value) {
+  console.log('[resolvePayload] input value:', value)
   const parsed = parseStructuredValue(value)
-  if (!parsed) return null
-
-  if (parsed.ytDlpError && typeof parsed.ytDlpError === 'object') {
-    return {
-      ...parsed.ytDlpError,
-      message: parsed.message || parsed.ytDlpError.message || '',
-      details: parsed.details || parsed.ytDlpError.details || '',
-    }
+  if (!parsed) {
+    console.log('[resolvePayload] not a structured value or null')
+    return null
   }
 
-  if (typeof parsed.code === 'string' || parsed.rawMessage || parsed.message || parsed.details) {
+  if (parsed.ytDlpError && typeof parsed.ytDlpError === 'object') {
+    const res = {
+      ...parsed.ytDlpError,
+      message: parsed.message || parsed.error || parsed.ytDlpError.message || '',
+      details: parsed.details || parsed.ytDlpError.details || '',
+    }
+    console.log('[resolvePayload] found ytDlpError:', res)
+    return res
+  }
+
+  if (typeof parsed.code === 'string' || parsed.rawMessage || parsed.message || parsed.details || parsed.error) {
+    if (parsed.error && !parsed.message) {
+      parsed.message = parsed.error
+    }
+    console.log('[resolvePayload] returning parsed:', parsed)
     return parsed
   }
 
+  console.log('[resolvePayload] fell through, returning null')
   return null
 }
 
 export function resolveYtDlpErrorInfo(value) {
+  console.log('[resolveYtDlpErrorInfo] input:', value)
   const payload = resolvePayload(value)
-  const sourceText = payload?.rawMessage
-    || payload?.message
-    || payload?.details
-    || (typeof value === 'string' ? value : '')
+  
+  const parts = []
+  if (payload?.rawMessage) parts.push(payload.rawMessage)
+  if (payload?.message) parts.push(payload.message)
+  if (payload?.error) parts.push(payload.error)
+  if (payload?.details) parts.push(payload.details)
+  
+  console.log('[resolveYtDlpErrorInfo] constructed parts for source text:', parts)
+  
+  const sourceText = parts.length > 0 
+    ? parts.join('\n') 
+    : (typeof value === 'string' ? value : '')
 
   const classified = classifyYtDlpError(sourceText)
+  console.log('[resolveYtDlpErrorInfo] classified:', classified, 'sourceText:', sourceText)
 
   return {
     code: payload?.code || classified.code,
@@ -76,11 +97,14 @@ export function resolveYtDlpErrorInfo(value) {
 }
 
 export function formatYtDlpErrorMessage(i18nT, value, options = {}) {
+  console.log('[formatYtDlpErrorMessage] value:', value, 'options:', options)
   const fallbackKey = options.fallbackKey || 'downloader.errorDownloadFailed'
   const includeRawForUnknown = Boolean(options.includeRawForUnknown)
   const fallbackText = i18nT(fallbackKey)
 
   const { code, rawMessage } = resolveYtDlpErrorInfo(value)
+  console.log('[formatYtDlpErrorMessage] resolved code:', code, 'rawMessage:', rawMessage)
+
   const translationKey = TRANSLATION_KEY_BY_CODE[code]
   if (translationKey) {
     return i18nT(translationKey)
@@ -93,6 +117,7 @@ export function formatYtDlpErrorMessage(i18nT, value, options = {}) {
     return i18nT('downloader.errorDownloadFailedWithReason', { reason: rawMessage })
   }
 
+  console.log('[formatYtDlpErrorMessage] returning fallbackText:', fallbackText)
   return fallbackText
 }
 
