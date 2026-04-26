@@ -179,15 +179,16 @@ export default function MultiEntryGroups({
   if (!entries.length) {
     return (
       <Box
-        sx={{
-          p: 2,
-          borderRadius: 2,
+        sx={(theme) => ({
+          p: 3,
+          borderRadius: 3,
           border: '1px solid',
           borderColor: 'divider',
-          bgcolor: 'background.paper',
-        }}
+          bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+          textAlign: 'center',
+        })}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
           {i18nT('multiDownloader.emptyState')}
         </Typography>
       </Box>
@@ -203,18 +204,19 @@ export default function MultiEntryGroups({
         return (
           <Box
             key={groupServiceKey}
-            sx={{
-              borderRadius: 2.5,
+            sx={(theme) => ({
+              borderRadius: 3,
               border: '1px solid',
               borderColor: 'divider',
-              bgcolor: 'background.paper',
+              bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.015)' : '#ffffff',
+              boxShadow: theme.palette.mode === 'dark' ? '0 4px 12px rgba(0,0,0,0.1)' : '0 2px 8px rgba(0,0,0,0.03)',
               p: { xs: 1.25, sm: 1.5 },
-            }}
+            })}
           >
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.95 }}>
               <Stack direction="row" spacing={1} alignItems="center">
                 <ServiceIcon serviceKey={groupServiceKey} size={16} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
                   {groupServiceName}
                 </Typography>
               </Stack>
@@ -253,13 +255,14 @@ export default function MultiEntryGroups({
                     key={entry.id}
                     sx={(theme) => ({
                       pt: 0.2,
-                      borderRadius: 1.6,
+                      borderRadius: 2,
                       border: '1px solid',
                       borderColor: 'divider',
                       bgcolor: theme.palette.mode === 'dark'
-                        ? 'rgba(255,255,255,0.02)'
-                        : 'rgba(0,0,0,0.01)',
-                      p: 1,
+                        ? 'rgba(255,255,255,0.03)'
+                        : 'rgba(0,0,0,0.015)',
+                      p: 1.25,
+                      boxShadow: 'none',
                     })}
                   >
                     <Stack spacing={1}>
@@ -298,14 +301,18 @@ export default function MultiEntryGroups({
                                   sx={{
                                     minHeight: 28,
                                     borderRadius: 999,
-                                    px: 1,
+                                    px: 1.2,
                                     textTransform: 'none',
                                     fontSize: 12,
                                     fontWeight: 700,
                                     bgcolor: active ? 'primary.main' : 'transparent',
                                     color: active ? 'primary.contrastText' : 'text.secondary',
-                                    border: active ? 'none' : '1px solid',
-                                    borderColor: active ? 'transparent' : 'divider',
+                                    border: 'none',
+                                    boxShadow: 'none',
+                                    '&:hover': {
+                                      boxShadow: 'none',
+                                      bgcolor: active ? 'primary.dark' : 'action.hover',
+                                    }
                                   }}
                                 >
                                   {getDownloadTypeLabel(i18nT, type)}
@@ -320,6 +327,7 @@ export default function MultiEntryGroups({
                                 size="small"
                                 onClick={() => onOpenCompleted(entry)}
                                 aria-label={i18nT('multiDownloader.openCompleted')}
+                                sx={{ bgcolor: 'action.hover' }}
                               >
                                 <FolderOpen size={16} />
                               </IconButton>
@@ -332,6 +340,7 @@ export default function MultiEntryGroups({
                               color="error"
                               onClick={() => onRemoveEntry?.(entry.id)}
                               aria-label={i18nT('multiDownloader.removeEntry')}
+                              sx={{ bgcolor: 'action.hover' }}
                             >
                               <Trash2 size={16} />
                             </IconButton>
@@ -342,16 +351,19 @@ export default function MultiEntryGroups({
                               ? i18nT('multiDownloader.collapseEntry')
                               : i18nT('multiDownloader.expandEntry')}
                           >
-                            <IconButton
-                              size="small"
-                              onClick={() => onToggleExpanded?.(entry.id)}
-                              aria-label={entry.expanded
-                                ? i18nT('multiDownloader.collapseEntry')
-                                : i18nT('multiDownloader.expandEntry')}
-                              disabled={!isReady}
-                            >
-                              {entry.expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            </IconButton>
+                            <span>
+                              <IconButton
+                                size="small"
+                                onClick={() => onToggleExpanded?.(entry.id)}
+                                aria-label={entry.expanded
+                                  ? i18nT('multiDownloader.collapseEntry')
+                                  : i18nT('multiDownloader.expandEntry')}
+                                disabled={!isReady}
+                                sx={{ bgcolor: 'action.hover' }}
+                              >
+                                {entry.expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              </IconButton>
+                            </span>
                           </Tooltip>
                         </Stack>
                       </Stack>
