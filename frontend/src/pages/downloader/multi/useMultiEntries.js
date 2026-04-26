@@ -1,5 +1,5 @@
 import React from 'react'
-import { fetchFormats, fetchNoembed, detectService, toMetaModel } from '../../../utils/metadata'
+import { fetchDuration, fetchFormats, fetchNoembed, detectService, toMetaModel } from '../../../utils/metadata'
 import { parseMultiLinks, isLikelyValidHttpLink, normalizeHttpLink } from '../../../utils/multiLinks'
 import { formatYtDlpErrorMessage } from '../../../utils/ytDlpErrorPresentation'
 import {
@@ -16,54 +16,65 @@ import {
 const DEFAULT_METADATA_CONCURRENCY = 4
 const NOEMBED_TIMEOUT_MS = 2200
 const FORMATS_TIMEOUT_MS = 12000
+const DURATION_TIMEOUT_MS = 4500
+
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+  if (!(timeoutMs > 0)) return promise
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage))
+    }, timeoutMs)
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timeoutId)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
+}
 
 async function fetchNoembedWithTimeout(url, timeoutMs = NOEMBED_TIMEOUT_MS) {
   const supportsAbort = typeof AbortController !== 'undefined'
   const controller = supportsAbort ? new AbortController() : null
-  let timeoutId = null
-
-  if (controller && timeoutMs > 0) {
-    timeoutId = setTimeout(() => {
-      controller.abort()
-    }, timeoutMs)
-  }
 
   try {
-    return await fetchNoembed(url, controller ? { signal: controller.signal } : undefined)
+    const request = fetchNoembed(url, controller ? { signal: controller.signal } : undefined)
+    return await withTimeout(request, timeoutMs, 'noembed timeout')
   } catch {
     return null
   } finally {
-    if (timeoutId != null) {
-      clearTimeout(timeoutId)
-    }
+    controller?.abort()
   }
 }
 
 async function fetchFormatsWithTimeout(url, timeoutMs = FORMATS_TIMEOUT_MS) {
   const supportsAbort = typeof AbortController !== 'undefined'
   const controller = supportsAbort ? new AbortController() : null
-  let timeoutId = null
-
-  if (controller && timeoutMs > 0) {
-    timeoutId = setTimeout(() => {
-      controller.abort()
-    }, timeoutMs)
-  }
 
   try {
-    return await fetchFormats(url, controller ? { signal: controller.signal } : undefined)
+    const request = fetchFormats(url, controller ? { signal: controller.signal } : undefined)
+    return await withTimeout(request, timeoutMs, 'formats timeout')
   } catch (error) {
-    if (controller?.signal?.aborted) {
+    const message = String(error?.message || '').trim().toLowerCase()
+    if (controller?.signal?.aborted || message.includes('timeout')) {
       const timeoutError = new Error('formats timeout')
       timeoutError.cause = error
       throw timeoutError
     }
     throw error
   } finally {
-    if (timeoutId != null) {
-      clearTimeout(timeoutId)
-    }
+    controller?.abort()
   }
+}
+
+async function fetchDurationWithTimeout(url, timeoutMs = DURATION_TIMEOUT_MS) {
+  const request = fetchDuration(url)
+  return withTimeout(request, timeoutMs, 'duration timeout')
 }
 
 function createEmptyDownloadState() {
@@ -149,6 +160,30 @@ export default function useMultiEntries({
 
     const entryService = currentEntry.serviceKey || detectService(currentEntry.url) || 'generic'
     const noembedPromise = fetchNoembedWithTimeout(currentEntry.url)
+
+    // Match single downloader behavior: apply noembed enrichment as soon as it arrives.
+    void noembedPromise.then((noembedPayload) => {
+      if (sessionRef.current !== sessionId) return
+
+      const fallbackMeta = toMetaModel(entryService, currentEntry.url, noembedPayload)
+      if (!fallbackMeta) return
+
+      setEntries((previousEntries) => previousEntries.map((entry) => {
+        if (entry.id !== entryId) return entry
+        if (entry.metaState !== ENTRY_META_STATE.loading) return entry
+
+        return {
+          ...entry,
+          meta: {
+            ...entry.meta,
+            thumbnail: fallbackMeta.thumbnail || entry.meta.thumbnail || '',
+            title: fallbackMeta.title || entry.meta.title || entry.rawInput,
+            author: fallbackMeta.author || entry.meta.author || '',
+          },
+        }
+      }))
+    })
+
     let formatsPayload = null
 
     try {
@@ -161,10 +196,26 @@ export default function useMultiEntries({
 
       if (sessionRef.current !== sessionId) return
 
-      const fallbackMeta = toMetaModel(entryService, currentEntry.url, null)
+      let durationSeconds = null
+      let durationLabel = null
+      try {
+        const durationPayload = await fetchDurationWithTimeout(currentEntry.url)
+        durationSeconds = normalizeDurationSeconds(durationPayload?.duration)
+        durationLabel = String(durationPayload?.durationString || '').trim() || formatDurationLabel(durationSeconds)
+      } catch {
+        durationSeconds = null
+        durationLabel = null
+      }
+
+      const noembedPayload = await noembedPromise
+
+      if (sessionRef.current !== sessionId) return
+
+      const fallbackMeta = toMetaModel(entryService, currentEntry.url, noembedPayload)
 
       setEntries((previousEntries) => previousEntries.map((entry) => {
         if (entry.id !== entryId) return entry
+        if (entry.metaState !== ENTRY_META_STATE.loading) return entry
 
         return {
           ...entry,
@@ -176,6 +227,8 @@ export default function useMultiEntries({
             thumbnail: fallbackMeta?.thumbnail || entry.meta.thumbnail || '',
             title: fallbackMeta?.title || entry.meta.title || entry.rawInput,
             author: fallbackMeta?.author || entry.meta.author || '',
+            duration: durationLabel || entry.meta.duration || null,
+            durationSeconds: durationSeconds ?? entry.meta.durationSeconds ?? null,
             durationLoading: false,
             durationResolved: true,
             preloadedFormats: null,
@@ -189,6 +242,9 @@ export default function useMultiEntries({
     if (sessionRef.current !== sessionId) return
 
     const noembedPayload = await noembedPromise
+
+    if (sessionRef.current !== sessionId) return
+
     const fallbackMeta = toMetaModel(entryService, currentEntry.url, noembedPayload)
     const preloadedFormats = normalizePreloadedFormats(formatsPayload, fallbackMeta)
     const supportedTypes = resolveSupportedDownloadTypes(entryService, preloadedFormats)
@@ -196,6 +252,7 @@ export default function useMultiEntries({
 
     setEntries((previousEntries) => previousEntries.map((entry) => {
       if (entry.id !== entryId) return entry
+      if (entry.metaState !== ENTRY_META_STATE.loading) return entry
 
       if (!supportedTypes.length) {
         return {
