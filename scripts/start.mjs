@@ -43,6 +43,8 @@ const DEFAULT_YTDLP_CANDIDATES = IS_WINDOWS
 const CLI_ARGS = new Set(process.argv.slice(2))
 const PREPARE_ONLY = CLI_ARGS.has('--prepare-only')
 const SKIP_TOOLS = CLI_ARGS.has('--skip-tools')
+const DEFAULT_BACKEND_PORT = 4000
+const DEFAULT_FRONTEND_PORT = 5173
 
 function info(message) {
   process.stdout.write(`[yloader] ${message}\n`)
@@ -58,6 +60,36 @@ function fail(message) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function parsePortValue(rawValue) {
+  const normalized = String(rawValue ?? '').trim()
+  if (!normalized) return NaN
+  if (!/^\d+$/.test(normalized)) return NaN
+
+  const parsed = Number.parseInt(normalized, 10)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) return NaN
+  return parsed
+}
+
+function resolveRuntimePort(envName, fallbackPort, serviceName) {
+  const rawValue = process.env[envName]
+  if (rawValue === undefined) {
+    return {
+      port: fallbackPort,
+      explicit: false,
+    }
+  }
+
+  const parsed = parsePortValue(rawValue)
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`Invalid ${envName} value for ${serviceName}: "${String(rawValue)}". Expected an integer between 1 and 65535.`)
+  }
+
+  return {
+    port: parsed,
+    explicit: true,
+  }
 }
 
 function streamWithPrefix(stream, prefix, target) {
@@ -262,6 +294,28 @@ async function ensurePortFree(port, serviceName) {
       throw new Error(`Port ${port} is already in use (${entry.label}). Stop the existing process before starting ${serviceName}.`)
     }
   }
+}
+
+async function findAvailablePort(startPort, serviceName) {
+  const maxAttempts = 200
+
+  for (let offset = 0; offset < maxAttempts; offset += 1) {
+    const candidate = startPort + offset
+    if (candidate > 65535) break
+
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await ensurePortFree(candidate, serviceName)
+      return candidate
+    } catch (error) {
+      const message = String(error?.message || '')
+      if (!message.includes('already in use')) {
+        throw error
+      }
+    }
+  }
+
+  throw new Error(`Could not find a free port for ${serviceName} starting from ${startPort}.`)
 }
 
 function getDeclaredPackageNames(projectDir) {
@@ -718,8 +772,12 @@ async function main() {
   fs.mkdirSync(BACKEND_DATA_DIR, { recursive: true })
   fs.mkdirSync(LOCAL_TOOLS_DIR, { recursive: true })
 
-  const backendHealthUrl = 'http://127.0.0.1:4000/health'
-  const frontendUrl = 'http://127.0.0.1:5173'
+  const backendPortConfig = resolveRuntimePort('YLOADER_BACKEND_PORT', DEFAULT_BACKEND_PORT, 'backend')
+  const frontendPortConfig = resolveRuntimePort('YLOADER_FRONTEND_PORT', DEFAULT_FRONTEND_PORT, 'frontend')
+  let backendPort = backendPortConfig.port
+  let frontendPort = frontendPortConfig.port
+  let backendHealthUrl = `http://127.0.0.1:${backendPort}/health`
+  let frontendUrl = `http://127.0.0.1:${frontendPort}`
   let backendAlreadyRunning = false
   let frontendAlreadyRunning = false
 
@@ -730,10 +788,27 @@ async function main() {
     })
 
     if (!backendAlreadyRunning) {
-      await ensurePortFree(4000, 'backend')
+      if (backendPortConfig.explicit) {
+        await ensurePortFree(backendPort, 'backend')
+      } else {
+        backendPort = await findAvailablePort(backendPort, 'backend')
+        backendHealthUrl = `http://127.0.0.1:${backendPort}/health`
+        if (backendPort !== backendPortConfig.port) {
+          info(`Backend port ${backendPortConfig.port} is occupied. Using ${backendPort} instead.`)
+        }
+      }
     }
+
     if (!frontendAlreadyRunning) {
-      await ensurePortFree(5173, 'frontend')
+      if (frontendPortConfig.explicit) {
+        await ensurePortFree(frontendPort, 'frontend')
+      } else {
+        frontendPort = await findAvailablePort(frontendPort, 'frontend')
+        frontendUrl = `http://127.0.0.1:${frontendPort}`
+        if (frontendPort !== frontendPortConfig.port) {
+          info(`Frontend port ${frontendPortConfig.port} is occupied. Using ${frontendPort} instead.`)
+        }
+      }
     }
   }
 
@@ -757,6 +832,10 @@ async function main() {
     DB_PATH: path.join(BACKEND_DATA_DIR, 'metadata.db'),
     DOWNLOAD_DIR: DOWNLOADS_DIR,
   })
+
+  sharedEnv.PORT = String(backendPort)
+  sharedEnv.YLOADER_BACKEND_PORT = String(backendPort)
+  sharedEnv.YLOADER_FRONTEND_PORT = String(frontendPort)
 
   const runtimeTarget = String(sharedEnv.YLOADER_RUNTIME_TARGET || '').trim().toLowerCase()
   if (runtimeTarget === 'electron') {
@@ -806,18 +885,18 @@ async function main() {
   const children = []
 
   if (backendAlreadyRunning) {
-    info('Reusing existing backend on :4000.')
+    info(`Reusing existing backend on :${backendPort}.`)
   } else {
     const backend = startService('backend', BACKEND_DIR, process.execPath, ['server.js'], sharedEnv)
     children.push({ name: 'backend', proc: backend })
   }
 
   if (frontendAlreadyRunning) {
-    info('Reusing existing frontend on :5173.')
+    info(`Reusing existing frontend on :${frontendPort}.`)
   } else {
-    const frontend = startService('frontend', FRONTEND_DIR, process.execPath, [FRONTEND_VITE_CLI], sanitizeEnv({
+    const frontend = startService('frontend', FRONTEND_DIR, process.execPath, [FRONTEND_VITE_CLI, '--port', String(frontendPort)], sanitizeEnv({
       ...sharedEnv,
-      VITE_BACKEND_URL: 'http://localhost:4000',
+      VITE_BACKEND_URL: `http://localhost:${backendPort}`,
     }))
     children.push({ name: 'frontend', proc: frontend })
   }
@@ -876,9 +955,9 @@ async function main() {
 
   process.stdout.write('\n')
   info('Local stack is running.')
-  process.stdout.write('  Frontend: http://localhost:5173\n')
-  process.stdout.write('  Backend : http://localhost:4000\n')
-  process.stdout.write('  Health  : http://localhost:4000/health\n')
+  process.stdout.write(`  Frontend: http://localhost:${frontendPort}\n`)
+  process.stdout.write(`  Backend : http://localhost:${backendPort}\n`)
+  process.stdout.write(`  Health  : http://localhost:${backendPort}/health\n`)
   if (children.length > 0) {
     process.stdout.write('  Stop    : Ctrl+C\n\n')
   } else {

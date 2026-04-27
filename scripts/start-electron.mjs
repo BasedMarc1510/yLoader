@@ -16,6 +16,8 @@ const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
 const CLI_ARGS = new Set(process.argv.slice(2))
 const CLEAR_RUNTIME_STATE = CLI_ARGS.has('--clear')
+const DEFAULT_BACKEND_PORT = 4000
+const DEFAULT_FRONTEND_PORT = 5173
 const require = createRequire(import.meta.url)
 const ELECTRON_BINARY = require('electron')
 const ELECTRON_INSTALL_SCRIPT = path.join(ROOT_DIR, 'node_modules', 'electron', 'install.js')
@@ -34,6 +36,36 @@ function fail(message) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function parsePortValue(rawValue) {
+  const normalized = String(rawValue ?? '').trim()
+  if (!normalized) return NaN
+  if (!/^\d+$/.test(normalized)) return NaN
+
+  const parsed = Number.parseInt(normalized, 10)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) return NaN
+  return parsed
+}
+
+function resolveRuntimePort(envName, fallbackPort, serviceName) {
+  const rawValue = process.env[envName]
+  if (rawValue === undefined) {
+    return {
+      port: fallbackPort,
+      explicit: false,
+    }
+  }
+
+  const parsed = parsePortValue(rawValue)
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`Invalid ${envName} value for ${serviceName}: "${String(rawValue)}". Expected an integer between 1 and 65535.`)
+  }
+
+  return {
+    port: parsed,
+    explicit: true,
+  }
 }
 
 function npmArgs(args) {
@@ -262,6 +294,70 @@ function isPortInUse(port, host = '127.0.0.1', timeoutMs = 450) {
   })
 }
 
+async function ensurePortFree(port, serviceName) {
+  const hostsToCheck = [
+    { host: undefined, label: 'default' },
+    { host: '127.0.0.1', label: 'IPv4' },
+    { host: '::1', label: 'IPv6' },
+  ]
+
+  for (const entry of hostsToCheck) {
+    const result = await new Promise((resolve, reject) => {
+      const tester = net.createServer()
+
+      tester.once('error', (error) => {
+        if (error && error.code === 'EADDRINUSE') {
+          resolve({ available: false })
+          return
+        }
+
+        if (error && error.code === 'EADDRNOTAVAIL') {
+          resolve({ available: true })
+          return
+        }
+
+        reject(error)
+      })
+
+      tester.once('listening', () => {
+        tester.close(() => resolve({ available: true }))
+      })
+
+      if (entry.host) {
+        tester.listen(port, entry.host)
+      } else {
+        tester.listen(port)
+      }
+    })
+
+    if (!result.available) {
+      throw new Error(`Port ${port} is already in use (${entry.label}). Stop the existing process before starting ${serviceName}.`)
+    }
+  }
+}
+
+async function findAvailablePort(startPort, serviceName) {
+  const maxAttempts = 200
+
+  for (let offset = 0; offset < maxAttempts; offset += 1) {
+    const candidate = startPort + offset
+    if (candidate > 65535) break
+
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await ensurePortFree(candidate, serviceName)
+      return candidate
+    } catch (error) {
+      const message = String(error?.message || '')
+      if (!message.includes('already in use')) {
+        throw error
+      }
+    }
+  }
+
+  throw new Error(`Could not find a free port for ${serviceName} starting from ${startPort}.`)
+}
+
 async function ensureElectronBinary() {
   if (fs.existsSync(ELECTRON_BINARY)) return
 
@@ -288,8 +384,14 @@ async function ensureElectronBinary() {
 }
 
 async function main() {
-  const backendHealthUrl = 'http://127.0.0.1:4000/health'
-  const frontendUrl = 'http://127.0.0.1:5173'
+  const backendPortConfig = resolveRuntimePort('YLOADER_BACKEND_PORT', DEFAULT_BACKEND_PORT, 'backend')
+  const frontendPortConfig = resolveRuntimePort('YLOADER_FRONTEND_PORT', DEFAULT_FRONTEND_PORT, 'frontend')
+  let backendPort = backendPortConfig.port
+  let frontendPort = frontendPortConfig.port
+  let backendHealthUrl = `http://127.0.0.1:${backendPort}/health`
+  let frontendUrl = `http://127.0.0.1:${frontendPort}`
+  const backendBaseUrl = () => `http://127.0.0.1:${backendPort}`
+  const frontendBaseUrl = () => `http://127.0.0.1:${frontendPort}`
   const managedChildren = []
 
   let shuttingDown = false
@@ -369,9 +471,9 @@ async function main() {
       throw new Error('Cannot clear runtime state while local yLoader backend service is running. Stop it first and re-run start:electron:clear.')
     }
 
-    const frontendPortBusy = await isPortInUse(5173)
+    const frontendPortBusy = await isPortInUse(frontendPort)
     if (frontendPortBusy) {
-      info('Detected a process on :5173. Continuing clear because only the yLoader backend blocks runtime reset.')
+      info(`Detected a process on :${frontendPort}. Continuing clear because only the yLoader backend blocks runtime reset.`)
     }
 
     const clearedAny = [
@@ -394,6 +496,30 @@ async function main() {
     accept: (response) => response.ok || response.status < 500,
   })
 
+  if (!backendAlreadyRunning) {
+    if (backendPortConfig.explicit) {
+      await ensurePortFree(backendPort, 'backend')
+    } else {
+      backendPort = await findAvailablePort(backendPort, 'backend')
+      backendHealthUrl = `http://127.0.0.1:${backendPort}/health`
+      if (backendPort !== backendPortConfig.port) {
+        info(`Backend port ${backendPortConfig.port} is occupied. Using ${backendPort} instead.`)
+      }
+    }
+  }
+
+  if (!frontendAlreadyRunning) {
+    if (frontendPortConfig.explicit) {
+      await ensurePortFree(frontendPort, 'frontend')
+    } else {
+      frontendPort = await findAvailablePort(frontendPort, 'frontend')
+      frontendUrl = `http://127.0.0.1:${frontendPort}`
+      if (frontendPort !== frontendPortConfig.port) {
+        info(`Frontend port ${frontendPortConfig.port} is occupied. Using ${frontendPort} instead.`)
+      }
+    }
+  }
+
   if (!backendAlreadyRunning && !frontendAlreadyRunning) {
     info('Starting shared web stack (backend + frontend)...')
     const stack = spawn(process.execPath, ['scripts/start.mjs'], {
@@ -402,6 +528,8 @@ async function main() {
         ...process.env,
         YLOADER_RUNTIME_TARGET: 'electron',
         YLOADER_ALLOW_BROWSER_COOKIE_IMPORT: '1',
+        YLOADER_BACKEND_PORT: String(backendPort),
+        YLOADER_FRONTEND_PORT: String(frontendPort),
       },
       stdio: 'inherit',
     })
@@ -414,6 +542,8 @@ async function main() {
         ...process.env,
         YLOADER_RUNTIME_TARGET: 'electron',
         YLOADER_ALLOW_BROWSER_COOKIE_IMPORT: '1',
+        YLOADER_BACKEND_PORT: String(backendPort),
+        YLOADER_FRONTEND_PORT: String(frontendPort),
       },
       stdoutPrefix: 'prepare',
       stderrPrefix: 'prepare',
@@ -422,12 +552,17 @@ async function main() {
     const sharedServiceEnv = buildSharedServiceEnv()
 
     if (backendAlreadyRunning) {
-      info('Reusing existing backend on :4000.')
+      info(`Reusing existing backend on :${backendPort}.`)
     } else {
       info('Starting backend only...')
       const backend = spawnServiceWithPrefix(NPM_CMD, npmArgs(['run', 'start', '--prefix', 'backend']), {
         cwd: ROOT_DIR,
-        env: sharedServiceEnv,
+        env: {
+          ...sharedServiceEnv,
+          PORT: String(backendPort),
+          YLOADER_BACKEND_PORT: String(backendPort),
+          YLOADER_FRONTEND_PORT: String(frontendPort),
+        },
         stdoutPrefix: 'backend',
         stderrPrefix: 'backend',
       })
@@ -435,12 +570,17 @@ async function main() {
     }
 
     if (frontendAlreadyRunning) {
-      info('Reusing existing frontend on :5173.')
+      info(`Reusing existing frontend on :${frontendPort}.`)
     } else {
       info('Starting frontend only...')
-      const frontend = spawnServiceWithPrefix(NPM_CMD, npmArgs(['run', 'dev', '--prefix', 'frontend']), {
+      const frontend = spawnServiceWithPrefix(NPM_CMD, npmArgs(['run', 'dev', '--prefix', 'frontend', '--', '--port', String(frontendPort)]), {
         cwd: ROOT_DIR,
-        env: process.env,
+        env: {
+          ...process.env,
+          VITE_BACKEND_URL: backendBaseUrl(),
+          YLOADER_BACKEND_PORT: String(backendPort),
+          YLOADER_FRONTEND_PORT: String(frontendPort),
+        },
         stdoutPrefix: 'frontend',
         stderrPrefix: 'frontend',
       })
@@ -466,8 +606,8 @@ async function main() {
 
   const electronEnv = {
     ...process.env,
-    ELECTRON_RENDERER_URL: 'http://127.0.0.1:5173',
-    ELECTRON_API_BASE: 'http://127.0.0.1:4000',
+    ELECTRON_RENDERER_URL: frontendBaseUrl(),
+    ELECTRON_API_BASE: backendBaseUrl(),
     ELECTRON_BACKEND_MANAGED_EXTERNAL: '1',
   }
 
