@@ -267,11 +267,11 @@ export default function MultiEntryGroups({
                   >
                     <Stack spacing={1}>
                       <Stack
-                        direction={{ xs: 'column', sm: 'row' }}
+                        direction="column"
                         spacing={0.8}
-                        alignItems={{ xs: 'stretch', sm: 'center' }}
+                        alignItems="stretch"
                       >
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ width: '100%' }}>
                           <MediaSummary
                             thumbnail={entry.meta?.thumbnail || ''}
                             title={entry.meta?.title || entry.rawInput}
@@ -283,10 +283,20 @@ export default function MultiEntryGroups({
                           />
                         </Box>
 
-                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          <Box sx={statusLabelSx(status.tone)}>{status.label}</Box>
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          spacing={0.6}
+                          sx={{
+                            flexWrap: 'wrap',
+                            width: '100%',
+                            rowGap: 0.5,
+                          }}
+                        >
+                          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
+                            <Box sx={statusLabelSx(status.tone)}>{status.label}</Box>
 
-                          <Stack direction="row" spacing={0.45} sx={{ flexWrap: 'wrap' }}>
+                            <Stack direction="row" spacing={0.45} sx={{ flexWrap: 'wrap' }}>
                             {DOWNLOAD_TYPE_ORDER.map((type) => {
                               const supported = entry.supportedTypes?.includes(type)
                               const active = selectedType === type
@@ -319,52 +329,55 @@ export default function MultiEntryGroups({
                                 </Button>
                               )
                             })}
+                            </Stack>
                           </Stack>
 
-                          {showOpenCompleted && (
-                            <Tooltip title={i18nT('multiDownloader.openCompleted')}>
+                          <Stack direction="row" alignItems="center" spacing={0.4} sx={{ ml: 'auto' }}>
+                            {showOpenCompleted && (
+                              <Tooltip title={i18nT('multiDownloader.openCompleted')}>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => onOpenCompleted(entry)}
+                                  aria-label={i18nT('multiDownloader.openCompleted')}
+                                  sx={{ bgcolor: 'action.hover' }}
+                                >
+                                  <FolderOpen size={16} />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+
+                            <Tooltip title={i18nT('multiDownloader.removeEntry')}>
                               <IconButton
                                 size="small"
-                                onClick={() => onOpenCompleted(entry)}
-                                aria-label={i18nT('multiDownloader.openCompleted')}
+                                color="error"
+                                onClick={() => onRemoveEntry?.(entry.id)}
+                                aria-label={i18nT('multiDownloader.removeEntry')}
                                 sx={{ bgcolor: 'action.hover' }}
                               >
-                                <FolderOpen size={16} />
+                                <Trash2 size={16} />
                               </IconButton>
                             </Tooltip>
-                          )}
 
-                          <Tooltip title={i18nT('multiDownloader.removeEntry')}>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => onRemoveEntry?.(entry.id)}
-                              aria-label={i18nT('multiDownloader.removeEntry')}
-                              sx={{ bgcolor: 'action.hover' }}
+                            <Tooltip
+                              title={entry.expanded
+                                ? i18nT('multiDownloader.collapseEntry')
+                                : i18nT('multiDownloader.expandEntry')}
                             >
-                              <Trash2 size={16} />
-                            </IconButton>
-                          </Tooltip>
-
-                          <Tooltip
-                            title={entry.expanded
-                              ? i18nT('multiDownloader.collapseEntry')
-                              : i18nT('multiDownloader.expandEntry')}
-                          >
-                            <span>
-                              <IconButton
-                                size="small"
-                                onClick={() => onToggleExpanded?.(entry.id)}
-                                aria-label={entry.expanded
-                                  ? i18nT('multiDownloader.collapseEntry')
-                                  : i18nT('multiDownloader.expandEntry')}
-                                disabled={!isReady}
-                                sx={{ bgcolor: 'action.hover' }}
-                              >
-                                {entry.expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                              </IconButton>
-                            </span>
-                          </Tooltip>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => onToggleExpanded?.(entry.id)}
+                                  aria-label={entry.expanded
+                                    ? i18nT('multiDownloader.collapseEntry')
+                                    : i18nT('multiDownloader.expandEntry')}
+                                  disabled={!isReady}
+                                  sx={{ bgcolor: 'action.hover' }}
+                                >
+                                  {entry.expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Stack>
                         </Stack>
                       </Stack>
 

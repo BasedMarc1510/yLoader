@@ -145,27 +145,23 @@ export default function useMultiEntries({
   metadataConcurrency = DEFAULT_METADATA_CONCURRENCY,
 }) {
   const [entries, setEntries] = React.useState([])
-  const entriesRef = React.useRef(entries)
   const sessionRef = React.useRef(1)
   const pendingQueueRef = React.useRef([])
   const activeCountRef = React.useRef(0)
 
-  React.useEffect(() => {
-    entriesRef.current = entries
-  }, [entries])
+  const resolveEntryMetadata = React.useCallback(async (entrySnapshot, sessionId) => {
+    if (!entrySnapshot || entrySnapshot.metaState !== ENTRY_META_STATE.loading || !entrySnapshot.url) return
 
-  const resolveEntryMetadata = React.useCallback(async (entryId, sessionId) => {
-    const currentEntry = entriesRef.current.find((entry) => entry.id === entryId)
-    if (!currentEntry || currentEntry.metaState !== ENTRY_META_STATE.loading || !currentEntry.url) return
-
-    const entryService = currentEntry.serviceKey || detectService(currentEntry.url) || 'generic'
-    const noembedPromise = fetchNoembedWithTimeout(currentEntry.url)
+    const entryId = entrySnapshot.id
+    const entryUrl = entrySnapshot.url
+    const entryService = entrySnapshot.serviceKey || detectService(entryUrl) || 'generic'
+    const noembedPromise = fetchNoembedWithTimeout(entryUrl)
 
     // Match single downloader behavior: apply noembed enrichment as soon as it arrives.
     void noembedPromise.then((noembedPayload) => {
       if (sessionRef.current !== sessionId) return
 
-      const fallbackMeta = toMetaModel(entryService, currentEntry.url, noembedPayload)
+      const fallbackMeta = toMetaModel(entryService, entryUrl, noembedPayload)
       if (!fallbackMeta) return
 
       setEntries((previousEntries) => previousEntries.map((entry) => {
@@ -187,7 +183,7 @@ export default function useMultiEntries({
     let formatsPayload = null
 
     try {
-      formatsPayload = await fetchFormatsWithTimeout(currentEntry.url)
+      formatsPayload = await fetchFormatsWithTimeout(entryUrl)
     } catch (reason) {
       const message = formatYtDlpErrorMessage(i18nT, reason, {
         fallbackKey: 'multiDownloader.entryNotRetrievable',
@@ -199,7 +195,7 @@ export default function useMultiEntries({
       let durationSeconds = null
       let durationLabel = null
       try {
-        const durationPayload = await fetchDurationWithTimeout(currentEntry.url)
+        const durationPayload = await fetchDurationWithTimeout(entryUrl)
         durationSeconds = normalizeDurationSeconds(durationPayload?.duration)
         durationLabel = String(durationPayload?.durationString || '').trim() || formatDurationLabel(durationSeconds)
       } catch {
@@ -211,7 +207,7 @@ export default function useMultiEntries({
 
       if (sessionRef.current !== sessionId) return
 
-      const fallbackMeta = toMetaModel(entryService, currentEntry.url, noembedPayload)
+      const fallbackMeta = toMetaModel(entryService, entryUrl, noembedPayload)
 
       setEntries((previousEntries) => previousEntries.map((entry) => {
         if (entry.id !== entryId) return entry
@@ -245,7 +241,7 @@ export default function useMultiEntries({
 
     if (sessionRef.current !== sessionId) return
 
-    const fallbackMeta = toMetaModel(entryService, currentEntry.url, noembedPayload)
+    const fallbackMeta = toMetaModel(entryService, entryUrl, noembedPayload)
     const preloadedFormats = normalizePreloadedFormats(formatsPayload, fallbackMeta)
     const supportedTypes = resolveSupportedDownloadTypes(entryService, preloadedFormats)
     const durationLabel = String(preloadedFormats.durationString || '').trim() || null
@@ -304,11 +300,11 @@ export default function useMultiEntries({
       const nextItem = pendingQueueRef.current.shift()
       if (!nextItem) continue
 
-      const { entryId, sessionId } = nextItem
-      if (!entryId) continue
+      const { entryId, entrySnapshot, sessionId } = nextItem
+      if (!entryId || !entrySnapshot) continue
 
       activeCountRef.current += 1
-      void resolveEntryMetadata(entryId, sessionId)
+      void resolveEntryMetadata(entrySnapshot, sessionId)
         .finally(() => {
           activeCountRef.current = Math.max(0, activeCountRef.current - 1)
           pumpQueue()
@@ -316,14 +312,15 @@ export default function useMultiEntries({
     }
   }, [metadataConcurrency, resolveEntryMetadata])
 
-  const enqueueMetadata = React.useCallback((entryIds, sessionId) => {
-    const normalizedIds = Array.isArray(entryIds)
-      ? entryIds.filter(Boolean)
+  const enqueueMetadata = React.useCallback((entrySnapshots, sessionId) => {
+    const normalizedEntries = Array.isArray(entrySnapshots)
+      ? entrySnapshots.filter(Boolean)
       : []
-    if (!normalizedIds.length) return
+    if (!normalizedEntries.length) return
 
-    for (const entryId of normalizedIds) {
-      pendingQueueRef.current.push({ entryId, sessionId })
+    for (const entry of normalizedEntries) {
+      if (!entry?.id) continue
+      pendingQueueRef.current.push({ entryId: entry.id, entrySnapshot: entry, sessionId })
     }
 
     pumpQueue()
@@ -339,10 +336,8 @@ export default function useMultiEntries({
     setEntries((previousEntries) => ([...previousEntries, ...nextEntries]))
 
     enqueueMetadata(
-      nextEntries
-        .filter((entry) => entry.metaState === ENTRY_META_STATE.loading)
-        .map((entry) => entry.id),
-      activeSession,
+      nextEntries.filter((entry) => entry.metaState === ENTRY_META_STATE.loading),
+      activeSession
     )
 
     return nextEntries.length
@@ -358,10 +353,8 @@ export default function useMultiEntries({
     setEntries(nextEntries)
 
     enqueueMetadata(
-      nextEntries
-        .filter((entry) => entry.metaState === ENTRY_META_STATE.loading)
-        .map((entry) => entry.id),
-      nextSession,
+      nextEntries.filter((entry) => entry.metaState === ENTRY_META_STATE.loading),
+      nextSession
     )
 
     return nextEntries.length
