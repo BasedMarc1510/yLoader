@@ -207,6 +207,7 @@ export default function AudioTabContent({
   return (
     <Box>
       <CollapsibleSection
+        variant={variant}
         id="metadata"
         activeSection={activeSection}
         onToggle={toggleSection}
@@ -247,6 +248,7 @@ export default function AudioTabContent({
       </CollapsibleSection>
 
       <CollapsibleSection
+        variant={variant}
         id="cut"
         activeSection={activeSection}
         onToggle={toggleSection}
@@ -288,6 +290,7 @@ export default function AudioTabContent({
       </CollapsibleSection>
 
       <CollapsibleSection
+        variant={variant}
         id="cover"
         activeSection={activeSection}
         onToggle={toggleSection}
@@ -323,6 +326,7 @@ export default function AudioTabContent({
       </CollapsibleSection>
 
       <CollapsibleSection
+        variant={variant}
         id="bitrate"
         activeSection={activeSection}
         onToggle={toggleSection}
@@ -340,6 +344,7 @@ export default function AudioTabContent({
           />
         ) : (
           <CustomSelect
+            variant={variant}
             value={selectedAudioFormat}
             onChange={setSelectedAudioFormat}
             options={[
@@ -354,6 +359,7 @@ export default function AudioTabContent({
       </CollapsibleSection>
 
       <CollapsibleSection
+        variant={variant}
         id="filename"
         activeSection={activeSection}
         onToggle={toggleSection}
@@ -388,72 +394,74 @@ export default function AudioTabContent({
         />
       </CollapsibleSection>
 
-      <Box sx={{ position: 'relative', mt: isCompact ? 1.5 : 2, px: isCompact ? 2 : 0 }}>
-        <Button
-          fullWidth
-          onClick={() => handleDownload('audio')}
-          disabled={downloading}
-          sx={{
-            position: 'relative',
-            overflow: 'hidden',
-            bgcolor: brandColor,
-            borderRadius: isCompact ? '8px' : '999px',
-            textTransform: 'none',
-            padding: isCompact ? '10px 16px' : '14px 20px',
-            fontWeight: 700,
-            color: downloadButtonTextColor,
-            fontSize: isCompact ? '1rem' : '1.125rem',
-            border: `2px solid ${adjustColorBrightness(brandColor, -20)}`,
-            boxShadow: isCompact ? 'none' : '0 4px 12px rgba(0,0,0,0.2)',
-            transition: 'all 0.2s ease',
-            '&:hover': {
-              bgcolor: adjustColorBrightness(brandColor, -10),
-              boxShadow: isCompact ? 'none' : '0 6px 16px rgba(0,0,0,0.25)',
-            },
-            '&:active': {
-              bgcolor: adjustColorBrightness(brandColor, -15),
-            },
-            '&:disabled': {
-              bgcolor: isDark ? '#444' : '#c8cad0',
-              color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.5)',
-              borderColor: isDark ? '#444' : '#c8cad0',
-              boxShadow: 'none',
-            },
-          }}
-        >
-          {downloading && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: '-2px',
-                left: '-2px',
-                bottom: '-2px',
-                width: `calc(${downloadProgress}% + 4px)`,
-                bgcolor: progressOverlayColor,
-                transition: 'width 0.2s linear',
-                zIndex: 0,
-                height: 'calc(100% + 4px)',
-              }}
-            />
-          )}
-
-          <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, width: '100%' }}>
-            {downloading ? (
-              <>
-                <CircularProgress size={isCompact ? 18 : 22} color="inherit" sx={{ color: 'inherit' }} thickness={5} />
-                <Typography sx={{ fontSize: isCompact ? '0.9rem' : '1.125rem', fontWeight: 700 }}>
-                  {getDownloadProgressLabel(i18nT, downloadStage, downloadProgress)}
-                </Typography>
-              </>
-            ) : (
-              <>
-                <Download size={isCompact ? 18 : 22} strokeWidth={2.5} />
-                <span>{i18nT('downloader.downloadAudio')}</span>
-              </>
+      {!isCompact && (
+        <Box sx={{ position: 'relative', mt: 2 }}>
+          <Button
+            fullWidth
+            onClick={() => handleDownload('audio')}
+            disabled={downloading}
+            sx={{
+              position: 'relative',
+              overflow: 'hidden',
+              bgcolor: brandColor,
+              borderRadius: '999px',
+              textTransform: 'none',
+              padding: '14px 20px',
+              fontWeight: 700,
+              color: downloadButtonTextColor,
+              fontSize: '1.125rem',
+              border: `2px solid ${adjustColorBrightness(brandColor, -20)}`,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                bgcolor: adjustColorBrightness(brandColor, -10),
+                boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+              },
+              '&:active': {
+                bgcolor: adjustColorBrightness(brandColor, -15),
+              },
+              '&:disabled': {
+                bgcolor: isDark ? '#444' : '#c8cad0',
+                color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.5)',
+                borderColor: isDark ? '#444' : '#c8cad0',
+                boxShadow: 'none',
+              },
+            }}
+          >
+            {downloading && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: '-2px',
+                  left: '-2px',
+                  bottom: '-2px',
+                  width: `calc(${downloadProgress}% + 4px)`,
+                  bgcolor: progressOverlayColor,
+                  transition: 'width 0.2s linear',
+                  zIndex: 0,
+                  height: 'calc(100% + 4px)',
+                }}
+              />
             )}
-          </Box>
-        </Button>
-      </Box>
+
+            <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, width: '100%' }}>
+              {downloading ? (
+                <>
+                  <CircularProgress size={22} color="inherit" sx={{ color: 'inherit' }} thickness={5} />
+                  <Typography sx={{ fontSize: '1.125rem', fontWeight: 700 }}>
+                    {getDownloadProgressLabel(i18nT, downloadStage, downloadProgress)}
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  <Download size={22} strokeWidth={2.5} />
+                  <span>{i18nT('downloader.downloadAudio')}</span>
+                </>
+              )}
+            </Box>
+          </Button>
+        </Box>
+      )}
     </Box>
   )
 }

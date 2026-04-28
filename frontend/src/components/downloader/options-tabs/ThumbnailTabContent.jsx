@@ -68,18 +68,20 @@ export default function ThumbnailTabContent({
   }
 
   return (
-    <Box sx={{ px: isCompact ? 2 : 0 }}>
-      <Box sx={{ mb: 1.5 }}>
+    <Box sx={{ px: 0 }}>
+      {/* Top Select */}
+      <Box sx={{ mb: isCompact ? 1 : 1.5, px: 0 }}>
         {loadingThumbs ? (
           <Skeleton
             variant="rounded"
             animation="wave"
             width="100%"
             height={46}
-            sx={{ borderRadius: 1.25, bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
+            sx={{ borderRadius: isCompact ? 0 : 1.25, bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
           />
         ) : (
           <CustomSelect
+            variant={variant}
             value={selectedThumbValue}
             onChange={setSelectedThumbValue}
             options={thumbOptions}
@@ -90,13 +92,16 @@ export default function ThumbnailTabContent({
         )}
       </Box>
 
+      {/* Image */}
       <Box
         sx={{
-          mb: 2,
-          borderRadius: 2,
+          mb: isCompact ? 1 : 2,
+          borderRadius: isCompact ? 0 : 2,
           overflow: 'hidden',
-          border: `1px solid ${borderColor}`,
-          bgcolor: isDark ? '#121212' : '#fafafa',
+          border: isCompact ? 'none' : `1px solid ${borderColor}`,
+          borderTop: isCompact ? `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}` : `1px solid ${borderColor}`,
+          borderBottom: isCompact ? `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}` : `1px solid ${borderColor}`,
+          bgcolor: isDark ? (isCompact ? 'rgba(0,0,0,0.2)' : '#121212') : (isCompact ? 'rgba(0,0,0,0.02)' : '#fafafa'),
           position: 'relative',
         }}
       >
@@ -128,7 +133,7 @@ export default function ThumbnailTabContent({
             onError={() => {
               setRenderedDimensions(null)
             }}
-            sx={{ width: '100%', display: 'block', maxHeight: isCompact ? 200 : 'none', objectFit: 'contain' }}
+            sx={{ width: '100%', display: 'block', maxHeight: isCompact ? 240 : 'none', objectFit: 'contain' }}
           />
         ) : (
           <Box sx={{ p: 2, textAlign: 'center' }}>
@@ -142,15 +147,15 @@ export default function ThumbnailTabContent({
           <Box
             sx={{
               position: 'absolute',
-              bottom: 6,
-              right: 6,
+              bottom: 8,
+              right: 8,
               bgcolor: 'rgba(0,0,0,0.7)',
               px: 0.8,
               py: 0.2,
               borderRadius: 1,
               color: '#fff',
               fontSize: '11px',
-              fontWeight: 600,
+              fontWeight: 700,
             }}
           >
             {hasSelectedThumbDimensions
@@ -160,7 +165,8 @@ export default function ThumbnailTabContent({
         )}
       </Box>
 
-      <Box sx={{ mb: 2 }}>
+      {/* Filename Input */}
+      <Box sx={{ mb: 0, px: 0 }}>
         <CombinedFilenameInput
           value={filenameValue}
           onChange={setFilenameValue}
@@ -174,37 +180,48 @@ export default function ThumbnailTabContent({
           placeholder={i18nT('downloader.filename')}
           isDark={isDark}
           disabled={downloading || loadingThumbs || thumbOptions.length === 0}
+          sx={isCompact ? {
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 0,
+              border: 'none',
+              '& fieldset': { border: 'none' },
+              bgcolor: 'transparent'
+            }
+          } : {}}
         />
       </Box>
 
-      <Button
-        fullWidth
-        startIcon={<Download size={isCompact ? 18 : 20} />}
-        onClick={handleDownloadThumb}
-        disabled={!selectedThumb || loadingThumbs}
-        sx={{
-          bgcolor: brandColor,
-          borderRadius: isCompact ? '8px' : '999px',
-          textTransform: 'none',
-          padding: isCompact ? '10px 16px' : '14px 20px',
-          fontWeight: 700,
-          color: downloadButtonTextColor,
-          fontSize: isCompact ? '1rem' : '1.125rem',
-          boxShadow: isCompact ? 'none' : '0 4px 12px rgba(0,0,0,0.2)',
-          border: `2px solid ${adjustColorBrightness(brandColor, -20)}`,
-          opacity: selectedThumb ? 1 : 0.6,
-          transition: 'all 0.2s ease',
-          '&:hover': {
-            bgcolor: adjustColorBrightness(brandColor, -10),
-            boxShadow: isCompact ? 'none' : '0 6px 16px rgba(0,0,0,0.25)',
-          },
-          '&:active': {
-            bgcolor: adjustColorBrightness(brandColor, -15),
-          },
-        }}
-      >
-        {i18nT('downloader.downloadThumbnail')}
-      </Button>
+      {!isCompact && (
+        <Button
+          fullWidth
+          startIcon={<Download size={20} />}
+          onClick={handleDownloadThumb}
+          disabled={!selectedThumb || loadingThumbs}
+          sx={{
+            mt: 2,
+            bgcolor: brandColor,
+            borderRadius: '999px',
+            textTransform: 'none',
+            padding: '14px 20px',
+            fontWeight: 700,
+            color: downloadButtonTextColor,
+            fontSize: '1.125rem',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            border: `2px solid ${adjustColorBrightness(brandColor, -20)}`,
+            opacity: selectedThumb ? 1 : 0.6,
+            transition: 'all 0.2s ease',
+            '&:hover': {
+              bgcolor: adjustColorBrightness(brandColor, -10),
+              boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+            },
+            '&:active': {
+              bgcolor: adjustColorBrightness(brandColor, -15),
+            },
+          }}
+        >
+          {i18nT('downloader.downloadThumbnail')}
+        </Button>
+      )}
     </Box>
   )
 }

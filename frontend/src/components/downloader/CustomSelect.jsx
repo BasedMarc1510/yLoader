@@ -10,6 +10,7 @@ import SimpleBarScrollArea from '../SimpleBarScrollArea'
  * Full-width design that matches the app's aesthetic
  */
 export default function CustomSelect({
+  variant = 'default',
   value,
   onChange,
   options = [],
@@ -24,44 +25,39 @@ export default function CustomSelect({
   const menuRef = React.useRef(null)
   const [menuPos, setMenuPos] = React.useState({ top: undefined, bottom: undefined, left: 0, width: 0, maxHeight: 300 })
 
+  const isCompact = variant === 'compact'
+
   const updateMenuPosition = React.useCallback(() => {
     if (!triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
     const viewportH = window.innerHeight || document.documentElement.clientHeight || 0
     const viewportW = window.innerWidth || document.documentElement.clientWidth || 0
 
-    // Width (clamped)
-    const width = Math.min(rect.width, Math.max(160, viewportW - 16))
-    // Left (clamped)
-    const left = Math.min(Math.max(8, rect.left), viewportW - width - 8)
+    // Force exact width and position
+    const width = rect.width
+    const left = rect.left
 
-    // Vertical logic
     const spaceBelow = viewportH - rect.bottom - 8
     const spaceAbove = rect.top - 8
     const desiredMaxHeight = 300
 
-    // Prefer below if enough space (checked against a reasonable minimum menu height of ~150px)
-    // or if there's significantly more space below than above
     const fitsBelow = spaceBelow >= Math.min(desiredMaxHeight, 150) || spaceBelow > spaceAbove
 
     let top, bottom, maxHeight
 
     if (fitsBelow) {
-      top = rect.bottom + 4
+      top = rect.bottom
       bottom = undefined
       maxHeight = Math.min(desiredMaxHeight, spaceBelow)
     } else {
-      // Place above
       top = undefined
-      // Distance from bottom of viewport to top of trigger minus gap
-      bottom = viewportH - rect.top + 4
+      bottom = viewportH - rect.top
       maxHeight = Math.min(desiredMaxHeight, spaceAbove)
     }
 
     setMenuPos({ top, bottom, left, width, maxHeight })
   }, [options.length])
 
-  // Close dropdown when clicking outside (both trigger and portal menu)
   React.useEffect(() => {
     const handleClickOutside = (event) => {
       const t = event.target
@@ -78,7 +74,6 @@ export default function CustomSelect({
     }
   }, [isOpen])
 
-  // Reposition on open, scroll and resize
   React.useEffect(() => {
     if (!isOpen) return
     updateMenuPosition()
@@ -94,6 +89,19 @@ export default function CustomSelect({
 
   const selectedOption = options.find(opt => opt.value === value)
 
+  const triggerBg = isCompact
+    ? (isOpen ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'))
+    : (isDark ? '#1b1b1b' : '#ffffff')
+  
+  const triggerBorder = isCompact
+    ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
+    : (isDark ? '#333333' : '#dfe0e2')
+
+  // Menu background for compact: Solid equivalent of the card color to blend perfectly
+  const menuBg = isDark 
+    ? (isCompact ? '#1a1a1a' : '#1b1b1b') 
+    : (isCompact ? '#f5f7f9' : '#ffffff')
+
   return (
     <Box ref={dropdownRef} sx={{ position: 'relative', width: '100%' }}>
       {/* Select Button */}
@@ -102,21 +110,25 @@ export default function CustomSelect({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         sx={{
           width: '100%',
-          height: '42px', // Slightly more compact
+          height: isCompact ? '38px' : '42px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 1rem',
-          backgroundColor: isDark ? '#1b1b1b' : '#ffffff',
-          border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
-          borderRadius: '12px',
+          padding: isCompact ? '0 0.75rem' : '0 1rem',
+          backgroundColor: triggerBg,
+          border: `1px solid ${triggerBorder}`,
+          borderRadius: isCompact ? (isOpen ? (menuPos.top !== undefined ? '8px 8px 0 0' : '0 0 8px 8px') : '8px') : '12px',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.5 : 1,
-          transition: 'background-color 0.1s ease, border-color 0.1s ease',
-          boxShadow: isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
+          transition: 'all 0.1s ease',
+          boxShadow: (isDark || isCompact) ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
+          zIndex: isOpen ? 1601 : 1,
+          boxSizing: 'border-box',
           '&:hover': {
-            backgroundColor: isDark ? '#222' : '#fafbfc',
-            borderColor: !disabled && (isDark ? '#555' : '#c0c2c6'),
+            backgroundColor: isCompact 
+              ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)')
+              : (isDark ? '#222' : '#fafbfc'),
+            borderColor: !disabled && (isDark ? (isCompact ? 'rgba(255,255,255,0.15)' : '#555') : (isCompact ? 'rgba(0,0,0,0.15)' : '#c0c2c6')),
           },
         }}
       >
@@ -124,19 +136,21 @@ export default function CustomSelect({
           {label && (
             <Typography
               sx={{
-                fontSize: '13px',
-                fontWeight: 600,
+                fontSize: isCompact ? '11px' : '13px',
+                fontWeight: 700,
                 color: isDark ? '#888' : '#8e8e93',
                 whiteSpace: 'nowrap',
+                textTransform: isCompact ? 'uppercase' : 'none',
+                letterSpacing: isCompact ? '0.02em' : 'none'
               }}
             >
               {label}
             </Typography>
           )}
-          {label && <Box sx={{ width: '1px', height: '14px', bgcolor: isDark ? '#333' : '#dfe0e2' }} />} { /* Separator */}
+          {label && <Box sx={{ width: '1px', height: '14px', bgcolor: isDark ? (isCompact ? 'rgba(255,255,255,0.1)' : '#333') : (isCompact ? 'rgba(0,0,0,0.1)' : '#dfe0e2') }} />} { /* Separator */}
           <Typography
             sx={{
-              fontSize: '14px',
+              fontSize: isCompact ? '13px' : '14px',
               fontWeight: 600,
               color: isDark ? '#ffffff' : '#1a1a1a',
               overflow: 'hidden',
@@ -148,7 +162,7 @@ export default function CustomSelect({
           </Typography>
         </Box>
         <ChevronDown
-          size={20}
+          size={isCompact ? 16 : 20}
           style={{
             color: isDark ? '#888888' : '#8e8e93',
             transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
@@ -158,7 +172,7 @@ export default function CustomSelect({
         />
       </Box>
 
-      {/* Dropdown Menu (Portal to escape overflow clipping) */}
+      {/* Dropdown Menu (Portal) */}
       {isOpen && createPortal(
         (
           <Box
@@ -169,14 +183,15 @@ export default function CustomSelect({
               bottom: menuPos.bottom !== undefined ? `${menuPos.bottom}px` : 'auto',
               left: `${menuPos.left}px`,
               width: `${menuPos.width}px`,
-              backgroundColor: isDark ? '#1b1b1b' : '#ffffff',
-              border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
-              borderRadius: '12px',
+              backgroundColor: menuBg,
+              border: `1px solid ${isDark ? (isCompact ? 'rgba(255,255,255,0.15)' : '#333333') : (isCompact ? 'rgba(0,0,0,0.1)' : '#dfe0e2')}`,
+              borderRadius: isCompact ? (menuPos.top !== undefined ? '0 0 8px 8px' : '8px 8px 0 0') : '12px',
               zIndex: 1600,
               overflow: 'hidden',
+              boxSizing: 'border-box',
               boxShadow: isDark
-                ? '0 10px 40px -10px rgba(0,0,0,0.6)'
-                : '0 8px 32px -8px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04)',
+                ? '0 12px 40px rgba(0,0,0,0.6)'
+                : '0 8px 32px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.04)',
             }}
           >
             <SimpleBarScrollArea
@@ -197,30 +212,21 @@ export default function CustomSelect({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '12px 16px',
+                      padding: isCompact ? '10px 12px' : '12px 16px',
                       cursor: 'pointer',
                       backgroundColor: isSelected
-                        ? (isDark ? '#272727' : '#f0f1f3')
+                        ? (isDark ? (isCompact ? 'rgba(255,255,255,0.06)' : '#272727') : (isCompact ? 'rgba(0,0,0,0.04)' : '#f0f1f3'))
                         : 'transparent',
                       transition: 'background-color 90ms ease',
                       '&:hover': {
-                        backgroundColor: isDark ? '#272727' : '#f0f1f3',
-                      },
-                      '&:first-of-type': {
-                        borderRadius: '14px 14px 0 0',
-                      },
-                      '&:last-of-type': {
-                        borderRadius: '0 0 14px 14px',
-                      },
-                      '&:only-of-type': {
-                        borderRadius: '14px',
+                        backgroundColor: isDark ? (isCompact ? 'rgba(255,255,255,0.08)' : '#272727') : (isCompact ? 'rgba(0,0,0,0.06)' : '#f0f1f3'),
                       },
                     }}
                   >
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography
                         sx={{
-                          fontSize: '16px',
+                          fontSize: isCompact ? '14px' : '16px',
                           fontWeight: isSelected ? 700 : 600,
                           color: isDark ? '#ffffff' : '#1a1a1a',
                           overflow: 'hidden',
@@ -233,7 +239,7 @@ export default function CustomSelect({
                       {option.description && (
                         <Typography
                           sx={{
-                            fontSize: '13px',
+                            fontSize: isCompact ? '11px' : '13px',
                             color: isDark ? '#888888' : '#8e8e93',
                             mt: 0.25,
                             overflow: 'hidden',
@@ -247,7 +253,7 @@ export default function CustomSelect({
                     </Box>
                     {isSelected && (
                       <Check
-                        size={20}
+                        size={isCompact ? 16 : 20}
                         style={{
                           color: isDark ? '#ffffff' : '#1a1a1a',
                           marginLeft: '8px',
