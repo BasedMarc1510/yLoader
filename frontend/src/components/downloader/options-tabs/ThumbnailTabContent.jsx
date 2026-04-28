@@ -7,6 +7,7 @@ import { getApiBase } from '../../../utils/metadata'
 import { adjustColorBrightness, getContrastTextColor } from './styleUtils'
 
 export default function ThumbnailTabContent({
+  variant = 'default',
   theme,
   i18nT,
   brandColor,
@@ -22,6 +23,7 @@ export default function ThumbnailTabContent({
   downloading,
 }) {
   const isDark = theme.palette.mode === 'dark'
+  const isCompact = variant === 'compact'
   const textColor = isDark ? '#ffffff' : theme.palette.text.primary
   const borderColor = isDark ? '#3a3a3a' : '#dfe0e2'
   const downloadButtonTextColor = React.useMemo(
@@ -66,7 +68,7 @@ export default function ThumbnailTabContent({
   }
 
   return (
-    <Box>
+    <Box sx={{ px: isCompact ? 2 : 0 }}>
       <Box sx={{ mb: 1.5 }}>
         {loadingThumbs ? (
           <Skeleton
@@ -104,7 +106,7 @@ export default function ThumbnailTabContent({
               variant="rounded"
               animation="wave"
               width="100%"
-              height={220}
+              height={isCompact ? 140 : 220}
               sx={{ borderRadius: 1.5, bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
             />
           </Box>
@@ -126,7 +128,7 @@ export default function ThumbnailTabContent({
             onError={() => {
               setRenderedDimensions(null)
             }}
-            sx={{ width: '100%', display: 'block' }}
+            sx={{ width: '100%', display: 'block', maxHeight: isCompact ? 200 : 'none', objectFit: 'contain' }}
           />
         ) : (
           <Box sx={{ p: 2, textAlign: 'center' }}>
@@ -177,24 +179,24 @@ export default function ThumbnailTabContent({
 
       <Button
         fullWidth
-        startIcon={<Download size={20} />}
+        startIcon={<Download size={isCompact ? 18 : 20} />}
         onClick={handleDownloadThumb}
         disabled={!selectedThumb || loadingThumbs}
         sx={{
           bgcolor: brandColor,
-          borderRadius: '999px',
+          borderRadius: isCompact ? '8px' : '999px',
           textTransform: 'none',
-          padding: '14px 20px',
+          padding: isCompact ? '10px 16px' : '14px 20px',
           fontWeight: 700,
           color: downloadButtonTextColor,
-          fontSize: '1.125rem',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          fontSize: isCompact ? '1rem' : '1.125rem',
+          boxShadow: isCompact ? 'none' : '0 4px 12px rgba(0,0,0,0.2)',
           border: `2px solid ${adjustColorBrightness(brandColor, -20)}`,
           opacity: selectedThumb ? 1 : 0.6,
           transition: 'all 0.2s ease',
           '&:hover': {
             bgcolor: adjustColorBrightness(brandColor, -10),
-            boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+            boxShadow: isCompact ? 'none' : '0 6px 16px rgba(0,0,0,0.25)',
           },
           '&:active': {
             bgcolor: adjustColorBrightness(brandColor, -15),

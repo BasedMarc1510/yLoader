@@ -43,6 +43,7 @@ function normalizeDisabledDownloadTypes(values) {
 }
 
 export default function OptionsTabs({
+  variant = 'default',
   brandColor = '#df2f2f',
   videoTitle = '',
   videoAuthor = '',
@@ -105,6 +106,13 @@ export default function OptionsTabs({
     disabledDownloadTypes: normalizedDisabledDownloadTypes,
     downloadSettingsOverride,
   })
+
+  const isCompact = variant === 'compact'
+
+  // Sync tab change to parent
+  React.useEffect(() => {
+    onDownloadStateChange?.({ type: data.tab })
+  }, [data.tab, onDownloadStateChange])
 
   const overwriteConfirmResolverRef = React.useRef(null)
   const [overwriteDialogData, setOverwriteDialogData] = React.useState(null)
@@ -207,15 +215,15 @@ export default function OptionsTabs({
   const interactionsDisabled = download.downloading || loadingState
 
   const isDark = theme.palette.mode === 'dark'
-  const tabActiveBg = isDark ? '#272727' : '#ffffff'
-  const tabInactiveBg = isDark ? '#1a1a1a' : 'transparent'
-  const tabActiveBorder = isDark ? '#424242' : '#dcdee2'
-  const tabInactiveBorder = isDark ? '#1a1a1a' : 'transparent'
+  const tabActiveBg = isDark ? (isCompact ? 'rgba(255,255,255,0.08)' : '#272727') : (isCompact ? 'rgba(0,0,0,0.04)' : '#ffffff')
+  const tabInactiveBg = 'transparent'
+  const tabActiveBorder = isDark ? (isCompact ? theme.palette.primary.main : '#424242') : (isCompact ? theme.palette.primary.main : '#dcdee2')
+  const tabInactiveBorder = 'transparent'
   const tabHoverBorder = isDark ? '#555555' : '#d0d2d6'
-  const tabHoverBg = isDark ? tabActiveBg : 'rgba(255,255,255,0.55)'
+  const tabHoverBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)'
   const tabTextColor = isDark ? '#ffffff' : '#111111'
-  const tabActiveShadow = isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)'
-  const optionsSurfaceColor = isDark ? '#0a0a0a' : '#f9fafc'
+  const tabActiveShadow = (isDark || isCompact) ? 'none' : '0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)'
+  const optionsSurfaceColor = isDark ? (isCompact ? 'transparent' : '#0a0a0a') : (isCompact ? 'transparent' : '#f9fafc')
   const skeletonSx = React.useMemo(() => ({
     bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
     '&::after': {
@@ -265,15 +273,15 @@ export default function OptionsTabs({
     <Box>
       <Box
         sx={{
-          margin: theme.spacing(1.5, 1.5, 0, 1.5),
-          padding: theme.spacing(1.5),
-          borderRadius: '12px 12px 0 0',
+          margin: isCompact ? theme.spacing(1.5, 2, 0, 2) : theme.spacing(1.5, 1.5, 0, 1.5),
+          padding: isCompact ? 0 : theme.spacing(1.5),
+          borderRadius: isCompact ? 0 : '12px 12px 0 0',
           bgcolor: optionsSurfaceColor,
-          boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
-          border: isDark ? 'none' : '1px solid #e2e4e8',
+          boxShadow: (isDark || isCompact) ? 'none' : '0 2px 4px rgba(0, 0, 0, 0.2)',
+          border: (isDark || isCompact) ? 'none' : '1px solid #e2e4e8',
           borderBottom: 'none',
           display: 'flex',
-          gap: theme.spacing(1),
+          gap: theme.spacing(isCompact ? 0.5 : 1),
           opacity: interactionsDisabled ? 0.66 : 1,
           pointerEvents: interactionsDisabled ? 'none' : 'auto',
           transition: 'opacity 180ms ease',
@@ -281,58 +289,58 @@ export default function OptionsTabs({
       >
         <Button
           variant="contained"
-          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} sx={skeletonSx} /> : <Music2 size={20} />}
+          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={isCompact ? 16 : 20} height={isCompact ? 16 : 20} sx={skeletonSx} /> : <Music2 size={isCompact ? 18 : 20} />}
           onClick={() => data.handleTabChange('audio')}
           disabled={interactionsDisabled || disabledDownloadTypeSet.has('audio')}
           sx={{
-            borderRadius: '28px',
+            borderRadius: isCompact ? '8px' : '28px',
             textTransform: 'none',
-            padding: '12px 16px',
-            fontWeight: 600,
+            padding: isCompact ? '8px 12px' : '12px 16px',
+            fontWeight: 700,
             flex: 1,
-            height: '48px',
+            height: isCompact ? '40px' : '48px',
             bgcolor: data.tab === 'audio' ? tabActiveBg : tabInactiveBg,
-            color: tabTextColor,
-            fontSize: '1.125rem',
-            border: data.tab === 'audio' ? `2px solid ${tabActiveBorder}` : `2px solid ${tabInactiveBorder}`,
+            color: data.tab === 'audio' && isCompact ? 'primary.main' : tabTextColor,
+            fontSize: isCompact ? '0.95rem' : '1.125rem',
+            border: data.tab === 'audio' ? (isCompact ? `1.5px solid ${theme.palette.primary.main}` : `2px solid ${tabActiveBorder}`) : (isCompact ? `1.5px solid transparent` : `2px solid ${tabInactiveBorder}`),
             boxShadow: data.tab === 'audio' ? tabActiveShadow : 'none',
             boxSizing: 'border-box',
             opacity: disabledDownloadTypeSet.has('audio') ? 0.42 : 1,
             '&:hover': {
               bgcolor: data.tab === 'audio' ? tabActiveBg : tabHoverBg,
-              borderColor: data.tab === 'audio' ? tabHoverBorder : tabInactiveBorder,
+              borderColor: data.tab === 'audio' ? (isCompact ? theme.palette.primary.main : tabHoverBorder) : (isCompact ? 'transparent' : tabInactiveBorder),
             },
           }}
         >
-          {loadingState ? <Skeleton variant="text" animation="wave" width={70} sx={skeletonSx} /> : i18nT('downloader.tabAudio')}
+          {loadingState ? <Skeleton variant="text" animation="wave" width={isCompact ? 50 : 70} sx={skeletonSx} /> : i18nT('downloader.tabAudio')}
         </Button>
 
         <Button
           variant="contained"
-          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} sx={skeletonSx} /> : <Video size={20} />}
+          startIcon={loadingState ? <Skeleton variant="circular" animation="wave" width={isCompact ? 16 : 20} height={isCompact ? 16 : 20} sx={skeletonSx} /> : <Video size={isCompact ? 18 : 20} />}
           onClick={() => data.handleTabChange('video')}
           disabled={interactionsDisabled || disabledDownloadTypeSet.has('video')}
           sx={{
-            borderRadius: '28px',
+            borderRadius: isCompact ? '8px' : '28px',
             textTransform: 'none',
-            padding: '12px 16px',
-            fontWeight: 600,
+            padding: isCompact ? '8px 12px' : '12px 16px',
+            fontWeight: 700,
             flex: 1,
-            height: '48px',
+            height: isCompact ? '40px' : '48px',
             bgcolor: data.tab === 'video' ? tabActiveBg : tabInactiveBg,
-            color: tabTextColor,
-            fontSize: '1.125rem',
-            border: data.tab === 'video' ? `2px solid ${tabActiveBorder}` : `2px solid ${tabInactiveBorder}`,
+            color: data.tab === 'video' && isCompact ? 'primary.main' : tabTextColor,
+            fontSize: isCompact ? '0.95rem' : '1.125rem',
+            border: data.tab === 'video' ? (isCompact ? `1.5px solid ${theme.palette.primary.main}` : `2px solid ${tabActiveBorder}`) : (isCompact ? `1.5px solid transparent` : `2px solid ${tabInactiveBorder}`),
             boxShadow: data.tab === 'video' ? tabActiveShadow : 'none',
             boxSizing: 'border-box',
             opacity: disabledDownloadTypeSet.has('video') ? 0.42 : 1,
             '&:hover': {
               bgcolor: data.tab === 'video' ? tabActiveBg : tabHoverBg,
-              borderColor: data.tab === 'video' ? tabHoverBorder : tabInactiveBorder,
+              borderColor: data.tab === 'video' ? (isCompact ? theme.palette.primary.main : tabHoverBorder) : (isCompact ? 'transparent' : tabInactiveBorder),
             },
           }}
         >
-          {loadingState ? <Skeleton variant="text" animation="wave" width={70} sx={skeletonSx} /> : i18nT('downloader.tabVideo')}
+          {loadingState ? <Skeleton variant="text" animation="wave" width={isCompact ? 50 : 70} sx={skeletonSx} /> : i18nT('downloader.tabVideo')}
         </Button>
 
         <Button
@@ -340,15 +348,15 @@ export default function OptionsTabs({
           onClick={() => data.handleTabChange('thumbnail')}
           disabled={interactionsDisabled || disabledDownloadTypeSet.has('thumbnail')}
           sx={{
-            borderRadius: '50%',
-            minWidth: '48px',
-            width: '48px',
-            height: '48px',
+            borderRadius: isCompact ? '8px' : '50%',
+            minWidth: isCompact ? '40px' : '48px',
+            width: isCompact ? '40px' : '48px',
+            height: isCompact ? '40px' : '48px',
             padding: 0,
             bgcolor: data.tab === 'thumbnail' ? tabActiveBg : tabInactiveBg,
-            color: tabTextColor,
+            color: data.tab === 'thumbnail' && isCompact ? 'primary.main' : tabTextColor,
             fontSize: '1.125rem',
-            border: data.tab === 'thumbnail' ? `2px solid ${tabActiveBorder}` : `2px solid ${tabInactiveBorder}`,
+            border: data.tab === 'thumbnail' ? (isCompact ? `1.5px solid ${theme.palette.primary.main}` : `2px solid ${tabActiveBorder}`) : (isCompact ? `1.5px solid transparent` : `2px solid ${tabInactiveBorder}`),
             boxShadow: data.tab === 'thumbnail' ? tabActiveShadow : 'none',
             boxSizing: 'border-box',
             display: 'flex',
@@ -358,24 +366,24 @@ export default function OptionsTabs({
             opacity: disabledDownloadTypeSet.has('thumbnail') ? 0.42 : 1,
             '&:hover': {
               bgcolor: data.tab === 'thumbnail' ? tabActiveBg : tabHoverBg,
-              borderColor: data.tab === 'thumbnail' ? tabHoverBorder : tabInactiveBorder,
+              borderColor: data.tab === 'thumbnail' ? (isCompact ? theme.palette.primary.main : tabHoverBorder) : (isCompact ? 'transparent' : tabInactiveBorder),
             },
           }}
         >
-          {loadingState ? <Skeleton variant="circular" animation="wave" width={20} height={20} sx={skeletonSx} /> : <ImageIcon size={20} />}
+          {loadingState ? <Skeleton variant="circular" animation="wave" width={isCompact ? 16 : 20} height={isCompact ? 16 : 20} sx={skeletonSx} /> : <ImageIcon size={isCompact ? 18 : 20} />}
         </Button>
       </Box>
 
       <Box
         sx={{
-          margin: theme.spacing(0, 1.5, 1.5, 1.5),
-          padding: theme.spacing(0.75, 1.5, 1.5, 1.5),
-          borderRadius: '0 0 12px 12px',
+          margin: isCompact ? theme.spacing(0, 2, 2, 2) : theme.spacing(0, 1.5, 1.5, 1.5),
+          padding: isCompact ? theme.spacing(1, 0, 1, 0) : theme.spacing(0.75, 1.5, 1.5, 1.5),
+          borderRadius: isCompact ? 0 : '0 0 12px 12px',
           bgcolor: optionsSurfaceColor,
-          boxShadow: isDark ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none',
-          border: isDark ? 'none' : '1px solid #e2e4e8',
+          boxShadow: (isDark || isCompact) ? 'none' : '0 2px 4px rgba(0, 0, 0, 0.2)',
+          border: (isDark || isCompact) ? 'none' : '1px solid #e2e4e8',
           borderTop: 'none',
-          minHeight: '120px',
+          minHeight: isCompact ? 'auto' : '120px',
           opacity: interactionsDisabled ? 0.82 : 1,
           pointerEvents: interactionsDisabled ? 'none' : 'auto',
           transition: 'opacity 180ms ease',
@@ -393,6 +401,7 @@ export default function OptionsTabs({
 
         {!loadingState && data.tab === 'audio' && (
           <AudioTabContent
+            variant={variant}
             theme={theme}
             i18nT={i18nT}
             brandColor={brandColor}
@@ -445,6 +454,7 @@ export default function OptionsTabs({
 
         {!loadingState && data.tab === 'video' && (
           <VideoTabContent
+            variant={variant}
             theme={theme}
             i18nT={i18nT}
             brandColor={brandColor}
@@ -476,6 +486,7 @@ export default function OptionsTabs({
 
         {!loadingState && data.tab === 'thumbnail' && (
           <ThumbnailTabContent
+            variant={variant}
             theme={theme}
             i18nT={i18nT}
             brandColor={brandColor}
