@@ -8,8 +8,9 @@ import {
   Tooltip,
   Typography,
   useTheme,
+  Collapse,
 } from '@mui/material'
-import { ChevronDown, ChevronUp, FolderOpen, Trash2, Link2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, FolderOpen, X, Link2 } from 'lucide-react'
 import OptionsTabs from '../../../../components/downloader/OptionsTabs'
 import { getDownloadProgressLabel } from '../../../../components/downloader/options-tabs/downloadProgressLabel'
 import {
@@ -71,9 +72,27 @@ export default function MultiEntryItem({
     progress
   )
 
+  const handleRegisterController = React.useCallback((controller) => {
+    onRegisterController?.(entry.id, controller)
+  }, [entry.id, onRegisterController])
+
+  const handleDownloadEvent = React.useCallback((event) => {
+    onDownloadEvent?.(entry.id, event)
+  }, [entry.id, onDownloadEvent])
+
+  const handleDownloadStateChange = React.useCallback((state) => {
+    onDownloadStateChange?.(entry.id, state)
+
+    const normalizedType = normalizeDownloadType(state?.type, '')
+    if (normalizedType && normalizedType !== entry.selectedType) {
+      onEntryTypeChange?.(entry.id, normalizedType)
+    }
+  }, [entry.id, entry.selectedType, onDownloadStateChange, onEntryTypeChange])
+
   return (
     <Box
       sx={{
+        position: 'relative',
         borderRadius: 2.5,
         bgcolor: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
         border: '1px solid',
@@ -83,9 +102,45 @@ export default function MultiEntryItem({
         '&:hover': {
           borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#e2e5e9',
           boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.15)' : '0 4px 12px rgba(0,0,0,0.03)',
+        },
+        // Show delete button on hover
+        '&:hover .yl-multi-remove': {
+          opacity: 1,
         }
       }}
     >
+      {/* Floating Remove Button */}
+      <IconButton
+        className="yl-multi-remove"
+        size="small"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemoveEntry?.(entry.id)
+        }}
+        sx={{
+          position: 'absolute',
+          top: 4,
+          right: 4,
+          zIndex: 5,
+          width: 22,
+          height: 22,
+          bgcolor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.8)',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid',
+          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+          color: 'text.secondary',
+          opacity: { xs: 1, sm: 0 }, // Always visible on mobile
+          transition: 'all 0.2s',
+          '&:hover': {
+            bgcolor: 'error.main',
+            color: '#fff',
+            borderColor: 'error.main',
+          }
+        }}
+      >
+        <X size={14} strokeWidth={3} />
+      </IconButton>
+
       {/* COMPACT HEADER ROW */}
       <Stack 
         direction="row" 
@@ -93,6 +148,7 @@ export default function MultiEntryItem({
         alignItems="center" 
         sx={{ 
           p: 1.25,
+          pr: 4, // Make room for the floating X
           cursor: isReady ? 'pointer' : 'default',
           userSelect: 'none'
         }}
@@ -169,10 +225,6 @@ export default function MultiEntryItem({
             </IconButton>
           )}
           
-          <IconButton size="small" color="error" onClick={() => onRemoveEntry?.(entry.id)} sx={{ opacity: 0.6, '&:hover': { opacity: 1 } }}>
-            <Trash2 size={16} />
-          </IconButton>
-
           <Box sx={{ color: 'text.secondary', ml: 0.5, display: 'flex' }}>
             {entry.expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </Box>
@@ -188,8 +240,8 @@ export default function MultiEntryItem({
         />
       )}
 
-      {/* EXPANDED AREA */}
-      {entry.expanded && (
+      {/* EXPANDED AREA with Animation */}
+      <Collapse in={entry.expanded} timeout="auto">
         <Box sx={{ 
           p: 0, 
           borderTop: '1px solid', 
@@ -232,21 +284,15 @@ export default function MultiEntryItem({
                 disabledDownloadTypes={disabledDownloadTypes}
                 forcedDownloadDirectory={forcedDownloadDirectory}
                 downloadSettingsOverride={downloadSettingsOverride}
-                onRegisterController={(controller) => onRegisterController?.(entry.id, controller)}
-                onDownloadStateChange={(state) => {
-                  onDownloadStateChange?.(entry.id, state);
-                  // Sync local tab change back to entry state if needed
-                  if (state?.type && state.type !== entry.selectedType) {
-                    onEntryTypeChange?.(entry.id, state.type);
-                  }
-                }}
-                onDownloadEvent={(event) => onDownloadEvent?.(entry.id, event)}
+                onRegisterController={handleRegisterController}
+                onDownloadStateChange={handleDownloadStateChange}
+                onDownloadEvent={handleDownloadEvent}
                 onOpenCookieSettings={onOpenCookieSettings}
               />
             </Box>
           </Stack>
         </Box>
-      )}
+      </Collapse>
     </Box>
   )
 }
