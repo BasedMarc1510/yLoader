@@ -173,6 +173,8 @@ const en = {
       multiDisableWarningTitle: 'Disable multi mode?',
       multiDisableWarningBody: 'Disabling multi mode clears all entered links. Do you want to continue?',
       multiDisableWarningConfirm: 'Disable and clear',
+      active: 'Active',
+      inactive: 'Inactive',
     },
   },
   settings: {

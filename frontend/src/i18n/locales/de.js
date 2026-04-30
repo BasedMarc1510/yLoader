@@ -173,6 +173,8 @@ const de = {
       multiDisableWarningTitle: 'Multi-Modus deaktivieren?',
       multiDisableWarningBody: 'Beim Deaktivieren des Multi-Modus werden alle eingegebenen Links gelöscht. Möchtest du fortfahren?',
       multiDisableWarningConfirm: 'Deaktivieren und löschen',
+      active: 'Aktiv',
+      inactive: 'Inaktiv',
     },
   },
   settings: {
