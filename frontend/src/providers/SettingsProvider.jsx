@@ -1,9 +1,10 @@
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react'
+import { defaultLanguage, isSupportedLanguage } from '../i18n/config'
 
 const LANG_KEY = 'app-language'
 
 export const SettingsContext = createContext({
-  language: 'en',
+  language: defaultLanguage,
   setLanguage: () => {},
 })
 
@@ -11,9 +12,12 @@ export default function SettingsProvider({ children }) {
   const [language, setLanguage] = useState(() => {
     try {
       const stored = localStorage.getItem(LANG_KEY)
-      return stored || 'en'
+      if (isSupportedLanguage(stored)) {
+        return stored
+      }
+      return defaultLanguage
     } catch {
-      return 'en'
+      return defaultLanguage
     }
   })
 
@@ -24,7 +28,8 @@ export default function SettingsProvider({ children }) {
   }, [language])
 
   const setLanguageSafe = useCallback((lang) => {
-    setLanguage(lang || 'en')
+    const normalized = String(lang || '').trim().toLowerCase()
+    setLanguage(isSupportedLanguage(normalized) ? normalized : defaultLanguage)
   }, [])
 
   const value = useMemo(() => ({ language, setLanguage: setLanguageSafe }), [language, setLanguageSafe])

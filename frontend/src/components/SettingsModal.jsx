@@ -6,6 +6,7 @@ import { Sheet } from 'react-modal-sheet'
 import { ColorModeContext } from '../providers/ColorModeProvider'
 import { SettingsContext } from '../providers/SettingsProvider'
 import { useI18n } from '../providers/I18nProvider'
+import { defaultLanguage } from '../i18n/config'
 import { getApiBase } from '../utils/metadata'
 import GeneralSettingsSection from './settings-modal/GeneralSettingsSection'
 import DownloadsSettingsSection from './settings-modal/DownloadsSettingsSection'
@@ -1014,7 +1015,7 @@ function SettingsModalInner({
 
   const applyResetToCurrentSection = React.useCallback(() => {
     if (section === 'general') {
-      setLanguage('en')
+      setLanguage(defaultLanguage)
       setPreference(null)
       if (isDesktopSettingsAvailable) {
         updateDesktopSettings({

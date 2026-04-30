@@ -3,6 +3,7 @@ import { Box, Select, MenuItem, Switch } from '@mui/material'
 import SettingRow from './SettingRow'
 import SettingGroup from './SettingGroup'
 import AppVersionUpdateSection from './AppVersionUpdateSection'
+import { languages, supportedLanguages } from '../../i18n/config'
 
 export default function GeneralSettingsSection({
   language,
@@ -26,6 +27,10 @@ export default function GeneralSettingsSection({
 }) {
   const startupSupported = desktopSettings?.startupSupported !== false
   const showStartupMode = startupSupported && Boolean(desktopSettings?.startOnSystemStartup)
+  const languageOptions = supportedLanguages.map((code) => ({
+    code,
+    label: languages[code] || code,
+  }))
 
   return (
     <Box sx={{ px: isMobileLayout ? 2 : 4, pt: isMobileLayout ? 2.5 : 4, pb: isMobileLayout ? 2.5 : 4 }}>
@@ -37,8 +42,11 @@ export default function GeneralSettingsSection({
             onChange={(event) => setLanguage(event.target.value)}
             sx={selectSx}
           >
-            <MenuItem value="en" sx={{ fontSize: 14 }}>English</MenuItem>
-            <MenuItem value="de" sx={{ fontSize: 14 }}>Deutsch</MenuItem>
+            {languageOptions.map((option) => (
+              <MenuItem key={option.code} value={option.code} sx={{ fontSize: 14 }}>
+                {option.label}
+              </MenuItem>
+            ))}
           </Select>
         </SettingRow>
 

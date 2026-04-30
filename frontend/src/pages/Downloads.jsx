@@ -45,6 +45,7 @@ import {
   youtubeThumb,
 } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
+import { getLocaleForLanguage } from '../i18n/config'
 import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
 
 const DOWNLOADS_UI_STORAGE_KEY = 'yloader.downloads.ui.v2'
@@ -149,7 +150,7 @@ function formatEntryDate(timestamp, language) {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return String(timestamp || '')
 
-  const localeTag = language === 'de' ? 'de-DE' : 'en-US'
+  const localeTag = getLocaleForLanguage(language)
   return date.toLocaleDateString(localeTag)
 }
 
@@ -159,7 +160,7 @@ function formatTimestampTooltip(timestamp, language) {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return String(timestamp)
 
-  const localeTag = language === 'de' ? 'de-DE' : 'en-US'
+  const localeTag = getLocaleForLanguage(language)
   const human = date.toLocaleString(localeTag, { dateStyle: 'full', timeStyle: 'medium' })
   return `${human}\n${date.toISOString()}`
 }

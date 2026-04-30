@@ -1,15 +1,19 @@
 import React, { createContext, useContext, useMemo } from 'react'
 import { SettingsContext } from './SettingsProvider'
-import en from '../i18n/locales/en'
-import de from '../i18n/locales/de'
+import { defaultLanguage, supportedLanguages } from '../i18n/config'
 
-const dictionaries = {
-  en,
-  de,
-}
+const localeModules = import.meta.glob('../i18n/locales/*.js', { eager: true })
+const fallbackDictionary = localeModules[`../i18n/locales/${defaultLanguage}.js`]?.default || {}
+const dictionaries = Object.fromEntries(
+  supportedLanguages.map((lang) => {
+    const moduleKey = `../i18n/locales/${lang}.js`
+    const dictionary = localeModules[moduleKey]?.default || fallbackDictionary
+    return [lang, dictionary]
+  })
+)
 
 const I18nContext = createContext({
-  language: 'en',
+  language: defaultLanguage,
   t: (key, params) => key,
 })
 
@@ -33,8 +37,8 @@ export default function I18nProvider({ children }) {
   const { language } = useContext(SettingsContext)
 
   const value = useMemo(() => {
-    const activeLanguage = dictionaries[language] ? language : 'en'
-    const dictionary = dictionaries[activeLanguage]
+    const activeLanguage = dictionaries[language] ? language : defaultLanguage
+    const dictionary = dictionaries[activeLanguage] || fallbackDictionary
 
     const t = (key, params = {}) => {
       const raw = getByPath(dictionary, key)
