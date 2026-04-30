@@ -266,12 +266,15 @@ export default function VideoTabContent({
           onExtensionChange={handleVideoContainerChange}
           extensions={[
             { value: 'mp4', label: 'mp4' },
-            { value: 'webm', label: 'webm' },
             { value: 'mkv', label: 'mkv' },
+            { value: 'webm', label: 'webm' },
+            { value: 'avi', label: 'avi' },
+            { value: 'mov', label: 'mov' },
           ]}
           placeholder={i18nT(pathModeEnabled ? 'downloader.filePath' : 'downloader.filename')}
           isDark={isDark}
           disabled={downloading}
+          variant={variant}
           showPathPicker={pathModeEnabled && canPickSavePath}
           onPickPath={handlePickSavePath}
           pickPathDisabled={downloading || !canPickSavePath}

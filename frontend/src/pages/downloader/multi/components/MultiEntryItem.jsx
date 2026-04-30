@@ -2,13 +2,14 @@ import React from 'react'
 import {
   Alert,
   Box,
+  CircularProgress,
+  Collapse,
   IconButton,
   LinearProgress,
   Stack,
   Tooltip,
   Typography,
   useTheme,
-  Collapse,
 } from '@mui/material'
 import { ChevronDown, ChevronUp, FolderOpen, X, Link2 } from 'lucide-react'
 import OptionsTabs from '../../../../components/downloader/OptionsTabs'
@@ -148,7 +149,7 @@ export default function MultiEntryItem({
         alignItems="center" 
         sx={{ 
           p: 1.25,
-          pr: 4, // Make room for the floating X
+          pr: 2.5, // Make room for the floating X
           cursor: isReady ? 'pointer' : 'default',
           userSelect: 'none'
         }}
@@ -180,8 +181,7 @@ export default function MultiEntryItem({
               right: 4, 
               bgcolor: 'rgba(0,0,0,0.75)', 
               color: '#fff', 
-              px: 0.6, 
-              py: 0.1,
+              p: '3px 5px',
               borderRadius: 0.75, 
               fontSize: 9, 
               fontWeight: 800,
@@ -197,26 +197,39 @@ export default function MultiEntryItem({
           <Typography variant="body2" noWrap sx={{ fontWeight: 700, lineHeight: 1.2, mb: 0.1 }}>
             {entry.meta?.title || entry.rawInput}
           </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap display="block" sx={{ fontWeight: 600, opacity: 0.8 }}>
-            {entry.meta?.author || i18nT('mediaSummary.emptyValue')}
+          <Typography variant="caption" color="text.secondary" noWrap display="flex" alignItems="center" sx={{ fontWeight: 600, opacity: 0.8 }}>
+            <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {entry.meta?.author || i18nT('mediaSummary.emptyValue')}
+            </Box>
+            {entry.selectedFormat && (
+              <Box component="span" sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <Box component="span" sx={{ mx: 0.6, opacity: 0.5 }}>•</Box>
+                <Box component="span" sx={{ fontWeight: 800 }}>{entry.selectedFormat}</Box>
+              </Box>
+            )}
           </Typography>
         </Box>
 
         {/* Status Dot & Icons */}
-        <Stack direction="row" spacing={0.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
+        <Stack direction="row" spacing={1.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
           <Tooltip title={status.label}>
-            <Box
-              sx={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                bgcolor: status.tone === 'success' ? 'success.main' : 
-                         status.tone === 'error' ? 'error.main' :
-                         status.tone === 'warning' ? 'warning.main' :
-                         status.tone === 'info' ? 'info.main' : 'text.disabled',
-                mr: 1
-              }}
-            />
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14 }}>
+              {entry.metaState === ENTRY_META_STATE.loading ? (
+                <CircularProgress size={12} thickness={5} sx={{ color: 'text.secondary' }} />
+              ) : (
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: status.tone === 'success' ? 'success.main' : 
+                             status.tone === 'error' ? 'error.main' :
+                             status.tone === 'warning' ? 'warning.main' :
+                             status.tone === 'info' ? 'info.main' : 'text.disabled',
+                  }}
+                />
+              )}
+            </Box>
           </Tooltip>
 
           {entry.download?.status === ENTRY_DOWNLOAD_STATUS.complete && (
@@ -225,7 +238,7 @@ export default function MultiEntryItem({
             </IconButton>
           )}
           
-          <Box sx={{ color: 'text.secondary', ml: 0.5, display: 'flex' }}>
+          <Box sx={{ color: 'text.secondary', display: 'flex' }}>
             {entry.expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </Box>
         </Stack>

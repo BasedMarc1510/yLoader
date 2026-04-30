@@ -180,14 +180,7 @@ export default function ThumbnailTabContent({
           placeholder={i18nT('downloader.filename')}
           isDark={isDark}
           disabled={downloading || loadingThumbs || thumbOptions.length === 0}
-          sx={isCompact ? {
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 0,
-              border: 'none',
-              '& fieldset': { border: 'none' },
-              bgcolor: 'transparent'
-            }
-          } : {}}
+          variant={variant}
         />
       </Box>
 

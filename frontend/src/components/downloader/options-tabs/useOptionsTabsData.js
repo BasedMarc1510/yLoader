@@ -121,6 +121,11 @@ export default function useOptionsTabsData({
   }, [availableDownloadTypes, defaultDownloadType])
 
   const [tab, setTab] = React.useState(() => resolvedDefaultDownloadType)
+
+  React.useEffect(() => {
+    setTab(resolvedDefaultDownloadType)
+  }, [resolvedDefaultDownloadType])
+
   const [activeSections, setActiveSections] = React.useState(() => ({
     audio: null,
     video: null,

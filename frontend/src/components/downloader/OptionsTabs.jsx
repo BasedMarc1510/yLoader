@@ -109,10 +109,20 @@ export default function OptionsTabs({
 
   const isCompact = variant === 'compact'
 
+  const onDownloadStateChangeRef = React.useRef(onDownloadStateChange)
+  React.useEffect(() => {
+    onDownloadStateChangeRef.current = onDownloadStateChange
+  }, [onDownloadStateChange])
+
   // Sync tab change to parent
   React.useEffect(() => {
-    onDownloadStateChange?.({ type: data.tab })
-  }, [data.tab, onDownloadStateChange])
+    let format = ''
+    if (data.tab === 'audio') format = data.audioContainer || ''
+    else if (data.tab === 'video') format = data.videoContainer || ''
+    else if (data.tab === 'thumbnail') format = data.selectedThumbFormat || ''
+
+    onDownloadStateChangeRef.current?.({ type: data.tab, format })
+  }, [data.tab, data.audioContainer, data.videoContainer, data.selectedThumbFormat])
 
   const overwriteConfirmResolverRef = React.useRef(null)
   const [overwriteDialogData, setOverwriteDialogData] = React.useState(null)

@@ -97,10 +97,10 @@ export default function CustomSelect({
     ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
     : (isDark ? '#333333' : '#dfe0e2')
 
-  // Menu background for compact: Solid equivalent of the card color to blend perfectly
+  // Menu background for compact: Blend perfectly with the trigger button background
   const menuBg = isDark 
-    ? (isCompact ? '#1a1a1a' : '#1b1b1b') 
-    : (isCompact ? '#f5f7f9' : '#ffffff')
+    ? (isCompact ? '#202020' : '#1b1b1b') 
+    : (isCompact ? '#f9fafb' : '#ffffff')
 
   return (
     <Box ref={dropdownRef} sx={{ position: 'relative', width: '100%' }}>

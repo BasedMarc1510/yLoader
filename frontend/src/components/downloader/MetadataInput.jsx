@@ -14,11 +14,14 @@ export default function MetadataInput({
   maxLength = 120,
   disabled = false,
   type = 'text',
-  isDark = true
+  isDark = true,
+  variant = 'default'
 }) {
   const [isFocused, setIsFocused] = React.useState(false)
   const [localValue, setLocalValue] = React.useState(value || '')
   const timeoutRef = React.useRef(null)
+  
+  const isCompact = variant === 'compact'
 
   React.useEffect(() => {
     setLocalValue(value || '')
@@ -40,6 +43,22 @@ export default function MetadataInput({
   }, [])
 
   const hasValue = localValue && localValue.length > 0
+
+  const inputBgColor = isCompact 
+    ? (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)')
+    : (isDark ? '#272727' : '#ffffff')
+    
+  const focusedBgColor = isCompact
+    ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)')
+    : (isDark ? '#272727' : '#ffffff')
+    
+  const inputBorderColor = isCompact
+    ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
+    : (isDark ? '#333333' : '#dfe0e2')
+    
+  const focusedBorderColor = isCompact
+    ? (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)')
+    : (isDark ? '#383838' : '#c0c2c6')
 
   return (
     <Box
@@ -72,13 +91,14 @@ export default function MetadataInput({
           fontSize: '16px',
           fontFamily: 'inherit',
           color: isDark ? '#ffffff' : '#1a1a1a',
-          backgroundColor: isDark ? '#272727' : '#ffffff',
-          border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
+          backgroundColor: inputBgColor,
+          border: `1px solid ${inputBorderColor}`,
           borderRadius: '25px',
           outline: 'none',
-          transition: 'border-color 200ms ease',
+          transition: 'border-color 200ms ease, background-color 200ms ease',
           '&:focus': {
-            borderColor: isDark ? '#383838' : '#c0c2c6',
+            borderColor: focusedBorderColor,
+            backgroundColor: focusedBgColor,
           },
           '&::placeholder': {
             color: isDark ? '#666666' : '#b0b0b4',
@@ -113,13 +133,14 @@ export default function MetadataInput({
             fontSize: isFocused || hasValue ? '16px' : '16px',
             fontWeight: 'bold',
             color: isFocused ? (isDark ? '#cacaca' : '#5e5e63') : (isDark ? '#888888' : '#8e8e93'),
-            backgroundColor: isFocused || hasValue ? (isDark ? '#272727' : '#ffffff') : 'transparent',
+            backgroundColor: isFocused || hasValue ? focusedBgColor : 'transparent',
             padding: isFocused || hasValue ? '0 6px' : '0',
             marginLeft: isFocused || hasValue ? '-6px' : '0',
             transform: isFocused || hasValue ? 'translateY(-140%)' : 'translateY(0)',
             transition: 'all 200ms ease',
             display: 'inline-block',
             lineHeight: 1,
+            borderRadius: '4px',
           }}
         >
           {label}

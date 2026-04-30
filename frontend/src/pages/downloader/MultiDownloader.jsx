@@ -170,11 +170,9 @@ export default function MultiDownloader({
   )
   
   const queueSummary = React.useMemo(() => {
-    const parts = []
-    if (activeCount > 0) parts.push(i18nT('multiDownloader.counterActive', { count: activeCount }))
-    if (loadingCount > 0) parts.push(i18nT('multiDownloader.counterLoading', { count: loadingCount }))
-    return parts.join(' | ')
-  }, [activeCount, i18nT, loadingCount])
+    if (activeCount > 0) return i18nT('multiDownloader.counterActive', { count: activeCount })
+    return ''
+  }, [activeCount, i18nT])
 
   const downloadableEntries = React.useMemo(() => entries.filter((entry) => (
     entry.metaState === ENTRY_META_STATE.ready
@@ -294,20 +292,12 @@ export default function MultiDownloader({
     const nextProgress = normalizeProgress(state?.progress)
     const nextStage = String(state?.stage || '').trim()
     const nextActive = Boolean(state?.active)
+    const nextFormat = state?.format ? String(state.format).toUpperCase() : undefined
 
     setEntries((previousEntries) => updateEntryById(previousEntries, entryId, (entry) => {
       const currentStatus = entry.download?.status || ENTRY_DOWNLOAD_STATUS.idle
 
-      if (
-        !nextActive
-        && !nextStage
-        && nextProgress === 0
-        && (currentStatus === ENTRY_DOWNLOAD_STATUS.complete || currentStatus === ENTRY_DOWNLOAD_STATUS.failed)
-      ) {
-        return entry
-      }
-
-      return {
+      let updatedEntry = {
         ...entry,
         download: {
           ...entry.download,
@@ -317,6 +307,22 @@ export default function MultiDownloader({
           status: nextActive ? ENTRY_DOWNLOAD_STATUS.downloading : currentStatus,
         },
       }
+
+      if (nextFormat !== undefined) {
+        updatedEntry.selectedFormat = nextFormat
+      }
+
+      if (
+        !nextActive
+        && !nextStage
+        && nextProgress === 0
+        && (currentStatus === ENTRY_DOWNLOAD_STATUS.complete || currentStatus === ENTRY_DOWNLOAD_STATUS.failed)
+        && entry.selectedFormat === updatedEntry.selectedFormat
+      ) {
+        return entry
+      }
+
+      return updatedEntry
     }))
   }, [setEntries])
 

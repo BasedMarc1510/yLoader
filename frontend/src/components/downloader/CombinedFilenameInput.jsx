@@ -17,6 +17,7 @@ export default function CombinedFilenameInput({
     pickPathDisabled = false,
     pickPathLoading = false,
     pickPathAriaLabel = '',
+    variant = 'default',
 }) {
     const { t } = useI18n()
     const resolvedPlaceholder = placeholder || t('downloader.filename')
@@ -26,6 +27,8 @@ export default function CombinedFilenameInput({
     const [showRightFade, setShowRightFade] = React.useState(false)
     const [localValue, setLocalValue] = React.useState(value || '')
     const timeoutRef = React.useRef(null)
+
+    const isCompact = variant === 'compact'
 
     React.useEffect(() => {
         setLocalValue(value || '')
@@ -73,13 +76,35 @@ export default function CombinedFilenameInput({
         }
     }, [onPickPath])
 
-    const inputBgColor = isDark ? '#1b1b1b' : '#ffffff'
-    const leftFadeGradient = isDark
-        ? 'linear-gradient(to right, #1b1b1b 36%, rgba(27,27,27,0))'
-        : 'linear-gradient(to right, #ffffff 36%, rgba(255,255,255,0))'
-    const rightFadeGradient = isDark
-        ? 'linear-gradient(to left, #1b1b1b 36%, rgba(27,27,27,0))'
-        : 'linear-gradient(to left, #ffffff 36%, rgba(255,255,255,0))'
+    const containerBgColor = isCompact 
+        ? (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)')
+        : (isDark ? '#1b1b1b' : '#ffffff')
+    
+    const inputBgColor = containerBgColor
+    
+    const containerBorderColor = isCompact
+        ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
+        : (isDark ? '#333333' : '#dfe0e2')
+
+    const containerFocusBorderColor = isCompact
+        ? (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)')
+        : (isDark ? '#555555' : '#c0c2c6')
+
+    const leftFadeGradient = isDark && isCompact
+        ? 'linear-gradient(to right, #333333 36%, rgba(51,51,51,0))'
+        : isDark
+            ? 'linear-gradient(to right, #1b1b1b 36%, rgba(27,27,27,0))'
+            : isCompact 
+                ? 'linear-gradient(to right, #f4f5f7 36%, rgba(244,245,247,0))'
+                : 'linear-gradient(to right, #ffffff 36%, rgba(255,255,255,0))'
+
+    const rightFadeGradient = isDark && isCompact
+        ? 'linear-gradient(to left, #333333 36%, rgba(51,51,51,0))'
+        : isDark
+            ? 'linear-gradient(to left, #1b1b1b 36%, rgba(27,27,27,0))'
+            : isCompact
+                ? 'linear-gradient(to left, #f4f5f7 36%, rgba(244,245,247,0))'
+                : 'linear-gradient(to left, #ffffff 36%, rgba(255,255,255,0))'
 
     React.useEffect(() => {
         if (typeof window === 'undefined') return undefined
@@ -115,12 +140,12 @@ export default function CombinedFilenameInput({
                 display: 'flex',
                 alignItems: 'center',
                 width: '100%',
-                bgcolor: isDark ? '#1b1b1b' : '#ffffff',
-                border: `1px solid ${isDark ? '#333333' : '#dfe0e2'}`,
+                bgcolor: containerBgColor,
+                border: `1px solid ${containerBorderColor}`,
                 borderRadius: '16px',
                 transition: 'border-color 0.1s ease',
                 '&:focus-within': {
-                    borderColor: isDark ? '#555555' : '#c0c2c6',
+                    borderColor: containerFocusBorderColor,
                 },
                 overflow: 'hidden',
                 height: '45px',
@@ -196,7 +221,7 @@ export default function CombinedFilenameInput({
 
             {showPathPicker && (
                 <>
-                    <Box sx={{ width: '1px', height: '60%', bgcolor: isDark ? '#333333' : '#dfe0e2' }} />
+                    <Box sx={{ width: '1px', height: '60%', bgcolor: containerBorderColor }} />
 
                     <IconButton
                         onClick={handlePickPath}
@@ -208,10 +233,10 @@ export default function CombinedFilenameInput({
                             px: 1,
                             height: '100%',
                             color: isDark ? '#9a9a9a' : '#5e5e63',
-                            bgcolor: isDark ? '#232323' : '#f4f5f7',
+                            bgcolor: isCompact ? 'transparent' : (isDark ? '#232323' : '#f4f5f7'),
                             transition: 'background-color 0.1s ease, color 0.1s ease',
                             '&:hover': {
-                                bgcolor: isDark ? '#2a2a2a' : '#ecedf0',
+                                bgcolor: isCompact ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : (isDark ? '#2a2a2a' : '#ecedf0'),
                                 color: isDark ? '#ffffff' : '#1a1a1a',
                             },
                         }}
@@ -223,7 +248,7 @@ export default function CombinedFilenameInput({
                 </>
             )}
 
-            <Box sx={{ width: '1px', height: '60%', bgcolor: isDark ? '#333333' : '#dfe0e2' }} />
+            <Box sx={{ width: '1px', height: '60%', bgcolor: containerBorderColor }} />
 
             <Select
                 value={extension}
@@ -233,7 +258,7 @@ export default function CombinedFilenameInput({
                 disableUnderline
                 sx={{
                     height: '100%',
-                    bgcolor: isDark ? '#232323' : '#f4f5f7',
+                    bgcolor: isCompact ? 'transparent' : (isDark ? '#232323' : '#f4f5f7'),
                     color: isDark ? '#bbb' : '#5e5e63',
                     fontSize: '13px',
                     fontWeight: 700,
@@ -256,7 +281,7 @@ export default function CombinedFilenameInput({
                     },
                     transition: 'background-color 0.1s ease, color 0.1s ease',
                     '&:hover': {
-                        bgcolor: isDark ? '#2a2a2a' : '#ecedf0',
+                        bgcolor: isCompact ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : (isDark ? '#2a2a2a' : '#ecedf0'),
                         color: isDark ? '#fff' : '#1a1a1a',
                     },
                 }}

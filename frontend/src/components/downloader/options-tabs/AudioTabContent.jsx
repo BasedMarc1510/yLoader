@@ -386,6 +386,7 @@ export default function AudioTabContent({
           placeholder={i18nT(pathModeEnabled ? 'downloader.filePath' : 'downloader.filename')}
           isDark={isDark}
           disabled={downloading}
+          variant={variant}
           showPathPicker={pathModeEnabled && canPickSavePath}
           onPickPath={handlePickSavePath}
           pickPathDisabled={downloading || !canPickSavePath}
