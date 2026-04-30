@@ -9,6 +9,7 @@ import {
   DialogActions,
   Button,
 } from '@mui/material'
+import { motion, AnimatePresence } from 'motion/react'
 import { detectService, isLikelyValidUrlFor } from '../utils/metadata'
 import { useI18n } from '../providers/I18nProvider'
 import { useNotification } from '../providers/NotificationProvider'
@@ -324,40 +325,58 @@ export default function HomePage({ onOpenDownloader, routeSearch = '', routeToke
   return (
     <Box sx={{ position: 'relative', height: '100%' }}>
       <Box sx={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '100%', maxWidth: 780, px: 2 }}>
-        {multiModeEnabled ? (
-          <HomeMultiInput
-            value={value}
-            onChange={handleValueChange}
-            onSubmit={handleSubmit}
-            isResolving={interactionLocked}
-            disableGoAction={disableGoAction}
-            quickActionsTrigger={quickActionsTrigger}
-            showAutoDownloadProgress={showAutoDownloadProgress}
-            autoDownloadProgressKnown={autoDownloadProgressKnown}
-            normalizedAutoDownloadProgress={normalizedAutoDownloadProgress}
-            inputBorderRunnerAnimation={INPUT_BORDER_RUNNER_ANIMATION}
-            multiInputRows={multiInputRows}
-            t={t}
-          />
-        ) : (
-          <HomeSingleInput
-            value={value}
-            onChange={handleValueChange}
-            onSubmit={handleSubmit}
-            onServiceDetected={handleSingleInputServiceDetected}
-            isResolving={interactionLocked}
-            disableGoAction={disableGoAction}
-            quickActionsTrigger={quickActionsTrigger}
-            showAutoDownloadProgress={showAutoDownloadProgress}
-            autoDownloadProgressKnown={autoDownloadProgressKnown}
-            normalizedAutoDownloadProgress={normalizedAutoDownloadProgress}
-            inputBorderRunnerAnimation={INPUT_BORDER_RUNNER_ANIMATION}
-            t={t}
-          />
-        )}
+        <AnimatePresence mode="wait">
+          {multiModeEnabled ? (
+            <motion.div
+              key="multi"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+            >
+              <HomeMultiInput
+                value={value}
+                onChange={handleValueChange}
+                onSubmit={handleSubmit}
+                isResolving={interactionLocked}
+                disableGoAction={disableGoAction}
+                quickActionsTrigger={quickActionsTrigger}
+                showAutoDownloadProgress={showAutoDownloadProgress}
+                autoDownloadProgressKnown={autoDownloadProgressKnown}
+                normalizedAutoDownloadProgress={normalizedAutoDownloadProgress}
+                inputBorderRunnerAnimation={INPUT_BORDER_RUNNER_ANIMATION}
+                multiInputRows={multiInputRows}
+                t={t}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="single"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+            >
+              <HomeSingleInput
+                value={value}
+                onChange={handleValueChange}
+                onSubmit={handleSubmit}
+                onServiceDetected={handleSingleInputServiceDetected}
+                isResolving={interactionLocked}
+                disableGoAction={disableGoAction}
+                quickActionsTrigger={quickActionsTrigger}
+                showAutoDownloadProgress={showAutoDownloadProgress}
+                autoDownloadProgressKnown={autoDownloadProgressKnown}
+                normalizedAutoDownloadProgress={normalizedAutoDownloadProgress}
+                inputBorderRunnerAnimation={INPUT_BORDER_RUNNER_ANIMATION}
+                t={t}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </Box>
 
-      <Stack spacing={0} sx={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: `calc(50% + ${Math.round(inputHeightEstimate / 2)}px + 16px)`, width: '100%', maxWidth: 780, px: 2 }}>
+      <Stack spacing={0} sx={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: `calc(50% + ${Math.round(inputHeightEstimate / 2)}px + 16px)`, width: '100%', maxWidth: 780, px: 2, transition: 'bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1)' }}>
         <Typography variant="h1" component="h1" align="center" className="youtube-title" sx={{ fontSize: { xs: '3.5rem', sm: '5rem', md: '6rem' } }}>
           <span style={{ color: '#df2f2f' }}>y</span>Loader
         </Typography>
