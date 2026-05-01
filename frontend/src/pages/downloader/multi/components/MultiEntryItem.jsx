@@ -11,7 +11,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material'
-import { ChevronDown, ChevronUp, FolderOpen, X, Link2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, FolderOpen, X, Link2, Download } from 'lucide-react'
 import OptionsTabs from '../../../../components/downloader/OptionsTabs'
 import { getDownloadProgressLabel } from '../../../../components/downloader/options-tabs/downloadProgressLabel'
 import {
@@ -49,6 +49,9 @@ export default function MultiEntryItem({
 }) {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
+  
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+  const isElectronRuntime = Boolean(runtime?.isElectron)
   
   const status = resolveEntryStatus(i18nT, entry)
   const isReady = entry.metaState === ENTRY_META_STATE.ready
@@ -97,6 +100,13 @@ export default function MultiEntryItem({
         // Show delete button on hover
         '&:hover .yl-multi-remove': {
           opacity: 1,
+        },
+        // Trigger hover styles for header and dropdown
+        '&:hover .yl-entry-card': {
+          borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#e2e5e9',
+        },
+        '&:hover .yl-entry-header': {
+          boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.15)' : '0 4px 12px rgba(0,0,0,0.03)',
         }
       }}
     >
@@ -133,19 +143,21 @@ export default function MultiEntryItem({
         <X size={14} strokeWidth={3} />
       </IconButton>
 
+      {/* HEADER SECTION */}
       <Box
+        className="yl-entry-card yl-entry-header"
         sx={{
           position: 'relative',
-          borderRadius: 2.5,
+          borderTopLeftRadius: '10px',
+          borderTopRightRadius: '10px',
+          borderBottomLeftRadius: entry.expanded ? 0 : '10px',
+          borderBottomRightRadius: entry.expanded ? 0 : '10px',
           bgcolor: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
           border: '1px solid',
           borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#eef0f2',
           overflow: 'hidden',
           transition: 'all 0.15s ease-in-out',
-          '&:hover': {
-            borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#e2e5e9',
-            boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.15)' : '0 4px 12px rgba(0,0,0,0.03)',
-          }
+          zIndex: entry.expanded ? 2 : 1,
         }}
       >
         {/* COMPACT HEADER ROW */}
@@ -171,117 +183,125 @@ export default function MultiEntryItem({
             onToggleExpanded?.(entry.id)
           }}
         >
-        {/* Compact Thumbnail */}
-        <Box
-          sx={{
-            width: 72,
-            height: 40,
-            borderRadius: 1.25,
-            overflow: 'hidden',
-            flexShrink: 0,
-            bgcolor: isDark ? 'rgba(0,0,0,0.3)' : '#f0f2f5',
-            position: 'relative'
-          }}
-        >
-          {entry.meta?.thumbnail ? (
-            <Box component="img" src={entry.meta.thumbnail} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <Box sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'text.disabled' }}>
-              <Link2 size={16} />
-            </Box>
-          )}
-          {entry.meta?.duration && (
-            <Typography sx={{ 
-              position: 'absolute', 
-              bottom: 4, 
-              right: 4, 
-              bgcolor: 'rgba(0,0,0,0.75)', 
-              color: '#fff', 
-              p: '3px 5px',
-              borderRadius: 0.75, 
-              fontSize: 9, 
-              fontWeight: 800,
-              lineHeight: 1
-            }}>
-              {entry.meta.duration}
-            </Typography>
-          )}
-        </Box>
-
-        {/* Title & Author */}
-        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-          <Typography variant="body2" noWrap sx={{ fontWeight: 700, lineHeight: 1.2, mb: 0.1 }}>
-            {entry.meta?.title || entry.rawInput}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap display="flex" alignItems="center" sx={{ fontWeight: 600, opacity: 0.8 }}>
-            <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {entry.meta?.author || i18nT('mediaSummary.emptyValue')}
-            </Box>
-            {entry.selectedFormat && (
-              <Box component="span" sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <Box component="span" sx={{ mx: 0.6, opacity: 0.5 }}>/</Box>
-                <Box component="span" sx={{ fontWeight: 800 }}>{entry.selectedFormat}</Box>
+          {/* Compact Thumbnail */}
+          <Box
+            sx={{
+              width: 72,
+              height: 40,
+              borderRadius: 1.25,
+              overflow: 'hidden',
+              flexShrink: 0,
+              bgcolor: isDark ? 'rgba(0,0,0,0.3)' : '#f0f2f5',
+              position: 'relative'
+            }}
+          >
+            {entry.meta?.thumbnail ? (
+              <Box component="img" src={entry.meta.thumbnail} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <Box sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'text.disabled' }}>
+                <Link2 size={16} />
               </Box>
             )}
-          </Typography>
-        </Box>
-
-        {/* Status Dot & Icons */}
-        <Stack direction="row" spacing={1.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
-          <Tooltip title={status.label}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14 }}>
-              {entry.metaState === ENTRY_META_STATE.loading ? (
-                <CircularProgress size={12} thickness={5} sx={{ color: 'text.secondary' }} />
-              ) : (
-                <Box
-                  sx={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    bgcolor: status.tone === 'success' ? 'success.main' : 
-                             status.tone === 'error' ? 'error.main' :
-                             status.tone === 'warning' ? 'warning.main' :
-                             status.tone === 'info' ? 'info.main' : 'text.disabled',
-                  }}
-                />
-              )}
-            </Box>
-          </Tooltip>
-
-          {entry.download?.status === ENTRY_DOWNLOAD_STATUS.complete && (
-            <IconButton
-              size="small"
-              aria-label={i18nT('multiDownloader.openCompleted')}
-              onClick={() => onOpenCompleted?.(entry)}
-            >
-              <FolderOpen size={16} />
-            </IconButton>
-          )}
-          
-          <Box sx={{ color: 'text.secondary', display: 'flex' }}>
-            {entry.expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            {entry.meta?.duration && (
+              <Typography sx={{ 
+                position: 'absolute', 
+                bottom: 4, 
+                right: 4, 
+                bgcolor: 'rgba(0,0,0,0.75)', 
+                color: '#fff', 
+                p: '3px 5px',
+                borderRadius: 0.75, 
+                fontSize: 9, 
+                fontWeight: 800,
+                lineHeight: 1
+              }}>
+                {entry.meta.duration}
+              </Typography>
+            )}
           </Box>
+
+          {/* Title & Author */}
+          <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+            <Typography variant="body2" noWrap sx={{ fontWeight: 700, lineHeight: 1.2, mb: 0.1 }}>
+              {entry.meta?.title || entry.rawInput}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" noWrap display="flex" alignItems="center" sx={{ fontWeight: 600, opacity: 0.8 }}>
+              <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {entry.meta?.author || i18nT('mediaSummary.emptyValue')}
+              </Box>
+              {entry.selectedFormat && (
+                <Box component="span" sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  <Box component="span" sx={{ mx: 0.6, opacity: 0.5 }}>/</Box>
+                  <Box component="span" sx={{ fontWeight: 800 }}>{entry.selectedFormat}</Box>
+                </Box>
+              )}
+            </Typography>
+          </Box>
+
+          {/* Status Dot & Icons */}
+          <Stack direction="row" spacing={1.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
+            <Tooltip title={status.label}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14 }}>
+                {entry.metaState === ENTRY_META_STATE.loading ? (
+                  <CircularProgress size={12} thickness={5} sx={{ color: 'text.secondary' }} />
+                ) : (
+                  <Box
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: status.tone === 'success' ? 'success.main' : 
+                               status.tone === 'error' ? 'error.main' :
+                               status.tone === 'warning' ? 'warning.main' :
+                               status.tone === 'info' ? 'info.main' : 'text.disabled',
+                    }}
+                  />
+                )}
+              </Box>
+            </Tooltip>
+
+            {entry.download?.status === ENTRY_DOWNLOAD_STATUS.complete && (
+              <IconButton
+                size="small"
+                aria-label={i18nT('multiDownloader.openCompleted')}
+                onClick={() => onOpenCompleted?.(entry)}
+              >
+                {isElectronRuntime ? <FolderOpen size={16} /> : <Download size={16} />}
+              </IconButton>
+            )}
+            
+            <Box sx={{ color: 'text.secondary', display: 'flex' }}>
+              {entry.expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </Box>
+          </Stack>
         </Stack>
-      </Stack>
+
+        {/* Progress bar overlay for collapsed state */}
+        {showProgress && !entry.expanded && (
+          <LinearProgress 
+            variant="determinate" 
+            value={progress} 
+            sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, bgcolor: 'transparent', '& .MuiLinearProgress-bar': { borderRadius: 0 } }} 
+          />
+        )}
       </Box>
 
-      {/* Progress bar overlay for collapsed state */}
-      {showProgress && !entry.expanded && (
-        <LinearProgress 
-          variant="determinate" 
-          value={progress} 
-          sx={{ height: 2, bgcolor: 'transparent', '& .MuiLinearProgress-bar': { borderRadius: 0 } }} 
-        />
-      )}
-
-      {/* EXPANDED AREA with Animation */}
+      {/* DROPDOWN AREA with Animation */}
       <Collapse in={entry.expanded} timeout="auto">
-        <Box sx={{ 
-          p: 0, 
-          borderTop: '1px solid', 
-          borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#f0f2f5',
-          bgcolor: isDark ? 'rgba(0,0,0,0.1)' : '#fcfdfe' 
-        }}>
+        <Box 
+          className="yl-entry-card"
+          sx={{ 
+            p: 0, 
+            border: '1px solid',
+            borderTop: 'none',
+            borderBottomLeftRadius: '10px',
+            borderBottomRightRadius: '10px',
+            borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#eef0f2',
+            bgcolor: isDark ? 'rgba(0,0,0,0.1)' : '#fcfdfe',
+            transition: 'all 0.15s ease-in-out',
+            overflow: 'hidden'
+          }}
+        >
           <Stack spacing={0}>
             {showProgress && (
               <Box sx={{ px: 2, pt: 1.5 }}>
