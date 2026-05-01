@@ -1,34 +1,7 @@
-import { AUTO_DOWNLOAD_SETTINGS_DEFAULTS } from './constants'
+import { AUTO_DOWNLOAD_SETTINGS_DEFAULTS, normalizeAutoDownloadSettings } from '../../utils/autoDownloadSettings'
 import { isUsableVideoFormat } from '../../utils/videoFormatSupport'
 
-function normalizeDownloadPath(value, fallbackPath) {
-  const fallback = String(fallbackPath || '').trim()
-  const raw = String(value || '')
-    .replace(/\u0000/g, '')
-    .trim()
-  return raw || fallback
-}
-
-export function normalizeAutoDownloadSettings(value) {
-  const input = (value && typeof value === 'object') ? value : {}
-  const maxAudioBitrateKbps = Number(input.maxAudioBitrateKbps)
-  const maxVideoHeight = Number(input.maxVideoHeight)
-  const fixedDownloadPath = normalizeDownloadPath(
-    input.fixedDownloadPath,
-    AUTO_DOWNLOAD_SETTINGS_DEFAULTS.fixedDownloadPath,
-  )
-
-  return {
-    useMetadata: input.useMetadata !== undefined ? Boolean(input.useMetadata) : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.useMetadata,
-    embedCoverArt: input.embedCoverArt !== undefined ? Boolean(input.embedCoverArt) : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.embedCoverArt,
-    maxAudioBitrateKbps: Number.isFinite(maxAudioBitrateKbps) ? maxAudioBitrateKbps : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.maxAudioBitrateKbps,
-    maxVideoHeight: Number.isFinite(maxVideoHeight) ? maxVideoHeight : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.maxVideoHeight,
-    useFixedDownloadPath: input.useFixedDownloadPath !== undefined
-      ? Boolean(input.useFixedDownloadPath)
-      : AUTO_DOWNLOAD_SETTINGS_DEFAULTS.useFixedDownloadPath,
-    fixedDownloadPath,
-  }
-}
+export { normalizeAutoDownloadSettings }
 
 export function pickAudioFormatByMaxBitrate(formats, maxAudioBitrateKbps) {
   const list = Array.isArray(formats) ? formats : []
@@ -51,19 +24,19 @@ export function pickAudioFormatByMaxBitrate(formats, maxAudioBitrateKbps) {
   const bounded = cap > 0 ? candidates.filter((fmt) => fmt.abr <= cap) : candidates
   const pool = bounded.length ? bounded : candidates
 
-  pool.sort((a, b) => {
-    if (b.abr !== a.abr) return b.abr - a.abr
-    return (a.filesize || 0) - (b.filesize || 0)
+  pool.sort((left, right) => {
+    if (right.abr !== left.abr) return right.abr - left.abr
+    return (left.filesize || 0) - (right.filesize || 0)
   })
 
   return pool[0]?.formatId || 'best'
 }
 
-function readVideoFormatHeight(fmt) {
-  const direct = Number(fmt?.height)
+function readVideoFormatHeight(format) {
+  const direct = Number(format?.height)
   if (Number.isFinite(direct) && direct > 0) return direct
 
-  const resolution = String(fmt?.resolution || '')
+  const resolution = String(format?.resolution || '')
   const pMatch = resolution.match(/(\d{3,4})p/i)
   if (pMatch) return Number(pMatch[1])
 
@@ -94,9 +67,9 @@ export function pickVideoFormatByMaxHeight(formats, maxVideoHeight) {
   const bounded = cap > 0 ? candidates.filter((fmt) => fmt.height <= cap) : candidates
   const pool = bounded.length ? bounded : candidates
 
-  pool.sort((a, b) => {
-    if (b.height !== a.height) return b.height - a.height
-    return (b.filesize || 0) - (a.filesize || 0)
+  pool.sort((left, right) => {
+    if (right.height !== left.height) return right.height - left.height
+    return (right.filesize || 0) - (left.filesize || 0)
   })
 
   return pool[0]?.formatId || 'best'

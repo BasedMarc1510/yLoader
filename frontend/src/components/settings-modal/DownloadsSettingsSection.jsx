@@ -10,36 +10,10 @@ import {
   DOWNLOAD_STAGGER_OPTIONS,
   DOWNLOAD_VIDEO_QUALITY_OPTIONS,
 } from '../../utils/downloadSettings'
-
-const DOWNLOAD_SUBSECTION_KEYS = Object.freeze({
-  FORMAT_QUALITY: 'format-quality',
-  FILENAME_CONVENTIONS: 'filename-conventions',
-  ADVANCED_DOWNLOAD_SETTINGS: 'advanced-download-settings',
-  AUTO_DOWNLOAD_DEFAULTS: 'auto-download-defaults',
-})
-
-const DOWNLOAD_SUBSECTIONS = Object.freeze([
-  {
-    key: DOWNLOAD_SUBSECTION_KEYS.FORMAT_QUALITY,
-    labelKey: 'settings.downloadsFormatTitle',
-    subtitleKey: 'settings.downloadsFormatSubtitle',
-  },
-  {
-    key: DOWNLOAD_SUBSECTION_KEYS.FILENAME_CONVENTIONS,
-    labelKey: 'settings.downloadsNamingTitle',
-    subtitleKey: 'settings.downloadsNamingSubtitle',
-  },
-  {
-    key: DOWNLOAD_SUBSECTION_KEYS.ADVANCED_DOWNLOAD_SETTINGS,
-    labelKey: 'settings.downloadsAdvancedTitle',
-    subtitleKey: 'settings.downloadsAdvancedSubtitle',
-  },
-  {
-    key: DOWNLOAD_SUBSECTION_KEYS.AUTO_DOWNLOAD_DEFAULTS,
-    labelKey: 'settings.downloadsAutoDefaultsTitle',
-    subtitleKey: 'settings.downloadsAutoDefaultsSubtitle',
-  },
-])
+import {
+  DOWNLOAD_SUBSECTION_KEYS,
+  DOWNLOAD_SUBSECTIONS,
+} from './downloadSubsections'
 
 function ErrorBanner({ message }) {
   if (!message) return null
@@ -430,7 +404,7 @@ export default function DownloadsSettingsSection({
         />
       )}
 
-      {sectionKey === DOWNLOAD_SUBSECTION_KEYS.FORMAT_QUALITY && (
+      {sectionKey === DOWNLOAD_SUBSECTION_KEYS.formatQuality && (
         <FormatQualitySettings
           downloadSettings={downloadSettings}
           disabled={disabled}
@@ -440,7 +414,7 @@ export default function DownloadsSettingsSection({
         />
       )}
 
-      {sectionKey === DOWNLOAD_SUBSECTION_KEYS.FILENAME_CONVENTIONS && (
+      {sectionKey === DOWNLOAD_SUBSECTION_KEYS.filenameConventions && (
         <DownloadNamingSettingsGroup
           downloadSettings={downloadSettings}
           disabled={disabled}
@@ -450,7 +424,7 @@ export default function DownloadsSettingsSection({
         />
       )}
 
-      {sectionKey === DOWNLOAD_SUBSECTION_KEYS.ADVANCED_DOWNLOAD_SETTINGS && (
+      {sectionKey === DOWNLOAD_SUBSECTION_KEYS.advancedDownloadSettings && (
         <AdvancedDownloadSettings
           downloadSettings={downloadSettings}
           disabled={disabled}
@@ -460,7 +434,7 @@ export default function DownloadsSettingsSection({
         />
       )}
 
-      {sectionKey === DOWNLOAD_SUBSECTION_KEYS.AUTO_DOWNLOAD_DEFAULTS && (
+      {sectionKey === DOWNLOAD_SUBSECTION_KEYS.autoDownloadDefaults && (
         <AutoDownloadDefaultsSettings
           autoDownloadSettings={autoDownloadSettings}
           autoDisabled={autoDisabled}

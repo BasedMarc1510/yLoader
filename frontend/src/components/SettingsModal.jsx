@@ -14,6 +14,12 @@ import NetworkSettingsSection from './settings-modal/NetworkSettingsSection'
 import SystemSettingsSection from './settings-modal/SystemSettingsSection'
 import SettingsBreadcrumb from './settings-modal/SettingsBreadcrumb'
 import {
+  AUTO_DOWNLOAD_RESET_FIELDS,
+  DOWNLOAD_SUBSECTION_KEYS,
+  DOWNLOAD_SUBSECTION_RESET_FIELDS,
+  RESETTABLE_DOWNLOAD_SUBSECTIONS,
+} from './settings-modal/downloadSubsections'
+import {
   AUTO_DOWNLOAD_DEFAULTS,
   normalizeAutoDownloadSettings,
 } from './settings-modal/autoDownloadUtils'
@@ -72,55 +78,6 @@ const SETTINGS_SAVE_DEBOUNCE_MS = 180
 const SETTINGS_INTERACTION_TRANSITION_MS = 90
 const SETTINGS_CONTENT_SWITCH_ANIMATION_MS = 120
 const SETTINGS_SECTION_ORDER = Object.freeze(['general', 'downloads', 'network', 'system'])
-
-const DOWNLOAD_SUBSECTION_KEYS = Object.freeze({
-  formatQuality: 'format-quality',
-  filenameConventions: 'filename-conventions',
-  advancedDownloadSettings: 'advanced-download-settings',
-  autoDownloadDefaults: 'auto-download-defaults',
-})
-
-const DOWNLOAD_SUBSECTION_RESET_FIELDS = Object.freeze({
-  [DOWNLOAD_SUBSECTION_KEYS.formatQuality]: Object.freeze([
-    'defaultAudioContainer',
-    'defaultVideoContainer',
-    'maxVideoHeight',
-    'maxAudioBitrateKbps',
-  ]),
-  [DOWNLOAD_SUBSECTION_KEYS.filenameConventions]: Object.freeze([
-    'audioFilenamePattern',
-    'videoFilenamePattern',
-    'thumbnailFilenamePattern',
-  ]),
-  [DOWNLOAD_SUBSECTION_KEYS.advancedDownloadSettings]: Object.freeze([
-    'maxConcurrentDownloads',
-    'staggerDownloadsMs',
-    'defaultEmbedCoverArt',
-    'downloadLocationMode',
-    'globalDownloadPath',
-    'globalAlwaysAsk',
-    'audioDownloadPath',
-    'videoDownloadPath',
-    'thumbnailDownloadPath',
-    'audioAlwaysAsk',
-    'videoAlwaysAsk',
-    'thumbnailAlwaysAsk',
-  ]),
-})
-
-const AUTO_DOWNLOAD_RESET_FIELDS = Object.freeze([
-  'useMetadata',
-  'embedCoverArt',
-  'maxAudioBitrateKbps',
-  'maxVideoHeight',
-  'useFixedDownloadPath',
-  'fixedDownloadPath',
-])
-
-const RESETTABLE_DOWNLOAD_SUBSECTIONS = Object.freeze([
-  ...Object.keys(DOWNLOAD_SUBSECTION_RESET_FIELDS),
-  DOWNLOAD_SUBSECTION_KEYS.autoDownloadDefaults,
-])
 
 function pickDefaultSettings(defaults, fieldNames) {
   return fieldNames.reduce((accumulator, key) => {

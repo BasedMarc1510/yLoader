@@ -5,30 +5,19 @@ import {
   getServiceDisplayName,
   normalizeServiceKey,
 } from './metadata'
+import {
+  normalizeTabPath,
+  normalizeTabSearch,
+} from '../../../shared/tabs/tabRuntime.js'
 
 export const SERVICE_TO_PATH = Object.freeze(
-  SERVICE_KEYS.reduce((acc, key) => {
-    acc[key] = '/'
-    return acc
+  SERVICE_KEYS.reduce((accumulator, key) => {
+    accumulator[key] = '/'
+    return accumulator
   }, {})
 )
 
-const LEGACY_PATH_TO_SERVICE = {
-  '/downloader': 'generic',
-  '/youtube-downloader': 'youtube',
-  '/reddit-downloader': 'reddit',
-  '/x-downloader': 'x',
-  '/generic-downloader': 'generic',
-}
-
 const VALID_SERVICE_KEYS = new Set(Object.keys(SERVICE_TO_PATH))
-
-const ALLOWED_PATHS = new Set([
-  '/',
-  '/search',
-  '/downloads',
-  '/support',
-])
 
 const DOWNLOADER_SOURCE_PARAM = 'source'
 const LEGACY_DOWNLOADER_SOURCE_PARAM = 'url'
@@ -41,14 +30,6 @@ function getDownloaderSourceFromParams(params) {
     || params.get(LEGACY_DOWNLOADER_SOURCE_PARAM)
     || ''
   ).trim()
-}
-
-function normalizeLegacyPath(path) {
-  const normalized = String(path || '').trim()
-  if (Object.prototype.hasOwnProperty.call(LEGACY_PATH_TO_SERVICE, normalized)) {
-    return '/'
-  }
-  return normalized
 }
 
 function hasUrlInSearch(search) {
@@ -89,37 +70,7 @@ function getServiceFromSearch(search) {
   return detectService(urlParam) || GENERIC_SERVICE_KEY
 }
 
-export function normalizeTabPath(path) {
-  const normalized = normalizeLegacyPath(path)
-  return ALLOWED_PATHS.has(normalized) ? normalized : '/'
-}
-
-export function normalizeTabSearch(search) {
-  const raw = String(search || '').trim()
-  if (!raw) return ''
-  const prefixed = raw.startsWith('?') ? raw : `?${raw}`
-  const normalized = prefixed.slice(0, 1024)
-
-  if (!normalized.includes(`${LEGACY_DOWNLOADER_SOURCE_PARAM}=`)) {
-    return normalized
-  }
-
-  try {
-    const params = new URLSearchParams(normalized)
-    const sourceParam = String(params.get(DOWNLOADER_SOURCE_PARAM) || '').trim()
-    const legacySourceParam = String(params.get(LEGACY_DOWNLOADER_SOURCE_PARAM) || '').trim()
-
-    if (legacySourceParam && !sourceParam) {
-      params.set(DOWNLOADER_SOURCE_PARAM, legacySourceParam)
-    }
-
-    params.delete(LEGACY_DOWNLOADER_SOURCE_PARAM)
-    const serialized = params.toString()
-    return serialized ? `?${serialized}` : ''
-  } catch {
-    return normalized
-  }
-}
+export { normalizeTabPath, normalizeTabSearch }
 
 export function isDownloaderPath(path) {
   return DOWNLOADER_PATHS.has(normalizeTabPath(path))

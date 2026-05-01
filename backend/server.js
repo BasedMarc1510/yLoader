@@ -15,6 +15,55 @@ import {
   classifyYtDlpError,
   YT_DLP_ERROR_CODES,
 } from '../shared/errors/ytDlpErrorCatalog.js'
+import {
+  createAutoDownloadSettingsDefaults,
+  normalizeAutoDownloadSettings as normalizeSharedAutoDownloadSettings,
+} from '../shared/settings/autoDownloadSettings.js'
+import {
+  createDownloadSettingsDefaults,
+  DOWNLOAD_FILENAME_PATTERN_TOKEN_REGEX,
+  DOWNLOAD_AUDIO_BITRATE_VALUES,
+  DOWNLOAD_CONCURRENCY_VALUES,
+  DOWNLOAD_STAGGER_VALUES,
+  DOWNLOAD_VIDEO_HEIGHT_VALUES,
+  normalizeDownloadFilenamePattern,
+  normalizeDownloadSettings as normalizeSharedDownloadSettings,
+} from '../shared/settings/downloadSettings.js'
+import {
+  createYtDlpCookieSettingsDefaults,
+  composeCookiesFromBrowserSpec as composeSharedCookiesFromBrowserSpec,
+  getSupportedCookieBrowsersForPlatform,
+  getYtDlpCookieCapabilities as getSharedYtDlpCookieCapabilities,
+  normalizeCookieSettingText,
+  normalizeYtDlpCookieSettings as normalizeSharedYtDlpCookieSettings,
+  toPersistedYtDlpCookieSettings as toPersistedSharedYtDlpCookieSettings,
+  validateYtDlpCookieSettings as validateSharedYtDlpCookieSettings,
+  YT_DLP_COOKIE_CHROMIUM_BROWSERS,
+  YT_DLP_COOKIE_SUPPORTED_KEYRINGS,
+} from '../shared/settings/ytDlpCookieSettings.js'
+import {
+  normalizeSearchProvider as normalizeSharedSearchProvider,
+  SEARCH_OFFSET_MAX,
+  SEARCH_PAGE_SIZE,
+  SEARCH_PROVIDER_KEYS,
+  SEARCH_QUERY_MAX_LENGTH,
+  SEARCH_RUNTIME_MAX_RESULTS,
+  SEARCH_RUNTIME_MAX_SELECTED_ENTRIES,
+} from '../shared/search/searchConfig.js'
+import {
+  createFallbackPersistedTab,
+  DOWNLOADER_AUDIO_FORMAT_LIMIT,
+  DOWNLOADER_THUMBNAIL_LIMIT,
+  DOWNLOADER_VIDEO_FORMAT_LIMIT,
+  normalizePersistedTabState,
+  normalizeSearchRuntimeState,
+  normalizeTabPath as normalizeSharedTabPath,
+  normalizeTabRuntimeState,
+  normalizeTabSearch as normalizeSharedTabSearch,
+  normalizeTabTitle as normalizeSharedTabTitle,
+  TAB_ALLOWED_PATHS,
+  TAB_STATE_MAX_PERSISTED_TABS,
+} from '../shared/tabs/tabRuntime.js'
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const sqlite3 = require("sqlite3").verbose();
@@ -102,63 +151,29 @@ const AUTO_DOWNLOAD_SETTINGS_KEY = 'ui.autoDownload.settings.v1'
 const DOWNLOAD_SETTINGS_KEY = 'ui.download.settings.v1'
 const TOOL_UPDATER_SETTINGS_KEY = 'tools.updater.settings.v1'
 const YT_DLP_COOKIE_SETTINGS_KEY = 'ytDlp.cookies.settings.v1'
-const MAX_PERSISTED_TABS = 30
-const MAX_TAB_SEARCH_RESULTS = 120
-const MAX_TAB_SEARCH_SELECTED_ENTRIES = 160
-const MAX_TAB_DOWNLOADER_AUDIO_FORMATS = 240
-const MAX_TAB_DOWNLOADER_VIDEO_FORMATS = 240
-const MAX_TAB_DOWNLOADER_THUMBNAILS = 140
+const MAX_PERSISTED_TABS = TAB_STATE_MAX_PERSISTED_TABS
+const MAX_TAB_SEARCH_RESULTS = SEARCH_RUNTIME_MAX_RESULTS
+const MAX_TAB_SEARCH_SELECTED_ENTRIES = SEARCH_RUNTIME_MAX_SELECTED_ENTRIES
+const MAX_TAB_DOWNLOADER_AUDIO_FORMATS = DOWNLOADER_AUDIO_FORMAT_LIMIT
+const MAX_TAB_DOWNLOADER_VIDEO_FORMATS = DOWNLOADER_VIDEO_FORMAT_LIMIT
+const MAX_TAB_DOWNLOADER_THUMBNAILS = DOWNLOADER_THUMBNAIL_LIMIT
 const TAB_DOWNLOADER_THUMBNAIL_MAX_OPTIONS = 7
 const TAB_DOWNLOADER_THUMBNAIL_MIN_DIMENSION = 64
 const TAB_DOWNLOADER_THUMBNAIL_TARGET_HEIGHTS = Object.freeze([2160, 1440, 1080, 720, 480, 360, 240, 180, 120, 90])
-const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
-const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
-const DOWNLOAD_CONCURRENT_OPTIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8])
-const DOWNLOAD_STAGGER_OPTIONS = new Set([0, 100, 150, 250, 500, 1000])
-const DOWNLOAD_BITRATE_OPTIONS = new Set([0, 96, 128, 160, 192, 256, 320])
-const DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set([0, 360, 480, 720, 1080, 1440, 2160])
-const DOWNLOAD_LOCATION_MODE_OPTIONS = new Set(['all', 'separate'])
+const AUTO_DOWNLOAD_BITRATE_OPTIONS = new Set(DOWNLOAD_AUDIO_BITRATE_VALUES)
+const AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set(DOWNLOAD_VIDEO_HEIGHT_VALUES)
+const DOWNLOAD_CONCURRENT_OPTIONS = new Set(DOWNLOAD_CONCURRENCY_VALUES)
+const DOWNLOAD_STAGGER_OPTIONS = new Set(DOWNLOAD_STAGGER_VALUES)
+const DOWNLOAD_BITRATE_OPTIONS = new Set(DOWNLOAD_AUDIO_BITRATE_VALUES)
+const DOWNLOAD_VIDEO_HEIGHT_OPTIONS = new Set(DOWNLOAD_VIDEO_HEIGHT_VALUES)
 const DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH = 180
-const DOWNLOAD_FILENAME_PATTERN_TOKEN_REGEX = /\{(title|artist|uploader|service|type|id|date|time|datetime)\}/gi
 const META_FORMATS_CACHE_TTL_MS = 10 * 60 * 1000
 const META_FORMATS_CACHE_MAX_ENTRIES = 500
-const SEARCH_PROVIDER_OPTIONS = new Set(['youtube', 'youtubemusic', 'spotify', 'soundcloud'])
-const SEARCH_QUERY_MAX_LENGTH = 300
-const SEARCH_PAGE_SIZE = 10
-const SEARCH_OFFSET_MAX = 500
-const YT_DLP_COOKIE_SUPPORTED_BROWSERS = Object.freeze(['brave', 'chrome', 'chromium', 'edge', 'firefox', 'opera', 'safari', 'vivaldi', 'whale'])
-const YT_DLP_COOKIE_CHROMIUM_BROWSERS = new Set(['brave', 'chrome', 'chromium', 'edge', 'opera', 'vivaldi', 'whale'])
-const YT_DLP_COOKIE_SUPPORTED_KEYRINGS = Object.freeze(['basictext', 'gnomekeyring', 'kwallet', 'kwallet5', 'kwallet6'])
-const YT_DLP_COOKIE_SPEC_REGEX = /^(?<name>[^+:]+)(?:\s*\+\s*(?<keyring>[^:]+))?(?:\s*:\s*(?!:)(?<profile>.+?))?(?:\s*::\s*(?<container>.+))?$/
-const DEFAULT_AUTO_DOWNLOAD_SETTINGS = Object.freeze({
-  useMetadata: true,
-  embedCoverArt: true,
-  maxAudioBitrateKbps: 0,
-  maxVideoHeight: 0,
-  useFixedDownloadPath: false,
-  fixedDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
-})
-const DEFAULT_DOWNLOAD_SETTINGS = Object.freeze({
-  maxConcurrentDownloads: 3,
-  staggerDownloadsMs: 150,
-  defaultAudioContainer: 'mp3',
-  defaultVideoContainer: 'mp4',
-  defaultEmbedCoverArt: true,
-  maxAudioBitrateKbps: 0,
-  maxVideoHeight: 0,
-  audioFilenamePattern: '{title}',
-  videoFilenamePattern: '{title}',
-  thumbnailFilenamePattern: '{title}',
-  downloadLocationMode: 'all',
-  globalDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
-  globalAlwaysAsk: true,
-  audioDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
-  videoDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
-  thumbnailDownloadPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
-  audioAlwaysAsk: true,
-  videoAlwaysAsk: true,
-  thumbnailAlwaysAsk: true,
-})
+const SEARCH_PROVIDER_OPTIONS = new Set(SEARCH_PROVIDER_KEYS)
+const DEFAULT_AUTO_DOWNLOAD_SETTINGS =
+  createAutoDownloadSettingsDefaults(DEFAULT_SYSTEM_DOWNLOADS_DIR)
+const DEFAULT_DOWNLOAD_SETTINGS =
+  createDownloadSettingsDefaults(DEFAULT_SYSTEM_DOWNLOADS_DIR)
 const DEFAULT_TOOL_UPDATER_SETTINGS = Object.freeze({
   ytDlpAutoUpdate: true,
   ffmpegAutoUpdate: true,
@@ -171,16 +186,7 @@ const TOOL_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 const TOOL_UPDATE_SCHEDULER_TICK_MS = 5 * 60 * 1000
 const metaFormatsCache = new Map()
 const metaFormatsInFlight = new Map()
-const ALLOWED_TAB_PATHS = new Set([
-  '/',
-  '/search',
-  '/downloads',
-  '/support',
-  '/youtube-downloader',
-  '/reddit-downloader',
-  '/x-downloader',
-  '/generic-downloader',
-])
+const ALLOWED_TAB_PATHS = new Set(TAB_ALLOWED_PATHS)
 const YT_DLP_JS_RUNTIMES = String(process.env.YT_DLP_JS_RUNTIMES || 'node').trim() || 'node'
 const YT_DLP_JS_RUNTIME_ARGS = ['--js-runtimes', YT_DLP_JS_RUNTIMES]
 const YT_DLP_COOKIES_FILE_ENV = String(process.env.YT_DLP_COOKIES_FILE || '').trim()
@@ -312,657 +318,109 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '25mb' }))
 
 function normalizeTabPath(value) {
-  const raw = String(value || '').trim()
-  return ALLOWED_TAB_PATHS.has(raw) ? raw : '/'
+  return normalizeSharedTabPath(value)
 }
 
 function normalizeTabSearch(value) {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-
-  const prefixed = raw.startsWith('?') ? raw : `?${raw}`
-  if (prefixed.length > 1024) return prefixed.slice(0, 1024)
-  return prefixed
+  return normalizeSharedTabSearch(value)
 }
 
 function normalizeTabTitle(value) {
-  const raw = String(value || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim()
-  if (!raw) return ''
-  return raw.slice(0, 180)
+  return normalizeSharedTabTitle(value)
 }
 
 function createFallbackTab() {
-  return {
-    id: 'tab-home',
-    path: '/',
-    search: '',
-    pageTitle: '',
-    runtime: normalizeTabRuntimePayload(null),
-  }
-}
-
-function normalizeTabRuntimeText(value, maxLength = 200) {
-  const raw = String(value || '')
-    .replace(/[\u0000-\u001F\u007F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (!raw) return ''
-  return raw.slice(0, maxLength)
-}
-
-function normalizeTabRuntimeUrl(value, maxLength = 2048) {
-  return normalizeTabRuntimeText(value, maxLength)
-}
-
-function normalizeTabRuntimeNumber(value, min = 0, max = Number.MAX_SAFE_INTEGER) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return min
-  return Math.min(max, Math.max(min, numeric))
-}
-
-function normalizeTabRuntimeServiceKey(value) {
-  return normalizeServiceKey(value) || ''
-}
-
-function normalizeTabRuntimeSearchProvider(value) {
-  const normalized = String(value || '').trim().toLowerCase()
-  if (SEARCH_PROVIDER_OPTIONS.has(normalized)) return normalized
-  return 'youtube'
-}
-
-function normalizeTabRuntimeAudioFormat(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const formatId = normalizeTabRuntimeText(value.formatId, 80)
-  if (!formatId) return null
-
-  return {
-    formatId,
-    ext: normalizeTabRuntimeText(value.ext, 12),
-    abr: normalizeTabRuntimeNumber(value.abr, 0, 2000),
-    acodec: normalizeTabRuntimeText(value.acodec, 80),
-    filesize: normalizeTabRuntimeNumber(value.filesize, 0, 500 * 1024 * 1024 * 1024),
-  }
-}
-
-function normalizeTabRuntimeVideoFormat(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const formatId = normalizeTabRuntimeText(value.formatId, 80)
-  if (!formatId) return null
-
-  return {
-    formatId,
-    ext: normalizeTabRuntimeText(value.ext, 12),
-    resolution: normalizeTabRuntimeText(value.resolution, 40),
-    width: normalizeTabRuntimeNumber(value.width, 0, 20000),
-    height: normalizeTabRuntimeNumber(value.height, 0, 20000),
-    vcodec: normalizeTabRuntimeText(value.vcodec, 80),
-    acodec: normalizeTabRuntimeText(value.acodec, 80),
-    filesize: normalizeTabRuntimeNumber(value.filesize, 0, 500 * 1024 * 1024 * 1024),
-    fps: normalizeTabRuntimeNumber(value.fps, 0, 600),
-    requiresMerge: Boolean(value.requiresMerge),
-  }
-}
-
-function normalizeTabRuntimeThumbnail(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const url = normalizeTabRuntimeUrl(value.url)
-  if (!url) return null
-
-  return {
-    url,
-    id: normalizeTabRuntimeText(value.id, 32),
-    width: normalizeTabRuntimeNumber(value.width, 0, 20000),
-    height: normalizeTabRuntimeNumber(value.height, 0, 20000),
-    preference: normalizeTabRuntimeNumber(value.preference, -9999, 9999),
-  }
-}
-
-function normalizeTabRuntimeFormatsCache(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const audioFormats = Array.isArray(value.audioFormats)
-    ? value.audioFormats
-      .map(normalizeTabRuntimeAudioFormat)
-      .filter(Boolean)
-      .slice(0, MAX_TAB_DOWNLOADER_AUDIO_FORMATS)
-    : []
-
-  const videoFormats = Array.isArray(value.videoFormats)
-    ? value.videoFormats
-      .map(normalizeTabRuntimeVideoFormat)
-      .filter(Boolean)
-      .slice(0, MAX_TAB_DOWNLOADER_VIDEO_FORMATS)
-    : []
-
-  const thumbnails = Array.isArray(value.thumbnails)
-    ? value.thumbnails
-      .map(normalizeTabRuntimeThumbnail)
-      .filter(Boolean)
-      .slice(0, MAX_TAB_DOWNLOADER_THUMBNAILS)
-    : []
-
-  return {
-    title: normalizeTabRuntimeText(value.title, 240),
-    author: normalizeTabRuntimeText(value.author, 180),
-    extractor: normalizeTabRuntimeText(value.extractor, 120),
-    thumbnail: normalizeTabRuntimeUrl(value.thumbnail),
-    duration: normalizeTabRuntimeNumber(value.duration, 0, 60 * 60 * 24 * 365),
-    durationString: normalizeTabRuntimeText(value.durationString, 32),
-    audioFormats,
-    videoFormats,
-    thumbnails,
-  }
-}
-
-function normalizeTabRuntimeDownloaderMeta(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const url = normalizeTabRuntimeUrl(value.url)
-  if (!url) return null
-
-  return {
-    service: normalizeTabRuntimeServiceKey(value.service),
-    url,
-    title: normalizeTabRuntimeText(value.title, 240),
-    author: normalizeTabRuntimeText(value.author, 180),
-    provider: normalizeTabRuntimeText(value.provider, 120),
-    thumbnail: normalizeTabRuntimeUrl(value.thumbnail),
-    duration: normalizeTabRuntimeText(value.duration, 32),
-    durationSeconds: normalizeTabRuntimeNumber(value.durationSeconds, 0, 60 * 60 * 24 * 365),
-    preloadedFormats: normalizeTabRuntimeFormatsCache(value.preloadedFormats),
-  }
-}
-
-function normalizeTabRuntimeDownloaderFetchError(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const url = normalizeTabRuntimeUrl(value.url)
-  const message = normalizeTabRuntimeText(value.message, 600)
-  if (!url || !message) return null
-
-  return { url, message }
-}
-
-function normalizeTabRuntimeDownloaderCache(value) {
-  const input = (value && typeof value === 'object') ? value : {}
-
-  return {
-    sourceUrl: normalizeTabRuntimeUrl(input.sourceUrl),
-    sourceServiceKey: normalizeTabRuntimeServiceKey(input.sourceServiceKey),
-    inputValue: normalizeTabRuntimeUrl(input.inputValue),
-    meta: normalizeTabRuntimeDownloaderMeta(input.meta),
-    fetchError: normalizeTabRuntimeDownloaderFetchError(input.fetchError),
-  }
-}
-
-function normalizeTabRuntimeSearchResult(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const url = normalizeTabRuntimeUrl(value.url)
-  if (!url) return null
-
-  const title = normalizeTabRuntimeText(value.title, 320)
-
-  return {
-    id: normalizeTabRuntimeText(value.id, 120),
-    url,
-    title: title || url,
-    uploader: normalizeTabRuntimeText(value.uploader, 180),
-    thumbnail: normalizeTabRuntimeUrl(value.thumbnail),
-    duration: normalizeTabRuntimeNumber(value.duration, 0, 60 * 60 * 24 * 365),
-    durationString: normalizeTabRuntimeText(value.durationString, 32),
-    service: normalizeTabRuntimeServiceKey(value.service),
-  }
-}
-
-function normalizeTabRuntimeSearchSelectedEntry(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const identity = normalizeTabRuntimeText(value.identity, 260)
-  const url = normalizeTabRuntimeUrl(value.url)
-  if (!identity || !url) return null
-
-  return {
-    identity,
-    url,
-    service: normalizeTabRuntimeServiceKey(value.service),
-    title: normalizeTabRuntimeText(value.title, 240),
-    thumbnail: normalizeTabRuntimeUrl(value.thumbnail),
-  }
-}
-
-function normalizeTabRuntimeSearchCache(value) {
-  const input = (value && typeof value === 'object') ? value : {}
-
-  const results = Array.isArray(input.results)
-    ? input.results
-      .map(normalizeTabRuntimeSearchResult)
-      .filter(Boolean)
-      .slice(0, MAX_TAB_SEARCH_RESULTS)
-    : []
-
-  const selectedEntries = Array.isArray(input.selectedEntries)
-    ? input.selectedEntries
-      .map(normalizeTabRuntimeSearchSelectedEntry)
-      .filter(Boolean)
-      .slice(0, MAX_TAB_SEARCH_SELECTED_ENTRIES)
-    : []
-
-  return {
-    query: normalizeTabRuntimeText(input.query, 300),
-    selectedService: normalizeTabRuntimeSearchProvider(input.selectedService),
-    results,
-    errorMessage: normalizeTabRuntimeText(input.errorMessage, 600),
-    lastQuery: normalizeTabRuntimeText(input.lastQuery, 300),
-    lastService: normalizeTabRuntimeSearchProvider(input.lastService),
-    nextOffset: normalizeTabRuntimeNumber(input.nextOffset, 0, 5000),
-    hasMore: Boolean(input.hasMore),
-    selectedEntries,
-  }
+  return createFallbackPersistedTab()
 }
 
 function normalizeTabRuntimePayload(value) {
-  const input = (value && typeof value === 'object') ? value : {}
-  return {
-    downloader: normalizeTabRuntimeDownloaderCache(input.downloader),
-    search: normalizeTabRuntimeSearchCache(input.search),
-  }
+  return normalizeTabRuntimeState(value)
 }
 
 function normalizeAutoDownloadSettingsPayload(value) {
-  const input = (value && typeof value === 'object') ? value : {}
-
-  const useMetadata = input.useMetadata !== undefined
-    ? Boolean(input.useMetadata)
-    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.useMetadata
-
-  const embedCoverArt = input.embedCoverArt !== undefined
-    ? Boolean(input.embedCoverArt)
-    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.embedCoverArt
-
-  const bitrateRaw = Number(input.maxAudioBitrateKbps)
-  const maxAudioBitrateKbps = AUTO_DOWNLOAD_BITRATE_OPTIONS.has(bitrateRaw)
-    ? bitrateRaw
-    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.maxAudioBitrateKbps
-
-  const heightRaw = Number(input.maxVideoHeight)
-  const maxVideoHeight = AUTO_DOWNLOAD_VIDEO_HEIGHT_OPTIONS.has(heightRaw)
-    ? heightRaw
-    : DEFAULT_AUTO_DOWNLOAD_SETTINGS.maxVideoHeight
-
-  const fixedDownloadPath = normalizeDownloadDirectoryPath(
-    input.fixedDownloadPath,
-    DEFAULT_AUTO_DOWNLOAD_SETTINGS.fixedDownloadPath,
-  )
-
-  return {
-    useMetadata,
-    embedCoverArt,
-    maxAudioBitrateKbps,
-    maxVideoHeight,
-    useFixedDownloadPath: input.useFixedDownloadPath !== undefined
-      ? Boolean(input.useFixedDownloadPath)
-      : DEFAULT_AUTO_DOWNLOAD_SETTINGS.useFixedDownloadPath,
-    fixedDownloadPath,
-  }
+  return normalizeSharedAutoDownloadSettings(value, {
+    defaultPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
+    normalizePath: normalizeDownloadDirectoryPath,
+  })
 }
 
 function normalizeDownloadSettingsPayload(value) {
-  const input = (value && typeof value === 'object') ? value : {}
-
-  const maxConcurrentRaw = Number(input.maxConcurrentDownloads)
-  const staggerRaw = Number(input.staggerDownloadsMs)
-  const audioContainerRaw = normalizeAudioContainer(input.defaultAudioContainer)
-  const videoContainerRaw = normalizeVideoContainer(input.defaultVideoContainer)
-  const maxAudioBitrateRaw = Number(input.maxAudioBitrateKbps)
-  const maxVideoHeightRaw = Number(input.maxVideoHeight)
-  const audioFilenamePattern = normalizeDownloadFilenamePattern(
-    input.audioFilenamePattern,
-    DEFAULT_DOWNLOAD_SETTINGS.audioFilenamePattern
-  )
-  const videoFilenamePattern = normalizeDownloadFilenamePattern(
-    input.videoFilenamePattern,
-    DEFAULT_DOWNLOAD_SETTINGS.videoFilenamePattern
-  )
-  const thumbnailFilenamePattern = normalizeDownloadFilenamePattern(
-    input.thumbnailFilenamePattern,
-    DEFAULT_DOWNLOAD_SETTINGS.thumbnailFilenamePattern
-  )
-  const downloadLocationModeRaw = String(input.downloadLocationMode || '').trim().toLowerCase()
-
-  const globalDownloadPath = normalizeDownloadDirectoryPath(
-    input.globalDownloadPath,
-    DEFAULT_DOWNLOAD_SETTINGS.globalDownloadPath
-  )
-  const audioDownloadPath = normalizeDownloadDirectoryPath(
-    input.audioDownloadPath,
-    DEFAULT_DOWNLOAD_SETTINGS.audioDownloadPath
-  )
-  const videoDownloadPath = normalizeDownloadDirectoryPath(
-    input.videoDownloadPath,
-    DEFAULT_DOWNLOAD_SETTINGS.videoDownloadPath
-  )
-  const thumbnailDownloadPath = normalizeDownloadDirectoryPath(
-    input.thumbnailDownloadPath,
-    DEFAULT_DOWNLOAD_SETTINGS.thumbnailDownloadPath
-  )
-
-  return {
-    maxConcurrentDownloads: DOWNLOAD_CONCURRENT_OPTIONS.has(maxConcurrentRaw)
-      ? maxConcurrentRaw
-      : DEFAULT_DOWNLOAD_SETTINGS.maxConcurrentDownloads,
-    staggerDownloadsMs: DOWNLOAD_STAGGER_OPTIONS.has(staggerRaw)
-      ? staggerRaw
-      : DEFAULT_DOWNLOAD_SETTINGS.staggerDownloadsMs,
-    defaultAudioContainer: audioContainerRaw || DEFAULT_DOWNLOAD_SETTINGS.defaultAudioContainer,
-    defaultVideoContainer: videoContainerRaw || DEFAULT_DOWNLOAD_SETTINGS.defaultVideoContainer,
-    defaultEmbedCoverArt: input.defaultEmbedCoverArt !== undefined
-      ? Boolean(input.defaultEmbedCoverArt)
-      : DEFAULT_DOWNLOAD_SETTINGS.defaultEmbedCoverArt,
-    maxAudioBitrateKbps: DOWNLOAD_BITRATE_OPTIONS.has(maxAudioBitrateRaw)
-      ? maxAudioBitrateRaw
-      : DEFAULT_DOWNLOAD_SETTINGS.maxAudioBitrateKbps,
-    maxVideoHeight: DOWNLOAD_VIDEO_HEIGHT_OPTIONS.has(maxVideoHeightRaw)
-      ? maxVideoHeightRaw
-      : DEFAULT_DOWNLOAD_SETTINGS.maxVideoHeight,
-    audioFilenamePattern,
-    videoFilenamePattern,
-    thumbnailFilenamePattern,
-    downloadLocationMode: DOWNLOAD_LOCATION_MODE_OPTIONS.has(downloadLocationModeRaw)
-      ? downloadLocationModeRaw
-      : DEFAULT_DOWNLOAD_SETTINGS.downloadLocationMode,
-    globalDownloadPath,
-    globalAlwaysAsk: input.globalAlwaysAsk !== undefined
-      ? Boolean(input.globalAlwaysAsk)
-      : DEFAULT_DOWNLOAD_SETTINGS.globalAlwaysAsk,
-    audioDownloadPath,
-    videoDownloadPath,
-    thumbnailDownloadPath,
-    audioAlwaysAsk: input.audioAlwaysAsk !== undefined
-      ? Boolean(input.audioAlwaysAsk)
-      : DEFAULT_DOWNLOAD_SETTINGS.audioAlwaysAsk,
-    videoAlwaysAsk: input.videoAlwaysAsk !== undefined
-      ? Boolean(input.videoAlwaysAsk)
-      : DEFAULT_DOWNLOAD_SETTINGS.videoAlwaysAsk,
-    thumbnailAlwaysAsk: input.thumbnailAlwaysAsk !== undefined
-      ? Boolean(input.thumbnailAlwaysAsk)
-      : DEFAULT_DOWNLOAD_SETTINGS.thumbnailAlwaysAsk,
-  }
-}
-
-function normalizeCookieSettingText(value, maxLength = 2048) {
-  const raw = String(value || '')
-    .replace(/\u0000/g, '')
-    .replace(/[\u0000-\u001F\u007F]/g, ' ')
-    .trim()
-  if (!raw) return ''
-  return raw.slice(0, maxLength)
-}
-
-function normalizeCookieBrowser(value) {
-  const normalized = String(value || '').trim().toLowerCase()
-  return YT_DLP_COOKIE_SUPPORTED_BROWSERS.includes(normalized) ? normalized : ''
-}
-
-function normalizeCookieKeyring(value) {
-  const normalized = String(value || '').trim().toLowerCase()
-  return YT_DLP_COOKIE_SUPPORTED_KEYRINGS.includes(normalized) ? normalized : ''
-}
-
-function parseCookiesFromBrowserSpec(rawSpec) {
-  const spec = normalizeCookieSettingText(rawSpec, 4096)
-  if (!spec) {
-    return {
-      valid: true,
-      browserName: '',
-      browserKeyring: '',
-      browserProfile: '',
-      browserContainer: '',
-    }
-  }
-
-  const match = spec.match(YT_DLP_COOKIE_SPEC_REGEX)
-  if (!match || !match.groups) {
-    return {
-      valid: false,
-      browserName: '',
-      browserKeyring: '',
-      browserProfile: '',
-      browserContainer: '',
-    }
-  }
-
-  const browserName = normalizeCookieBrowser(match.groups.name)
-  const browserKeyringRaw = normalizeCookieSettingText(match.groups.keyring || '', 128)
-  const browserKeyring = normalizeCookieKeyring(browserKeyringRaw)
-  const browserProfile = normalizeCookieSettingText(match.groups.profile || '', 1024)
-  const browserContainer = normalizeCookieSettingText(match.groups.container || '', 256)
-
-  if (!browserName) {
-    return {
-      valid: false,
-      browserName: '',
-      browserKeyring: '',
-      browserProfile: '',
-      browserContainer: '',
-    }
-  }
-
-  if (browserKeyringRaw && !browserKeyring) {
-    return {
-      valid: false,
-      browserName: '',
-      browserKeyring: '',
-      browserProfile: '',
-      browserContainer: '',
-    }
-  }
-
-  return {
-    valid: true,
-    browserName,
-    browserKeyring,
-    browserProfile,
-    browserContainer,
-  }
+  return normalizeSharedDownloadSettings(value, {
+    defaultPath: DEFAULT_SYSTEM_DOWNLOADS_DIR,
+    normalizePath: normalizeDownloadDirectoryPath,
+  })
 }
 
 function getSupportedCookieBrowsersForCurrentPlatform() {
-  if (process.platform === 'darwin') {
-    return [...YT_DLP_COOKIE_SUPPORTED_BROWSERS]
-  }
-  return YT_DLP_COOKIE_SUPPORTED_BROWSERS.filter((browser) => browser !== 'safari')
+  return getSupportedCookieBrowsersForPlatform(process.platform)
 }
 
 function getYtDlpCookieCapabilities() {
-  return {
+  return getSharedYtDlpCookieCapabilities({
     runtimeTarget: YLOADER_RUNTIME_TARGET,
     browserImportSupported: Boolean(YLOADER_ALLOW_BROWSER_COOKIE_IMPORT),
     supportedBrowsers: YLOADER_ALLOW_BROWSER_COOKIE_IMPORT
       ? getSupportedCookieBrowsersForCurrentPlatform()
       : [],
     supportedKeyrings: [...YT_DLP_COOKIE_SUPPORTED_KEYRINGS],
-  }
+  })
 }
 
 function createDefaultYtDlpCookieSettings() {
-  const parsed = parseCookiesFromBrowserSpec(YT_DLP_COOKIES_FROM_BROWSER_ENV)
-  const browserEnabled = parsed.valid && Boolean(parsed.browserName)
-
-  return {
-    cookiesFileEnabled: Boolean(normalizeCookieSettingText(YT_DLP_COOKIES_FILE_ENV)),
-    cookiesFilePath: normalizeCookieSettingText(YT_DLP_COOKIES_FILE_ENV),
-    cookiesFromBrowserEnabled: browserEnabled,
-    browserName: browserEnabled ? parsed.browserName : '',
-    browserKeyring: browserEnabled ? parsed.browserKeyring : '',
-    browserProfile: browserEnabled ? parsed.browserProfile : '',
-    browserContainer: browserEnabled ? parsed.browserContainer : '',
-  }
+  return createYtDlpCookieSettingsDefaults({
+    browserImportSupported: YLOADER_ALLOW_BROWSER_COOKIE_IMPORT,
+    runtimeTarget: YLOADER_RUNTIME_TARGET,
+    supportedBrowsers: YLOADER_ALLOW_BROWSER_COOKIE_IMPORT
+      ? getSupportedCookieBrowsersForCurrentPlatform()
+      : [],
+    supportedKeyrings: [...YT_DLP_COOKIE_SUPPORTED_KEYRINGS],
+    cookiesFilePath: YT_DLP_COOKIES_FILE_ENV,
+    cookiesFromBrowserSpec: YT_DLP_COOKIES_FROM_BROWSER_ENV,
+  })
 }
 
 function normalizeYtDlpCookieSettingsPayload(value, { browserImportSupported = YLOADER_ALLOW_BROWSER_COOKIE_IMPORT } = {}) {
-  const defaults = createDefaultYtDlpCookieSettings()
-  const input = (value && typeof value === 'object') ? value : {}
-
-  const cookiesFileEnabledRaw = input.cookiesFileEnabled !== undefined
-    ? Boolean(input.cookiesFileEnabled)
-    : defaults.cookiesFileEnabled
-
-  const cookiesFilePath = normalizeCookieSettingText(
-    input.cookiesFilePath !== undefined ? input.cookiesFilePath : defaults.cookiesFilePath,
-    4096,
-  )
-
-  let browserName = normalizeCookieBrowser(
-    input.browserName !== undefined ? input.browserName : defaults.browserName
-  )
-  let browserKeyring = normalizeCookieKeyring(
-    input.browserKeyring !== undefined ? input.browserKeyring : defaults.browserKeyring
-  )
-  let browserProfile = normalizeCookieSettingText(
-    input.browserProfile !== undefined ? input.browserProfile : defaults.browserProfile,
-    1024,
-  )
-  let browserContainer = normalizeCookieSettingText(
-    input.browserContainer !== undefined ? input.browserContainer : defaults.browserContainer,
-    256,
-  )
-
-  const browserEnabledFromInput = input.cookiesFromBrowserEnabled !== undefined
-    ? Boolean(input.cookiesFromBrowserEnabled)
-    : defaults.cookiesFromBrowserEnabled
-
-  const supportedBrowsers = new Set(getSupportedCookieBrowsersForCurrentPlatform())
-  if (!supportedBrowsers.has(browserName)) {
-    browserName = ''
-    browserKeyring = ''
-    browserProfile = ''
-    browserContainer = ''
-  }
-
-  if (!YT_DLP_COOKIE_CHROMIUM_BROWSERS.has(browserName)) {
-    browserKeyring = ''
-  }
-
-  if (browserName !== 'firefox') {
-    browserContainer = ''
-  }
-
-  const cookiesFromBrowserEnabled = Boolean(
-    browserImportSupported
-    && browserEnabledFromInput
-    && browserName
-  )
-
-  const cookiesFileEnabled = Boolean(cookiesFileEnabledRaw && !cookiesFromBrowserEnabled)
-
-  return {
-    cookiesFileEnabled,
-    cookiesFilePath,
-    cookiesFromBrowserEnabled,
-    browserName,
-    browserKeyring,
-    browserProfile,
-    browserContainer,
-  }
+  return normalizeSharedYtDlpCookieSettings(value, {
+    browserImportSupported,
+    runtimeTarget: YLOADER_RUNTIME_TARGET,
+    supportedBrowsers: browserImportSupported
+      ? getSupportedCookieBrowsersForCurrentPlatform()
+      : [],
+    supportedKeyrings: [...YT_DLP_COOKIE_SUPPORTED_KEYRINGS],
+  })
 }
 
 function composeCookiesFromBrowserSpec(settings) {
-  const browserName = normalizeCookieBrowser(settings?.browserName)
-  if (!browserName) return ''
-
-  let spec = browserName
-
-  const keyring = normalizeCookieKeyring(settings?.browserKeyring)
-  if (keyring && YT_DLP_COOKIE_CHROMIUM_BROWSERS.has(browserName)) {
-    spec += `+${keyring}`
-  }
-
-  const profile = normalizeCookieSettingText(settings?.browserProfile, 1024)
-  if (profile) {
-    spec += `:${profile}`
-  }
-
-  const container = normalizeCookieSettingText(settings?.browserContainer, 256)
-  if (browserName === 'firefox' && container) {
-    spec += `::${container}`
-  }
-
-  return spec
+  return composeSharedCookiesFromBrowserSpec(settings, {
+    supportedBrowsers: getSupportedCookieBrowsersForCurrentPlatform(),
+    supportedKeyrings: [...YT_DLP_COOKIE_SUPPORTED_KEYRINGS],
+  })
 }
 
 function toPersistedYtDlpCookieSettings(settings) {
-  return {
-    cookiesFileEnabled: Boolean(settings?.cookiesFileEnabled),
-    cookiesFilePath: normalizeCookieSettingText(settings?.cookiesFilePath, 4096),
-    cookiesFromBrowserEnabled: Boolean(settings?.cookiesFromBrowserEnabled),
-    browserName: normalizeCookieBrowser(settings?.browserName),
-    browserKeyring: normalizeCookieKeyring(settings?.browserKeyring),
-    browserProfile: normalizeCookieSettingText(settings?.browserProfile, 1024),
-    browserContainer: normalizeCookieSettingText(settings?.browserContainer, 256),
-  }
+  return toPersistedSharedYtDlpCookieSettings(settings, {
+    supportedBrowsers: getSupportedCookieBrowsersForCurrentPlatform(),
+    supportedKeyrings: [...YT_DLP_COOKIE_SUPPORTED_KEYRINGS],
+  })
 }
 
 function validateYtDlpCookieSettings(settings, { browserImportSupported = YLOADER_ALLOW_BROWSER_COOKIE_IMPORT } = {}) {
-  const normalized = normalizeYtDlpCookieSettingsPayload(settings, { browserImportSupported })
-  if (normalized.cookiesFileEnabled && !normalizeCookieSettingText(normalized.cookiesFilePath, 4096)) {
-    return 'Cookie file path is required when cookie file import is enabled'
-  }
-
-  if (normalized.cookiesFromBrowserEnabled) {
-    if (!browserImportSupported) {
-      return 'Browser cookie import is not supported in this runtime mode'
-    }
-    if (!normalized.browserName) {
-      return 'Browser selection is required when browser cookie import is enabled'
-    }
-  }
-
-  return ''
+  return validateSharedYtDlpCookieSettings(settings, {
+    browserImportSupported,
+    runtimeTarget: YLOADER_RUNTIME_TARGET,
+    supportedBrowsers: browserImportSupported
+      ? getSupportedCookieBrowsersForCurrentPlatform()
+      : [],
+    supportedKeyrings: [...YT_DLP_COOKIE_SUPPORTED_KEYRINGS],
+  })
 }
 
 function attachYtDlpCookieCapabilities(settings) {
-  const normalized = normalizeYtDlpCookieSettingsPayload(settings)
-  return {
-    ...normalized,
-    ...getYtDlpCookieCapabilities(),
-  }
+  return normalizeYtDlpCookieSettingsPayload(settings)
 }
 
 function normalizeTabsStatePayload(value) {
-  const inputTabs = Array.isArray(value?.tabs) ? value.tabs : []
-  const normalizedTabs = []
-  const seenIds = new Set()
-
-  for (let i = 0; i < inputTabs.length && normalizedTabs.length < MAX_PERSISTED_TABS; i += 1) {
-    const tab = inputTabs[i] || {}
-    const rawId = String(tab.id || '').trim().slice(0, 80)
-    const id = rawId || `tab-${i + 1}`
-    if (seenIds.has(id)) continue
-    seenIds.add(id)
-
-    normalizedTabs.push({
-      id,
-      path: normalizeTabPath(tab.path),
-      search: normalizeTabSearch(tab.search),
-      pageTitle: normalizeTabTitle(tab.pageTitle),
-      runtime: normalizeTabRuntimePayload(tab.runtime),
-    })
-  }
-
-  if (!normalizedTabs.length) {
-    normalizedTabs.push(createFallbackTab())
-  }
-
-  const requestedActiveId = String(value?.activeTabId || '').trim()
-  const activeTabId = normalizedTabs.some((tab) => tab.id === requestedActiveId)
-    ? requestedActiveId
-    : normalizedTabs[0].id
-
-  return { tabs: normalizedTabs, activeTabId }
+  return normalizePersistedTabState(value)
 }
 
 function readSettingValue(key) {
@@ -1762,22 +1220,6 @@ function sanitizeFilename(str, maxLen = 200) {
   return sanitized
 }
 
-function normalizeDownloadFilenamePattern(value, fallbackPattern = '{title}') {
-  const fallback = String(fallbackPattern || '{title}')
-    .replace(/[\u0000-\u001F\u007F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH)
-
-  const raw = String(value ?? '')
-    .replace(/[\u0000-\u001F\u007F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, DOWNLOAD_FILENAME_PATTERN_MAX_LENGTH)
-
-  return raw || fallback || '{title}'
-}
-
 function padDateTimeSegment(value) {
   const numeric = Number(value)
   const normalized = Number.isFinite(numeric) ? Math.max(0, Math.floor(numeric)) : 0
@@ -2117,9 +1559,7 @@ function parseYtDlpJson(raw) {
 }
 
 function normalizeSearchProvider(value) {
-  const normalized = String(value || '').trim().toLowerCase()
-  if (SEARCH_PROVIDER_OPTIONS.has(normalized)) return normalized
-  return 'youtube'
+  return normalizeSharedSearchProvider(value)
 }
 
 function normalizeSearchOffset(value) {
