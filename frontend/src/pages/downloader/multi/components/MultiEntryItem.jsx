@@ -110,51 +110,54 @@ export default function MultiEntryItem({
         }
       }}
     >
-      {/* Floating Remove Button */}
-      <IconButton
-        className="yl-multi-remove"
-        size="small"
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemoveEntry?.(entry.id)
-        }}
-        sx={{
-          position: 'absolute',
-          top: 4,
-          right: 4,
-          zIndex: 5,
-          width: 22,
-          height: 22,
-          bgcolor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.8)',
-          backdropFilter: 'blur(4px)',
-          border: '1px solid',
-          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-          color: 'text.secondary',
-          opacity: { xs: 1, sm: 0 }, // Always visible on mobile
-          transition: 'all 0.2s',
-          '&:hover': {
-            bgcolor: 'error.main',
-            color: '#fff',
-            borderColor: 'error.main',
-          }
-        }}
-      >
-        <X size={14} strokeWidth={3} />
-      </IconButton>
+      {/* Header Container for absolute positioning */}
+      <Box sx={{ position: 'relative' }}>
+        {/* Floating Remove Button */}
+        <IconButton
+          className="yl-multi-remove"
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemoveEntry?.(entry.id)
+          }}
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            right: 8,
+            transform: 'translateY(-50%)',
+            zIndex: 5,
+            width: 22,
+            height: 22,
+            bgcolor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.8)',
+            backdropFilter: 'blur(4px)',
+            border: '1px solid',
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+            color: 'text.secondary',
+            opacity: { xs: 1, sm: 0 }, // Always visible on mobile
+            transition: 'all 0.2s',
+            '&:hover': {
+              bgcolor: 'error.main',
+              color: '#fff',
+              borderColor: 'error.main',
+            }
+          }}
+        >
+          <X size={14} strokeWidth={3} />
+        </IconButton>
 
-      {/* COMPACT HEADER ROW */}
-      <Stack 
-        direction="row" 
-        spacing={1.5} 
-        alignItems="center" 
-        sx={{ 
-          p: 1.25,
-          pr: 2.5, // Make room for the floating X
-          cursor: isReady ? 'pointer' : 'default',
-          userSelect: 'none'
-        }}
-        onClick={() => isReady && onToggleExpanded?.(entry.id)}
-      >
+        {/* COMPACT HEADER ROW */}
+        <Stack 
+          direction="row" 
+          spacing={1.5} 
+          alignItems="center" 
+          sx={{ 
+            p: 1.25,
+            pr: 3.5, // Make room for the floating X
+            cursor: isReady ? 'pointer' : 'default',
+            userSelect: 'none'
+          }}
+          onClick={() => isReady && onToggleExpanded?.(entry.id)}
+        >
         {/* Compact Thumbnail */}
         <Box
           sx={{
@@ -243,6 +246,7 @@ export default function MultiEntryItem({
           </Box>
         </Stack>
       </Stack>
+      </Box>
 
       {/* Progress bar overlay for collapsed state */}
       {showProgress && !entry.expanded && (

@@ -16,6 +16,7 @@ import { openSettingsModal } from '../home/settingsBridge'
 import buildServices from './buildServices'
 import MultiEntryGroups from './multi/MultiEntryGroups'
 import useMultiEntries from './multi/useMultiEntries'
+import SimpleBarScrollArea from '../../components/SimpleBarScrollArea'
 import {
   ENTRY_DOWNLOAD_STATUS,
   ENTRY_META_STATE,
@@ -491,22 +492,43 @@ export default function MultiDownloader({
     onNavigate?.('/', '')
   }, [onNavigate])
 
-  const startAllDisabled = !settingsLoaded || startableEntries.length === 0 || activeCount > 0
+  const startAllDisabled = !settingsLoaded || startableEntries.length === 0 || activeCount > 0 || loadingCount > 0
 
   return (
-    <Box className="yl-native-scroll" sx={{ height: '100%', overflowX: 'hidden', overflowY: 'auto' }}>
-      <Box
-        sx={{
-          maxWidth: 450,
-          mx: 'auto',
-          py: { xs: 2, sm: 3 },
-          px: { xs: 1.5, sm: 2 },
-          pb: { xs: 12, sm: 14 },
+    <SimpleBarScrollArea 
+      sx={{ 
+        height: '100%',
+        '& .simplebar-content': {
           display: 'flex',
           flexDirection: 'column',
+          minHeight: '100%',
+        }
+      }} 
+      hideHorizontal
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          flexGrow: 1,
+          minHeight: '100%',
+          boxSizing: 'border-box',
         }}
       >
-        <MultiDownloaderHeader
+        <Box
+          sx={{
+            width: '100%',
+            maxWidth: 450,
+            mx: 'auto',
+            my: 'auto',
+            py: { xs: 2, sm: 3 },
+            px: { xs: 1.5, sm: 2 },
+            pb: { xs: 12, sm: 14 },
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <MultiDownloaderHeader
           i18nT={i18nT}
           entriesCount={entries.length}
           controlsExpanded={controlsExpanded}
@@ -555,6 +577,7 @@ export default function MultiDownloader({
           queueSummary={queueSummary}
         />
       </Box>
-    </Box>
+      </Box>
+    </SimpleBarScrollArea>
   )
 }

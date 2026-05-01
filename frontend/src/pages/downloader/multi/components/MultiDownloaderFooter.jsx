@@ -2,7 +2,7 @@ import React from 'react'
 import {
   Box,
   Button,
-  LinearProgress,
+  CircularProgress,
   Stack,
   Typography,
   useTheme,
@@ -21,6 +21,7 @@ export default function MultiDownloaderFooter({
 }) {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
+  const isDownloading = activeCount > 0
 
   return (
     <Box
@@ -52,8 +53,9 @@ export default function MultiDownloaderFooter({
           variant="contained"
           onClick={onStartAll}
           disabled={startAllDisabled}
-          startIcon={<Play size={20} fill="currentColor" />}
           sx={{
+            position: 'relative',
+            overflow: 'hidden',
             borderRadius: 2.5,
             py: 1.5,
             textTransform: 'none',
@@ -62,10 +64,45 @@ export default function MultiDownloaderFooter({
             boxShadow: (theme) => `0 8px 20px ${isDark ? 'rgba(0,0,0,0.4)' : theme.palette.primary.light + '40'}`,
             '&:hover': {
               boxShadow: (theme) => `0 10px 24px ${isDark ? 'rgba(0,0,0,0.5)' : theme.palette.primary.light + '60'}`,
-            }
+            },
+            '&.Mui-disabled': isDownloading ? {
+                bgcolor: isDark ? '#444' : '#c8cad0',
+                color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.6)',
+                boxShadow: 'none',
+            } : undefined
           }}
         >
-          {i18nT('multiDownloader.startAll')}
+          {isDownloading && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                bottom: 0,
+                width: `${overallProgress}%`,
+                bgcolor: 'rgba(255,255,255,0.15)',
+                transition: 'width 0.2s linear',
+                zIndex: 0,
+                height: '100%',
+              }}
+            />
+          )}
+          
+          <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, width: '100%' }}>
+            {isDownloading ? (
+              <>
+                <CircularProgress size={20} color="inherit" sx={{ color: 'inherit' }} thickness={5} />
+                <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, lineHeight: 1 }}>
+                  {overallProgress}%
+                </Typography>
+              </>
+            ) : (
+              <>
+                <Play size={20} fill="currentColor" />
+                <Box component="span">{i18nT('multiDownloader.startAll')}</Box>
+              </>
+            )}
+          </Box>
         </Button>
       </Box>
     </Box>
