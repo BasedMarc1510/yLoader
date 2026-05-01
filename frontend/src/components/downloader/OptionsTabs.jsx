@@ -106,6 +106,10 @@ export default function OptionsTabs({
     disabledDownloadTypes: normalizedDisabledDownloadTypes,
     downloadSettingsOverride,
   })
+  const selectedThumbnail = React.useMemo(
+    () => data.thumbOptions.find((option) => option.value === data.selectedThumbValue) || null,
+    [data.selectedThumbValue, data.thumbOptions]
+  )
 
   const isCompact = variant === 'compact'
 
@@ -203,7 +207,11 @@ export default function OptionsTabs({
     downloadSettings: data.downloadSettings,
     audioDownloadTargetSettings: data.audioDownloadTargetSettings,
     videoDownloadTargetSettings: data.videoDownloadTargetSettings,
+    thumbnailDownloadTargetSettings: data.thumbnailDownloadTargetSettings,
     forcedDownloadDirectory,
+    thumbnailFilenameValue: data.thumbnailFilenameValue,
+    thumbnailFormat: data.selectedThumbFormat,
+    thumbnailUrl: selectedThumbnail?.url || data.videoThumbnailUrl,
     confirmOverwriteInApp,
     onOpenCookieSettings: openCookieSettings,
     onDownloadEvent,
@@ -356,6 +364,7 @@ export default function OptionsTabs({
         <Button
           variant="contained"
           onClick={() => data.handleTabChange('thumbnail')}
+          aria-label={i18nT('downloader.tabThumbnail')}
           disabled={interactionsDisabled || disabledDownloadTypeSet.has('thumbnail')}
           sx={{
             borderRadius: isCompact ? '8px' : '50%',

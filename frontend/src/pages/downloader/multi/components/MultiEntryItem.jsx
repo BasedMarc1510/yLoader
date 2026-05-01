@@ -94,57 +94,60 @@ export default function MultiEntryItem({
     <Box
       sx={{
         position: 'relative',
-        borderRadius: 2.5,
-        bgcolor: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-        border: '1px solid',
-        borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#eef0f2',
-        overflow: 'hidden',
-        transition: 'all 0.15s ease-in-out',
-        '&:hover': {
-          borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#e2e5e9',
-          boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.15)' : '0 4px 12px rgba(0,0,0,0.03)',
-        },
         // Show delete button on hover
         '&:hover .yl-multi-remove': {
           opacity: 1,
         }
       }}
     >
-      {/* Header Container for absolute positioning */}
-      <Box sx={{ position: 'relative' }}>
-        {/* Floating Remove Button */}
-        <IconButton
-          className="yl-multi-remove"
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation()
-            onRemoveEntry?.(entry.id)
-          }}
-          sx={{
-            position: 'absolute',
-            top: '50%',
-            right: 8,
-            transform: 'translateY(-50%)',
-            zIndex: 5,
-            width: 22,
-            height: 22,
-            bgcolor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.8)',
-            backdropFilter: 'blur(4px)',
-            border: '1px solid',
-            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-            color: 'text.secondary',
-            opacity: { xs: 1, sm: 0 }, // Always visible on mobile
-            transition: 'all 0.2s',
-            '&:hover': {
-              bgcolor: 'error.main',
-              color: '#fff',
-              borderColor: 'error.main',
-            }
-          }}
-        >
-          <X size={14} strokeWidth={3} />
-        </IconButton>
+      {/* Floating Remove Button protruding over the edge */}
+      <IconButton
+        className="yl-multi-remove"
+        size="small"
+        aria-label={i18nT('multiDownloader.removeEntry')}
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemoveEntry?.(entry.id)
+        }}
+        sx={{
+          position: 'absolute',
+          top: -8,
+          right: -8,
+          zIndex: 10,
+          width: 24,
+          height: 24,
+          bgcolor: isDark ? 'rgba(20,20,20,0.95)' : '#ffffff',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
+          border: '1px solid',
+          borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+          color: 'text.secondary',
+          opacity: { xs: 1, sm: 0 }, // Always visible on mobile
+          transition: 'all 0.2s',
+          '&:hover': {
+            bgcolor: 'error.main',
+            color: '#fff',
+            borderColor: 'error.main',
+          }
+        }}
+      >
+        <X size={14} strokeWidth={3} />
+      </IconButton>
 
+      <Box
+        sx={{
+          position: 'relative',
+          borderRadius: 2.5,
+          bgcolor: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
+          border: '1px solid',
+          borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#eef0f2',
+          overflow: 'hidden',
+          transition: 'all 0.15s ease-in-out',
+          '&:hover': {
+            borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#e2e5e9',
+            boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.15)' : '0 4px 12px rgba(0,0,0,0.03)',
+          }
+        }}
+      >
         {/* COMPACT HEADER ROW */}
         <Stack 
           direction="row" 
@@ -152,11 +155,21 @@ export default function MultiEntryItem({
           alignItems="center" 
           sx={{ 
             p: 1.25,
-            pr: 3.5, // Make room for the floating X
+            pr: 1.5,
             cursor: isReady ? 'pointer' : 'default',
             userSelect: 'none'
           }}
           onClick={() => isReady && onToggleExpanded?.(entry.id)}
+          role={isReady ? 'button' : undefined}
+          tabIndex={isReady ? 0 : undefined}
+          aria-expanded={isReady ? Boolean(entry.expanded) : undefined}
+          aria-label={isReady ? i18nT(entry.expanded ? 'multiDownloader.collapseEntry' : 'multiDownloader.expandEntry') : undefined}
+          onKeyDown={(event) => {
+            if (!isReady) return
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            onToggleExpanded?.(entry.id)
+          }}
         >
         {/* Compact Thumbnail */}
         <Box
@@ -206,7 +219,7 @@ export default function MultiEntryItem({
             </Box>
             {entry.selectedFormat && (
               <Box component="span" sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <Box component="span" sx={{ mx: 0.6, opacity: 0.5 }}>•</Box>
+                <Box component="span" sx={{ mx: 0.6, opacity: 0.5 }}>/</Box>
                 <Box component="span" sx={{ fontWeight: 800 }}>{entry.selectedFormat}</Box>
               </Box>
             )}
@@ -236,7 +249,11 @@ export default function MultiEntryItem({
           </Tooltip>
 
           {entry.download?.status === ENTRY_DOWNLOAD_STATUS.complete && (
-            <IconButton size="small" onClick={() => onOpenCompleted?.(entry)}>
+            <IconButton
+              size="small"
+              aria-label={i18nT('multiDownloader.openCompleted')}
+              onClick={() => onOpenCompleted?.(entry)}
+            >
               <FolderOpen size={16} />
             </IconButton>
           )}

@@ -18,6 +18,8 @@ import {
   resolveFullPathValue,
 } from '../../../utils/downloadPathInput'
 import { resolveDownloadFilenamePattern } from '../../../utils/downloadSettings'
+import { readSseEventsFromResponse } from '../../../utils/sse'
+import { runThumbnailStreamDownload } from './thumbnailStreamDownload'
 
 const METADATA_PLACEHOLDER_VALUES = new Set([
   'n/a',
@@ -27,6 +29,12 @@ const METADATA_PLACEHOLDER_VALUES = new Set([
   'undefined',
   '-',
 ])
+const STREAM_DOWNLOAD_TYPES = new Set(['audio', 'video', 'thumbnail'])
+
+function normalizeStreamDownloadType(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  return STREAM_DOWNLOAD_TYPES.has(normalized) ? normalized : ''
+}
 
 function sanitizeMetadataValue(value, maxLen = 180) {
   const normalized = String(value ?? '')
@@ -130,7 +138,11 @@ export default function useStreamDownload({
   downloadSettings,
   audioDownloadTargetSettings,
   videoDownloadTargetSettings,
+  thumbnailDownloadTargetSettings,
   forcedDownloadDirectory,
+  thumbnailFilenameValue,
+  thumbnailFormat,
+  thumbnailUrl,
   confirmOverwriteInApp,
   onOpenCookieSettings,
 }) {
@@ -140,9 +152,11 @@ export default function useStreamDownload({
   const [activeDownloadType, setActiveDownloadType] = React.useState('')
 
   const resolvedDownloadTitle = React.useMemo(() => {
-    const typeScopedFilename = activeDownloadType === 'video'
-      ? videoFilenameValue
-      : audioFilenameValue
+    const typeScopedFilename = activeDownloadType === 'thumbnail'
+      ? thumbnailFilenameValue
+      : (activeDownloadType === 'video'
+        ? videoFilenameValue
+        : audioFilenameValue)
 
     const scopedRawValue = String(typeScopedFilename || '').trim()
     const scopedLooksLikePath = /[\\/]/.test(scopedRawValue)
@@ -159,13 +173,16 @@ export default function useStreamDownload({
     return scopedLooksLikePath
       ? fallbackTitle
       : (cleanScopedTitle || fallbackTitle)
-  }, [activeDownloadType, audioFilenameValue, videoFilenameValue, titleValue, videoTitle])
+  }, [activeDownloadType, audioFilenameValue, thumbnailFilenameValue, videoFilenameValue, titleValue, videoTitle])
 
   React.useEffect(() => {
+    const normalizedStage = downloadStage || ''
+    const completedStage = normalizedStage === 'complete'
+
     onDownloadStateChange?.({
-      active: downloading,
-      progress: downloading ? Math.round(downloadProgress || 0) : 0,
-      stage: downloadStage || '',
+      active: downloading && !completedStage,
+      progress: downloading || completedStage ? Math.round(downloadProgress || 0) : 0,
+      stage: normalizedStage,
       title: resolvedDownloadTitle,
     })
   }, [downloading, downloadProgress, downloadStage, resolvedDownloadTitle, onDownloadStateChange])
@@ -218,7 +235,7 @@ export default function useStreamDownload({
     })
   }, [i18nT, onOpenCookieSettings, showNotification])
 
-  const handleDownload = React.useCallback(async (type) => {
+  const handleDownload = React.useCallback(async (requestedType) => {
     const emitDownloadEvent = (event) => {
       if (typeof onDownloadEvent !== 'function') return
       try {
@@ -229,6 +246,33 @@ export default function useStreamDownload({
     }
 
     if (downloading) return false
+    const type = normalizeStreamDownloadType(requestedType)
+    if (!type) return false
+
+    if (type === 'thumbnail') {
+      return runThumbnailStreamDownload({
+        i18nT,
+        notifyDownloadError,
+        emitDownloadEvent,
+        setActiveDownloadType,
+        setDownloading,
+        setDownloadProgress,
+        setDownloadStage,
+        videoUrl,
+        serviceKey,
+        videoThumbnail,
+        videoTitle,
+        videoAuthor,
+        titleValue,
+        thumbnailFilenameValue,
+        thumbnailFormat,
+        thumbnailUrl,
+        downloadSettings,
+        thumbnailDownloadTargetSettings,
+        forcedDownloadDirectory,
+        confirmOverwriteInApp,
+      })
+    }
 
     const editedVideoCoverUpload = coverEmbedEnabled
       && coverSource === 'video'
@@ -670,67 +714,7 @@ export default function useStreamDownload({
         }
       }
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      const flushEvents = (force = false) => {
-        let delimiterIndex = buffer.indexOf('\n\n')
-        while (delimiterIndex !== -1) {
-          const block = buffer.slice(0, delimiterIndex)
-          buffer = buffer.slice(delimiterIndex + 2)
-
-          if (block.trim()) {
-            let eventName = 'message'
-            const dataLines = []
-            const lines = block.split('\n')
-            for (const rawLine of lines) {
-              const line = rawLine.replace(/\r$/, '')
-              if (!line || line.startsWith(':')) continue
-              if (line.startsWith('event:')) {
-                eventName = line.slice(6).trim() || 'message'
-                continue
-              }
-              if (line.startsWith('data:')) {
-                dataLines.push(line.slice(5).trimStart())
-              }
-            }
-            processEvent(eventName, dataLines.join('\n'))
-          }
-
-          delimiterIndex = buffer.indexOf('\n\n')
-        }
-
-        if (force && buffer.trim()) {
-          let eventName = 'message'
-          const dataLines = []
-          const lines = buffer.split('\n')
-          for (const rawLine of lines) {
-            const line = rawLine.replace(/\r$/, '')
-            if (!line || line.startsWith(':')) continue
-            if (line.startsWith('event:')) {
-              eventName = line.slice(6).trim() || 'message'
-              continue
-            }
-            if (line.startsWith('data:')) {
-              dataLines.push(line.slice(5).trimStart())
-            }
-          }
-          processEvent(eventName, dataLines.join('\n'))
-          buffer = ''
-        }
-      }
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          flushEvents(true)
-          break
-        }
-
-        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
-        flushEvents(false)
-      }
+      await readSseEventsFromResponse(response, processEvent)
 
       if (!completed && !finalized) {
         throw new Error(resolveDownloadDiagnosticMessage(i18nT, recentDiagnostics))
@@ -784,7 +768,11 @@ export default function useStreamDownload({
     downloadSettings,
     audioDownloadTargetSettings,
     videoDownloadTargetSettings,
+    thumbnailDownloadTargetSettings,
     forcedDownloadDirectory,
+    thumbnailFilenameValue,
+    thumbnailFormat,
+    thumbnailUrl,
     confirmOverwriteInApp,
   ])
 

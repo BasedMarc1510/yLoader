@@ -297,15 +297,18 @@ export default function MultiDownloader({
 
     setEntries((previousEntries) => updateEntryById(previousEntries, entryId, (entry) => {
       const currentStatus = entry.download?.status || ENTRY_DOWNLOAD_STATUS.idle
+      const isCompleteStage = nextStage === 'complete'
 
       let updatedEntry = {
         ...entry,
         download: {
           ...entry.download,
-          active: nextActive,
-          progress: nextProgress,
+          active: isCompleteStage ? false : nextActive,
+          progress: isCompleteStage ? 100 : nextProgress,
           stage: nextStage,
-          status: nextActive ? ENTRY_DOWNLOAD_STATUS.downloading : currentStatus,
+          status: isCompleteStage
+            ? ENTRY_DOWNLOAD_STATUS.complete
+            : (nextActive ? ENTRY_DOWNLOAD_STATUS.downloading : currentStatus),
         },
       }
 

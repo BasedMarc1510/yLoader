@@ -25,7 +25,7 @@ function getDownloadTypeIcon(type) {
 function getDownloadTypeLabel(i18nT, type) {
   if (type === 'audio') return i18nT('downloader.tabAudio')
   if (type === 'video') return i18nT('downloader.tabVideo')
-  return 'Thumbnail'
+  return i18nT('downloader.tabThumbnail')
 }
 
 export default function MultiDownloaderHeader({
@@ -73,9 +73,10 @@ export default function MultiDownloaderHeader({
           </Box>
 
           <Stack direction="row" spacing={1}>
-            <Tooltip title={i18nT('multiDownloader.addLinksButton')}>
+            <Tooltip title={i18nT(controlsExpanded ? 'multiDownloader.hideControls' : 'multiDownloader.showControls')}>
               <IconButton
                 onClick={onToggleControls}
+                aria-label={i18nT(controlsExpanded ? 'multiDownloader.hideControls' : 'multiDownloader.showControls')}
                 sx={{ 
                   bgcolor: controlsExpanded ? 'primary.main' : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'),
                   color: controlsExpanded ? 'primary.contrastText' : 'inherit',
@@ -87,6 +88,7 @@ export default function MultiDownloaderHeader({
             </Tooltip>
             <IconButton
               onClick={onCloseInterface}
+              aria-label={i18nT('multiDownloader.close')}
               sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }}
             >
               <X size={20} />
@@ -195,6 +197,7 @@ export default function MultiDownloaderHeader({
               />
               <IconButton 
                 onClick={onPickDirectory}
+                aria-label={i18nT('multiDownloader.browseDirectory')}
                 sx={{ 
                   borderRadius: 2.5, 
                   bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',

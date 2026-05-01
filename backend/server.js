@@ -5209,6 +5209,13 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
   const requestedFormat = formatRaw ? normalizeImageContainer(formatRaw) : ''
   const requestedService = String(req.body?.service || '').trim()
   const rawTitle = String(req.body?.videoTitle || req.body?.filename || '').trim()
+  const electronSavePath = normalizeDownloadDirectoryPath(req.body?.electronSavePath, '')
+  const electronTargetDirectory = normalizeDownloadDirectoryPath(req.body?.electronTargetDirectory, '')
+  const electronAllowOverwrite = req.body?.electronAllowOverwrite === true
+  const useElectronDirectTarget = Boolean(
+    YLOADER_RUNTIME_TARGET === 'electron'
+    && (electronSavePath || electronTargetDirectory)
+  )
 
   if (!thumbnailUrl) {
     return res.status(400).json({ error: 'Missing required field: thumbnailUrl' })
@@ -5268,8 +5275,50 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
   }
 
   const tempFiles = []
+  let downloadHash = ''
+  let slotAcquired = false
   try {
     send('progress', { percent: 2, stage: 'starting' })
+
+    const maxConcurrentDownloads = Math.max(1, Number(effectiveDownloadSettings.maxConcurrentDownloads) || DEFAULT_DOWNLOAD_SETTINGS.maxConcurrentDownloads)
+    const staggerDownloadsMs = Math.max(0, Number(effectiveDownloadSettings.staggerDownloadsMs) || 0)
+    downloadHash = crypto.createHash('sha256')
+      .update(JSON.stringify({
+        type: 'thumbnail',
+        sourceUrl: resolvedSourceUrl,
+        thumbnailUrl,
+        format: requestedFormat || '',
+        title: targetTitle,
+        service: resolvedService,
+      }))
+      .digest('hex')
+      .substring(0, 16)
+
+    if (activeDownloads.has(downloadHash)) {
+      send('error', 'Download already in progress for this configuration')
+      send('end', 'failed')
+      return
+    }
+
+    await waitForDownloadSlot(maxConcurrentDownloads, {
+      isResponseClosed: () => responseClosed,
+      onQueued: () => {
+        send('progress', { percent: 0, stage: 'queued' })
+        send('info', `Waiting for a free download slot (${activeDownloads.size}/${maxConcurrentDownloads})...`)
+      },
+    })
+
+    await waitForDownloadStagger(staggerDownloadsMs, () => responseClosed)
+
+    if (responseClosed) return
+
+    activeDownloads.set(downloadHash, {
+      startedAt: Date.now(),
+      type: 'thumbnail',
+    })
+    slotAcquired = true
+    notifyDownloadSlotsChanged()
+    send('started', { downloadHash })
 
     const imageTimeoutController = new AbortController()
     const imageTimeout = setTimeout(() => imageTimeoutController.abort(), 20000)
@@ -5361,8 +5410,44 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
       send('progress', { percent: 92, stage: 'processing' })
     }
 
-    const finalFilename = buildUniqueDownloadFilename(finalBaseFilename, outputContainer)
-    const finalPath = path.join(DOWNLOADS_DIR, finalFilename)
+    let finalFilename = ''
+    let finalPath = ''
+
+    if (useElectronDirectTarget) {
+      const requestedDirectoryPath = electronSavePath
+        ? normalizeDownloadDirectoryPath(path.dirname(electronSavePath), '')
+        : normalizeDownloadDirectoryPath(electronTargetDirectory, '')
+      const resolvedDirectoryPath = requestedDirectoryPath || DOWNLOADS_DIR
+
+      if (!ensureWritableDirectory(resolvedDirectoryPath)) {
+        throw new Error('Failed to access destination directory')
+      }
+
+      if (electronSavePath) {
+        const parsedSavePath = path.parse(electronSavePath)
+        const requestedBaseName = sanitizeFilename(parsedSavePath.name || finalBaseFilename, 120) || finalBaseFilename
+        finalPath = path.join(resolvedDirectoryPath, `${requestedBaseName}.${outputContainer}`)
+      } else {
+        finalPath = buildUniqueFilePath(resolvedDirectoryPath, finalBaseFilename, outputContainer)
+      }
+
+      if (fs.existsSync(finalPath)) {
+        const existingTargetStat = fs.statSync(finalPath)
+        if (!existingTargetStat.isFile()) {
+          throw new Error('Target path exists but is not a file')
+        }
+        if (!electronAllowOverwrite) {
+          throw new Error('Target file already exists. Replace was not confirmed.')
+        }
+        fs.unlinkSync(finalPath)
+      }
+
+      finalFilename = path.basename(finalPath)
+    } else {
+      finalFilename = buildUniqueDownloadFilename(finalBaseFilename, outputContainer)
+      finalPath = path.join(DOWNLOADS_DIR, finalFilename)
+    }
+
     fs.writeFileSync(finalPath, outputBuffer)
 
     try {
@@ -5375,17 +5460,25 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
     }
 
     send('progress', { percent: 100, stage: 'complete' })
-    send('complete', {
+    const completionPayload = {
       filename: finalFilename,
-      url: `/api/download/file/${encodeURIComponent(finalFilename)}`,
+      savePath: finalPath,
       mime: inferImageMimeByContainer(outputContainer),
-    })
+    }
+    if (!useElectronDirectTarget) {
+      completionPayload.url = `/api/download/file/${encodeURIComponent(finalFilename)}`
+    }
+    send('complete', completionPayload)
     send('end', 'done')
   } catch (err) {
     const message = String(err?.message || err || 'Failed to download thumbnail')
     send('error', { message })
     send('end', 'failed')
   } finally {
+    if (slotAcquired && downloadHash) {
+      activeDownloads.delete(downloadHash)
+      notifyDownloadSlotsChanged()
+    }
     for (const filePath of tempFiles) {
       try {
         if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath)

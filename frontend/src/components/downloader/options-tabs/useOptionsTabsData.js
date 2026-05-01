@@ -408,6 +408,11 @@ export default function useOptionsTabsData({
     [downloadSettings]
   )
 
+  const thumbnailDownloadTargetSettings = React.useMemo(
+    () => resolveDownloadTargetSettings(downloadSettings, 'thumbnail'),
+    [downloadSettings]
+  )
+
   const buildThumbnailLabel = React.useCallback((id, width, height) => {
     const normalizedId = String(id || '').trim().toLowerCase()
     const friendlyMap = {
@@ -622,6 +627,15 @@ export default function useOptionsTabsData({
       }
       if (thumbsResolvedUrl === videoUrl) return
 
+      const initialThumbnails = Array.isArray(initialFormats?.thumbnails)
+        ? initialFormats.thumbnails
+        : []
+      if (initialThumbnails.length > 0) {
+        applyBackendThumbnails(initialThumbnails)
+        setThumbsResolvedUrl(videoUrl)
+        return
+      }
+
       setLoadingThumbs(true)
       let resolvedForUrl = false
 
@@ -695,7 +709,7 @@ export default function useOptionsTabsData({
     return () => {
       cancelled = true
     }
-  }, [tab, videoUrl, thumbsResolvedUrl, i18nT, applyBackendThumbnails, thumbnailEndpointAvailable])
+  }, [tab, videoUrl, thumbsResolvedUrl, initialFormats, i18nT, applyBackendThumbnails, thumbnailEndpointAvailable])
 
   return {
     tab,
@@ -730,6 +744,7 @@ export default function useOptionsTabsData({
     videoThumbnailUrl: normalizedVideoThumbnail,
     audioDownloadTargetSettings,
     videoDownloadTargetSettings,
+    thumbnailDownloadTargetSettings,
     downloadSettings,
     maxAudioBitrateKbps: downloadSettings.maxAudioBitrateKbps,
     maxVideoHeight: downloadSettings.maxVideoHeight,
