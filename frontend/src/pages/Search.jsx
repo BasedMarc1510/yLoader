@@ -1,28 +1,5 @@
 import React from 'react'
-import {
-  Box,
-  Button,
-  Checkbox,
-  Card,
-  CardActionArea,
-  CircularProgress,
-  Container,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  InputAdornment,
-  LinearProgress,
-  Menu,
-  MenuItem,
-  Skeleton,
-  Stack,
-  TextField,
-  Typography,
-  ButtonGroup,
-} from '@mui/material'
-import { Search as SearchIcon, X, ChevronDown, ChevronUp, MoreVertical, Play, ExternalLink, Globe, Film, Music2, Image } from 'lucide-react'
-import ServiceIcon from '../components/ServiceIcon'
+import { Box, Container, Stack, Typography } from '@mui/material'
 import { useNotification } from '../providers/NotificationProvider'
 import { useI18n } from '../providers/I18nProvider'
 import { SEARCH_PAGE_SIZE } from '../../../shared/search/searchConfig.js'
@@ -33,25 +10,20 @@ import {
   getApiBase,
   getServiceDisplayName,
   normalizeServiceKey,
-  getServiceThemeColor,
 } from '../utils/metadata'
 import { formatYtDlpErrorMessage } from '../utils/ytDlpErrorPresentation'
 import SimpleBarScrollArea from '../components/SimpleBarScrollArea'
-import { readSseEventsFromResponse } from '../utils/sse'
 import {
-  appendUrlQueryParam,
-  DIRECT_DOWNLOAD_FORMAT_OPTIONS,
-  EMBED_PREVIEW_SERVICES,
-  formatDuration,
-  getSearchEntryIdentity,
   mergeUniqueEntries,
-  resolvePreviewEmbedPayload,
   SEARCH_SERVICE_OPTIONS,
-  SQUARE_THUMBNAIL_SERVICES,
   toHttpUrl,
   toSelectedEntriesMap,
-  triggerBrowserDownload,
 } from './search/searchUtils'
+import SearchBar from './search/SearchBar'
+import SearchOverlays from './search/SearchOverlays'
+import SearchResultsPane from './search/SearchResultsPane'
+import useSearchSelection from './search/useSearchSelection'
+import useSearchQuickDownload from './search/useSearchQuickDownload'
 
 export default function SearchPage({
   onOpenDownloader,
@@ -71,8 +43,6 @@ export default function SearchPage({
   const scrollRootRef = React.useRef(null)
   const loadMoreSentinelRef = React.useRef(null)
   const requestTokenRef = React.useRef(0)
-  const quickDownloadResetTimerRef = React.useRef(null)
-  const pendingElectronDownloadRef = React.useRef(null)
 
   const [query, setQuery] = React.useState(() => initialRuntimeRef.current.query)
   const [selectedService, setSelectedService] = React.useState(() => initialRuntimeRef.current.selectedService)
@@ -92,12 +62,33 @@ export default function SearchPage({
 
   const [kebabAnchorEl, setKebabAnchorEl] = React.useState(null)
   const [downloadAnchorEl, setDownloadAnchorEl] = React.useState(null)
-  const [selectedListAnchorEl, setSelectedListAnchorEl] = React.useState(null)
-  const [selectedDownloadAnchorEl, setSelectedDownloadAnchorEl] = React.useState(null)
   const [actionEntry, setActionEntry] = React.useState(null)
-  const [embedPreview, setEmbedPreview] = React.useState(null)
-  const [quickDownloadState, setQuickDownloadState] = React.useState(null)
-  const [selectedEntriesMap, setSelectedEntriesMap] = React.useState(() => toSelectedEntriesMap(initialRuntimeRef.current.selectedEntries))
+  const {
+    handleClearSelectedEntries,
+    handleCloseSelectedDownloadOptions,
+    handleCloseSelectedList,
+    handleDownloadSelectedEntries,
+    handleDownloadSelectedEntriesInNewTab,
+    handleOpenSelectedDownloadOptions,
+    handleOpenSelectedList,
+    handleRemoveSelectedEntry,
+    selectedCount,
+    selectedDownloadAnchorEl,
+    selectedDownloadOptionsOpen,
+    selectedEntries,
+    selectedEntriesMap,
+    selectedListAnchorEl,
+    selectedListOpen,
+    setSelectedEntriesMap,
+    toggleEntrySelection,
+  } = useSearchSelection({
+    initialSelectedEntries: initialRuntimeRef.current.selectedEntries,
+    lastService,
+    onOpenMultiInNewTab,
+    onOpenMultiInTab,
+    showNotification,
+    t,
+  })
 
   React.useEffect(() => {
     if (!tabsReady || runtimeHydratedRef.current) return
@@ -334,39 +325,6 @@ export default function SearchPage({
     })
   }, [fetchSearchPage, lastQuery, lastService, loadingInitial, loadingMore])
 
-  const buildSelectionEntry = React.useCallback((entry) => {
-    const identity = getSearchEntryIdentity(entry)
-    const sourceUrl = toHttpUrl(entry?.url)
-    if (!identity || !sourceUrl) return null
-
-    return {
-      identity,
-      url: sourceUrl,
-      service: normalizeServiceKey(entry?.service || lastService) || GENERIC_SERVICE_KEY,
-      title: String(entry?.title || sourceUrl).trim() || sourceUrl,
-      thumbnail: String(entry?.thumbnail || '').trim(),
-    }
-  }, [lastService])
-
-  const toggleEntrySelection = React.useCallback((entry, checked) => {
-    const normalizedChecked = Boolean(checked)
-    const candidate = buildSelectionEntry(entry)
-    if (!candidate) return
-
-    setSelectedEntriesMap((prev) => {
-      const next = new Map(prev)
-      if (normalizedChecked) {
-        next.set(candidate.identity, candidate)
-      } else {
-        next.delete(candidate.identity)
-      }
-      return next
-    })
-  }, [buildSelectionEntry])
-
-  const selectedEntries = React.useMemo(() => Array.from(selectedEntriesMap.values()), [selectedEntriesMap])
-  const selectedCount = selectedEntries.length
-
   React.useEffect(() => {
     if (!tabsReady || !runtimeHydrationComplete) return
 
@@ -404,82 +362,33 @@ export default function SearchPage({
     runtimeHydrationComplete,
   ])
 
-  const handleOpenSelectedList = React.useCallback((event) => {
-    setSelectedListAnchorEl(event.currentTarget)
+  const handleCloseKebab = () => {
+    setKebabAnchorEl(null)
+  }
+
+  const handleCloseDownloadDropdown = React.useCallback(() => {
+    setDownloadAnchorEl(null)
   }, [])
 
-  const handleCloseSelectedList = React.useCallback(() => {
-    setSelectedListAnchorEl(null)
-  }, [])
-
-  const handleClearSelectedEntries = React.useCallback(() => {
-    setSelectedEntriesMap(new Map())
-    setSelectedListAnchorEl(null)
-    setSelectedDownloadAnchorEl(null)
-  }, [])
-
-  const handleRemoveSelectedEntry = React.useCallback((entryIdentity) => {
-    const identity = String(entryIdentity || '').trim()
-    if (!identity) return
-
-    setSelectedEntriesMap((prev) => {
-      if (!prev.has(identity)) return prev
-      const next = new Map(prev)
-      next.delete(identity)
-      return next
-    })
-  }, [])
-
-  const collectSelectedEntryUrls = React.useCallback(() => {
-    return Array.from(new Set(
-      selectedEntries
-        .map((item) => String(item?.url || '').trim())
-        .filter(Boolean)
-    ))
-  }, [selectedEntries])
-
-  const handleOpenSelectedDownloadOptions = React.useCallback((event) => {
-    setSelectedDownloadAnchorEl(event.currentTarget)
-  }, [])
-
-  const handleCloseSelectedDownloadOptions = React.useCallback(() => {
-    setSelectedDownloadAnchorEl(null)
-  }, [])
-
-  const handleDownloadSelectedEntries = React.useCallback(() => {
-    const urls = collectSelectedEntryUrls()
-    if (!urls.length) return
-
-    if (typeof onOpenMultiInTab === 'function') {
-      onOpenMultiInTab(urls)
-      handleClearSelectedEntries()
-      return
-    }
-
-    if (typeof onOpenMultiInNewTab === 'function') {
-      onOpenMultiInNewTab(urls)
-      handleClearSelectedEntries()
-      return
-    }
-
-    showNotification(t('search.errorGeneric'), 'error')
-  }, [collectSelectedEntryUrls, handleClearSelectedEntries, onOpenMultiInNewTab, onOpenMultiInTab, showNotification, t])
-
-  const handleDownloadSelectedEntriesInNewTab = React.useCallback(() => {
-    const urls = collectSelectedEntryUrls()
-    setSelectedDownloadAnchorEl(null)
-    if (!urls.length) return
-
-    if (typeof onOpenMultiInNewTab === 'function') {
-      onOpenMultiInNewTab(urls)
-      handleClearSelectedEntries()
-      return
-    }
-
-    showNotification(t('search.errorGeneric'), 'error')
-  }, [collectSelectedEntryUrls, handleClearSelectedEntries, onOpenMultiInNewTab, showNotification, t])
-
-  const isQuickDownloadActive = Boolean(quickDownloadState?.active)
+  const {
+    activeQuickDownloadProgress,
+    embedPreview,
+    handleCloseEmbedPreview,
+    handleDownloadQuick,
+    handleOpenEmbedPreview,
+    isQuickDownloadActive,
+    quickDownloadFormatLabel,
+    quickDownloadOptions,
+    quickDownloadStageLabel,
+    quickDownloadTitle,
+  } = useSearchQuickDownload({
+    actionEntry,
+    closeDownloadDropdown: handleCloseDownloadDropdown,
+    getServiceLabel,
+    lastService,
+    showNotification,
+    t,
+  })
 
   const handleOpenDownloadDropdown = (e, entry) => {
     e.stopPropagation()
@@ -488,14 +397,6 @@ export default function SearchPage({
     setDownloadAnchorEl(e.currentTarget)
     setActionEntry(entry)
   }
-
-  const handleCloseKebab = () => {
-    setKebabAnchorEl(null)
-  }
-
-  const handleCloseDownloadDropdown = React.useCallback(() => {
-    setDownloadAnchorEl(null)
-  }, [])
 
   const handleKebabNewTab = () => {
     if (actionEntry && onOpenInNewTab) {
@@ -514,309 +415,6 @@ export default function SearchPage({
   const handleDownloadMain = (entry) => {
     handleOpenResult(entry)
   }
-
-  const handleDownloadQuick = React.useCallback(async (requestedFormat) => {
-    const format = String(requestedFormat || '').trim().toLowerCase()
-    if (!DIRECT_DOWNLOAD_FORMAT_OPTIONS.includes(format)) return
-    if (!actionEntry || isQuickDownloadActive) return
-
-    setDownloadAnchorEl(null)
-
-    const entryId = getSearchEntryIdentity(actionEntry)
-    const sourceUrl = toHttpUrl(actionEntry?.url)
-    const serviceValue = normalizeServiceKey(actionEntry?.service || lastService) || GENERIC_SERVICE_KEY
-    const title = String(actionEntry?.title || actionEntry?.url || '').trim() || 'download'
-    const uploader = String(actionEntry?.uploader || '').trim()
-    const thumbnailUrl = String(actionEntry?.thumbnail || '').trim()
-
-    if (!sourceUrl) {
-      showNotification(t('search.errorGeneric'), 'error')
-      return
-    }
-
-    if (format === 'thumbnail' && !toHttpUrl(thumbnailUrl)) {
-      showNotification(t('search.quickThumbnailMissing'), 'warning')
-      return
-    }
-
-    if (quickDownloadResetTimerRef.current) {
-      clearTimeout(quickDownloadResetTimerRef.current)
-      quickDownloadResetTimerRef.current = null
-    }
-    if (pendingElectronDownloadRef.current?.fallbackTimeout) {
-      clearTimeout(pendingElectronDownloadRef.current.fallbackTimeout)
-    }
-    pendingElectronDownloadRef.current = null
-
-    setQuickDownloadState({
-      active: true,
-      entryId,
-      format,
-      progress: 2,
-      stage: 'starting',
-      title,
-    })
-
-    const apiBase = getApiBase()
-    const streamEndpoint = format === 'thumbnail'
-      ? '/api/download/thumbnail/stream'
-      : '/api/download/stream'
-    const payload = format === 'thumbnail'
-      ? {
-        url: sourceUrl,
-        thumbnailUrl,
-        format: 'jpg',
-        videoTitle: title,
-        service: serviceValue,
-      }
-      : {
-        url: sourceUrl,
-        service: serviceValue,
-        type: format === 'mp3' ? 'audio' : 'video',
-        format,
-        videoTitle: title,
-        metadata: format === 'mp3'
-          ? {
-            title,
-            artist: uploader,
-          }
-          : undefined,
-      }
-
-    let streamError = ''
-    let streamEndedAsFailed = false
-    let completedPayload = null
-
-    try {
-      const response = await fetch(`${apiBase}${streamEndpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!response.ok) {
-        if (format === 'thumbnail' && response.status === 404) {
-          setQuickDownloadState((prev) => {
-            if (!prev || prev.entryId !== entryId) return prev
-            return {
-              ...prev,
-              progress: 86,
-              stage: 'processing',
-            }
-          })
-
-          completedPayload = {
-            filename: `${title}.jpg`,
-            directUrl: `${apiBase}/api/proxy-image?url=${encodeURIComponent(thumbnailUrl)}&filename=${encodeURIComponent(title)}&format=jpg`,
-          }
-        } else {
-          let errorPayload = null
-          try {
-            errorPayload = await response.json()
-          } catch {
-            errorPayload = null
-          }
-          const message = formatYtDlpErrorMessage(t, errorPayload || `HTTP ${response.status}`, {
-            fallbackKey: 'search.errorGeneric',
-            includeRawForUnknown: true,
-          })
-          throw new Error(message)
-        }
-      } else {
-        await readSseEventsFromResponse(response, (eventName, rawData) => {
-          if (eventName === 'progress') {
-            try {
-              const data = JSON.parse(String(rawData || '{}'))
-              const numericPercent = Number(data?.percent)
-              const percent = Number.isFinite(numericPercent) ? Math.max(0, Math.min(100, numericPercent)) : 0
-              setQuickDownloadState((prev) => {
-                if (!prev || prev.entryId !== entryId) return prev
-                return {
-                  ...prev,
-                  progress: percent,
-                  stage: String(data?.stage || prev.stage || 'downloading'),
-                }
-              })
-            } catch {
-              // ignore malformed progress payloads
-            }
-            return
-          }
-
-          if (eventName === 'complete') {
-            try {
-              const data = JSON.parse(String(rawData || '{}'))
-              completedPayload = data && typeof data === 'object' ? data : null
-            } catch {
-              completedPayload = null
-            }
-            return
-          }
-
-          if (eventName === 'error') {
-            const parsed = (() => {
-              try {
-                return JSON.parse(String(rawData || '{}'))
-              } catch {
-                return rawData
-              }
-            })()
-            streamError = formatYtDlpErrorMessage(t, parsed, {
-              fallbackKey: 'search.errorGeneric',
-              includeRawForUnknown: true,
-            })
-            return
-          }
-
-          if (eventName === 'end') {
-            const endState = String(rawData || '').trim().toLowerCase()
-            if (endState === 'failed') {
-              streamEndedAsFailed = true
-            }
-          }
-        })
-      }
-
-      if (streamError) {
-        throw new Error(streamError)
-      }
-      if (streamEndedAsFailed || (!completedPayload?.url && !completedPayload?.directUrl)) {
-        throw new Error(t('search.errorGeneric'))
-      }
-
-      const filename = String(completedPayload.filename || '').trim() || `${title}.${format === 'thumbnail' ? 'jpg' : format}`
-      const directUrl = String(completedPayload.directUrl || '').trim()
-      const resolvedDownloadUrl = directUrl || `${apiBase}${String(completedPayload.url || '').trim()}`
-      if (!resolvedDownloadUrl) {
-        throw new Error(t('search.errorGeneric'))
-      }
-
-      const runtime = (typeof window !== 'undefined' && window.yloaderRuntime) ? window.yloaderRuntime : null
-      const isElectronRuntime = Boolean(runtime?.isElectron)
-      const quickToken = isElectronRuntime
-        ? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-        : ''
-      const downloadUrl = quickToken
-        ? appendUrlQueryParam(resolvedDownloadUrl, 'quickToken', quickToken)
-        : resolvedDownloadUrl
-
-      setQuickDownloadState((prev) => {
-        if (!prev || prev.entryId !== entryId) return prev
-        return {
-          ...prev,
-          progress: 100,
-          stage: 'saving',
-        }
-      })
-
-      if (isElectronRuntime) {
-        const fallbackTimeout = setTimeout(() => {
-          const pending = pendingElectronDownloadRef.current
-          if (!pending || pending.sourceUrl !== downloadUrl) return
-          pendingElectronDownloadRef.current = null
-          setQuickDownloadState(null)
-          showNotification(t('search.quickDownloadCompleted', { filename }), 'success')
-        }, 12000)
-
-        pendingElectronDownloadRef.current = {
-          sourceUrl: downloadUrl,
-          filename,
-          fallbackTimeout,
-        }
-      } else {
-        quickDownloadResetTimerRef.current = setTimeout(() => {
-          setQuickDownloadState(null)
-          showNotification(t('search.quickDownloadCompleted', { filename }), 'success')
-        }, 500)
-      }
-
-      triggerBrowserDownload(downloadUrl, filename)
-    } catch (error) {
-      const message = String(error?.message || t('search.errorGeneric')).trim() || t('search.errorGeneric')
-      showNotification(message, 'error')
-      setQuickDownloadState(null)
-
-      if (pendingElectronDownloadRef.current?.fallbackTimeout) {
-        clearTimeout(pendingElectronDownloadRef.current.fallbackTimeout)
-      }
-      pendingElectronDownloadRef.current = null
-    }
-  }, [
-    actionEntry,
-    isQuickDownloadActive,
-    lastService,
-    showNotification,
-    t,
-  ])
-
-  const handleCloseEmbedPreview = React.useCallback(() => {
-    setEmbedPreview(null)
-  }, [])
-
-  const handleOpenEmbedPreview = React.useCallback((entry) => {
-    const previewPayload = resolvePreviewEmbedPayload(entry, lastService, getServiceLabel)
-    if (!previewPayload) return
-    setEmbedPreview(previewPayload)
-  }, [getServiceLabel, lastService])
-
-  React.useEffect(() => {
-    const runtime = (typeof window !== 'undefined' && window.yloaderRuntime) ? window.yloaderRuntime : null
-    const subscribeDownloadCompleted = runtime?.downloads?.onDownloadCompleted
-    if (typeof subscribeDownloadCompleted !== 'function') return undefined
-
-    return subscribeDownloadCompleted((payload) => {
-      const pending = pendingElectronDownloadRef.current
-      if (!pending) return
-
-      const payloadSourceUrl = String(payload?.sourceUrl || '').trim()
-      if (pending.sourceUrl && payloadSourceUrl && pending.sourceUrl !== payloadSourceUrl) {
-        const payloadFilename = String(payload?.filename || '').trim().toLowerCase()
-        const pendingFilename = String(pending.filename || '').trim().toLowerCase()
-        if (!payloadFilename || !pendingFilename || payloadFilename !== pendingFilename) return
-      }
-
-      if (pending.fallbackTimeout) {
-        clearTimeout(pending.fallbackTimeout)
-      }
-      pendingElectronDownloadRef.current = null
-
-      const state = String(payload?.state || '').trim().toLowerCase()
-      if (state === 'cancelled') {
-        setQuickDownloadState(null)
-        showNotification(t('search.quickDownloadCancelled'), 'warning')
-        return
-      }
-      if (state !== 'completed') return
-
-      const filename = String(payload?.filename || pending.filename || '').trim() || pending.filename || ''
-      const savePath = String(payload?.savePath || '').trim()
-      const revealFile = runtime?.downloads?.revealFile
-      setQuickDownloadState(null)
-
-      if (savePath && typeof revealFile === 'function') {
-        showNotification(t('search.quickDownloadCompleted', { filename }), 'success', {
-          actionLabel: t('search.openDownloadedFile'),
-          onAction: async () => {
-            await revealFile(savePath)
-          },
-        })
-        return
-      }
-
-      showNotification(t('search.quickDownloadCompleted', { filename }), 'success')
-    })
-  }, [showNotification, t])
-
-  React.useEffect(() => () => {
-    if (quickDownloadResetTimerRef.current) {
-      clearTimeout(quickDownloadResetTimerRef.current)
-      quickDownloadResetTimerRef.current = null
-    }
-    if (pendingElectronDownloadRef.current?.fallbackTimeout) {
-      clearTimeout(pendingElectronDownloadRef.current.fallbackTimeout)
-    }
-    pendingElectronDownloadRef.current = null
-  }, [])
 
   React.useEffect(() => {
     const root = scrollRootRef.current
@@ -844,207 +442,34 @@ export default function SearchPage({
     }
   }, [hasMeasured])
 
-  React.useEffect(() => {
-    if (selectedCount > 0) return
-    setSelectedListAnchorEl(null)
-    setSelectedDownloadAnchorEl(null)
-  }, [selectedCount])
-
   const showInitialLoading = loadingInitial && results.length === 0
   const showEmptyState = !showInitialLoading && !errorMessage && Boolean(lastQuery) && results.length === 0
 
   const isSearched = loadingInitial || loadingMore || results.length > 0 || errorMessage || Boolean(lastQuery)
-  const quickDownloadOptions = React.useMemo(() => ([
-    {
-      key: 'mp4',
-      label: t('search.downloadFormat', { format: 'MP4' }),
-      icon: Film,
-    },
-    {
-      key: 'mp3',
-      label: t('search.downloadFormat', { format: 'MP3' }),
-      icon: Music2,
-    },
-    {
-      key: 'thumbnail',
-      label: t('search.downloadThumbnail'),
-      icon: Image,
-    },
-  ]), [t])
-  const activeQuickDownloadFormat = String(quickDownloadState?.format || '').trim().toLowerCase()
-  const activeQuickDownloadProgress = Number.isFinite(Number(quickDownloadState?.progress))
-    ? Math.max(0, Math.min(100, Number(quickDownloadState.progress)))
-    : 0
-  const selectedListOpen = Boolean(selectedListAnchorEl)
-  const selectedDownloadOptionsOpen = Boolean(selectedDownloadAnchorEl)
-  const quickDownloadTitle = String(quickDownloadState?.title || '').trim()
-
-  const quickDownloadFormatLabel = React.useMemo(() => {
-    if (activeQuickDownloadFormat === 'mp4') return t('search.downloadFormat', { format: 'MP4' })
-    if (activeQuickDownloadFormat === 'mp3') return t('search.downloadFormat', { format: 'MP3' })
-    if (activeQuickDownloadFormat === 'thumbnail') return t('search.downloadThumbnail')
-    return t('search.download')
-  }, [activeQuickDownloadFormat, t])
-
-  const quickDownloadStageLabel = React.useMemo(() => {
-    const stage = String(quickDownloadState?.stage || '').trim().toLowerCase()
-    if (stage === 'starting') return t('search.quickDownloadStageStarting')
-    if (stage === 'downloading') return t('search.quickDownloadStageDownloading')
-    if (stage === 'processing') return t('search.quickDownloadStageProcessing')
-    if (stage === 'saving') return t('search.quickDownloadStageSaving')
-    if (stage === 'complete') return t('search.quickDownloadStageComplete')
-    return t('search.quickDownloadStageWorking')
-  }, [quickDownloadState?.stage, t])
 
   const calculatedSpacer = Math.max(0, (availableHeight / 2) - 28)
 
   const searchBarJsx = (
-    <>
-      <Menu
-        anchorEl={serviceMenuAnchor}
-        open={Boolean(serviceMenuAnchor)}
-        onClose={() => setServiceMenuAnchor(null)}
-        transformOrigin={{ horizontal: 'left', vertical: 'top' }}
-        anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
-        slotProps={{ paper: { sx: { width: 220, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
-      >
-        {SEARCH_SERVICE_OPTIONS.map((option) => (
-          <MenuItem
-            key={option.value}
-            selected={selectedService === option.value}
-            onClick={() => {
-              const nextService = option.value
-              const hasChanged = selectedService !== nextService
-              setSelectedService(nextService)
-              setServiceMenuAnchor(null)
-              if (hasChanged) {
-                rerunLastSearchForService(nextService)
-              }
-            }}
-            sx={{ py: 1.5, borderRadius: 2, mx: 1 }}
-          >
-            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.5 }}>
-              <ServiceIcon serviceKey={option.iconKey} size={20} />
-              <Typography variant="body2" fontWeight={selectedService === option.value ? 800 : 500}>
-                {t(option.labelKey)}
-              </Typography>
-            </Box>
-          </MenuItem>
-        ))}
-      </Menu>
-
-      <TextField
-        value={query}
-        fullWidth
-        placeholder={t('search.queryPlaceholder')}
-        onChange={(event) => setQuery(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            handleSubmit()
-          }
-        }}
-        sx={(muiTheme) => ({
-          '& .MuiOutlinedInput-root': {
-            position: 'relative',
-            borderRadius: 9999,
-            backgroundColor: muiTheme.palette.mode === 'dark' ? '#303030' : '#f9f9f9',
-            outline: 'none',
-            '&:focus-within': {
-              outline: 'none',
-              boxShadow: 'none',
-            },
-            '& fieldset': {
-              borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-              borderWidth: '1px !important',
-            },
-            '&:hover fieldset': {
-              borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-            },
-            '&.Mui-focused fieldset': {
-              borderColor: muiTheme.palette.mode === 'dark' ? '#3c3c3c' : '#e0e0e0',
-              borderWidth: '1px !important',
-            },
-            boxShadow: muiTheme.palette.mode === 'dark' ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
-            transition: 'box-shadow 0.3s, border-color 0.3s'
-          },
-          '& .MuiOutlinedInput-input': {
-            paddingLeft: '8px',
-            paddingRight: '16px',
-            color: muiTheme.palette.text.primary,
-            fontWeight: 700,
-            outline: 'none',
-          },
-          '& .MuiOutlinedInput-input::placeholder': {
-            color: muiTheme.palette.text.secondary,
-            fontWeight: 700,
-          },
-        })}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start" sx={{ ml: 0, mr: 0.25 }}>
-              <Button
-                size="small"
-                onClick={(e) => setServiceMenuAnchor(e.currentTarget)}
-                startIcon={<ServiceIcon serviceKey={selectedServiceOption.iconKey} size={18} />}
-                endIcon={<ChevronDown size={14} />}
-                sx={{
-                  height: 36,
-                  borderRadius: 9999,
-                  textTransform: 'none',
-                  fontWeight: 700,
-                  px: 1.5,
-                  color: 'text.primary',
-                  bgcolor: 'transparent',
-                  '&:hover': { bgcolor: 'action.hover' }
-                }}
-              >
-                {t(selectedServiceOption.labelKey)}
-              </Button>
-            </InputAdornment>
-          ),
-          endAdornment: (
-            <InputAdornment position="end">
-              {Boolean(query) && (
-                <IconButton size="small" onClick={handleClearSearch} title={t('search.clear')} sx={{ mr: 0.5, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                  <X size={18} />
-                </IconButton>
-              )}
-              <IconButton
-                size="small"
-                edge="end"
-                disabled={loadingInitial || !String(query || '').trim()}
-                onClick={handleSubmit}
-                sx={(muiTheme) => ({
-                  width: 36,
-                  height: 36,
-                  bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                  color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
-                  borderRadius: '50%',
-                  boxShadow: muiTheme.palette.mode === 'dark'
-                    ? '0 2px 6px rgba(0,0,0,0.4)'
-                    : '0 2px 6px rgba(0,0,0,0.25)',
-                  '&:hover': {
-                    bgcolor: muiTheme.palette.mode === 'dark' ? '#f5f5f5' : '#111111',
-                  },
-                  '&.Mui-disabled': {
-                    opacity: 0.55,
-                    color: muiTheme.palette.mode === 'dark' ? '#000000' : '#ffffff',
-                    bgcolor: muiTheme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                  },
-                })}
-              >
-                <SearchIcon size={18} />
-              </IconButton>
-            </InputAdornment>
-          ),
-        }}
-        inputProps={{
-          'aria-label': t('search.queryAria'),
-          spellCheck: 'false',
-        }}
-      />
-    </>
+    <SearchBar
+      handleClearSearch={handleClearSearch}
+      handleSubmit={handleSubmit}
+      loadingInitial={loadingInitial}
+      onSelectService={(nextService) => {
+        const hasChanged = selectedService !== nextService
+        setSelectedService(nextService)
+        setServiceMenuAnchor(null)
+        if (hasChanged) {
+          rerunLastSearchForService(nextService)
+        }
+      }}
+      query={query}
+      selectedService={selectedService}
+      selectedServiceOption={selectedServiceOption}
+      serviceMenuAnchor={serviceMenuAnchor}
+      setQuery={setQuery}
+      setServiceMenuAnchor={setServiceMenuAnchor}
+      t={t}
+    />
   )
 
   return (
@@ -1108,673 +533,61 @@ export default function SearchPage({
             </Typography>
           )}
 
-          {showInitialLoading && (
-            <Box sx={{ overflow: 'hidden' }}>
-              <Stack spacing={2}>
-                {Array.from({ length: hasMeasured && availableHeight > 0 ? Math.max(2, Math.floor((availableHeight - 160) / 140)) : 4 }).map((_, i) => {
-                  const useSquareThumbnail = SQUARE_THUMBNAIL_SERVICES.has(selectedService)
-                  const thumbnailWidth = useSquareThumbnail ? { xs: 110, sm: 130 } : { xs: 140, sm: 230 }
-                  const searchSkeletonSx = {
-                    bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-                    '&::after': {
-                      background: (theme) => theme.palette.mode === 'dark'
-                        ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)'
-                        : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',
-                    },
-                  }
-
-                  return (
-                    <Card elevation={0} key={i} sx={{ borderRadius: 1.5, border: '1px solid', borderColor: 'divider', display: 'flex', overflow: 'hidden', height: { xs: 110, sm: 130 } }}>
-                      <Box sx={{ width: thumbnailWidth, minWidth: thumbnailWidth, flexShrink: 0, position: 'relative' }}>
-                        <Skeleton variant="rectangular" width="100%" height="100%" animation="wave" sx={searchSkeletonSx} />
-                        <Skeleton variant="rounded" width={34} height={16} animation="wave" sx={{ position: 'absolute', bottom: 8, right: 8, borderRadius: 0.75, ...searchSkeletonSx }} />
-                      </Box>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: { xs: 1.5, sm: 2 }, pr: { xs: 7, sm: 10 }, justifyContent: 'center', position: 'relative' }}>
-                        <Skeleton variant="text" width="85%" height={26} animation="wave" sx={searchSkeletonSx} />
-                        <Skeleton variant="text" width="45%" height={20} animation="wave" sx={{ mt: 0.5, ...searchSkeletonSx }} />
-                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                          <Skeleton variant="circular" width={14} height={14} animation="wave" sx={searchSkeletonSx} />
-                          <Skeleton variant="text" width={60} height={18} animation="wave" sx={searchSkeletonSx} />
-                        </Box>
-                        <Skeleton variant="circular" width={32} height={32} animation="wave" sx={{ position: 'absolute', top: 8, right: 8, ...searchSkeletonSx }} />
-                        <Skeleton variant="rounded" width={110} height={32} animation="wave" sx={{ position: 'absolute', bottom: 12, right: 12, borderRadius: 9999, ...searchSkeletonSx }} />
-                      </Box>
-                    </Card>
-                  )
-                })}
-              </Stack>
-            </Box>
-          )}
-
-          {showEmptyState && (
-            <Stack spacing={0.5} sx={{ py: 8, textAlign: 'center' }}>
-              <Typography variant="h6" fontWeight={800}>{t('search.noResultsTitle')}</Typography>
-              <Typography variant="body2" color="text.secondary">{t('search.noResultsSubtitle')}</Typography>
-            </Stack>
-          )}
-
-          {results.length > 0 && !loadingInitial && (
-            <Stack spacing={2}>
-              {results.map((entry) => {
-                const rawService = normalizeServiceKey(entry?.service)
-                const serviceKey = rawService || GENERIC_SERVICE_KEY
-                const serviceLabel = getServiceLabel(serviceKey)
-                const supportsEmbedPreview = EMBED_PREVIEW_SERVICES.has(serviceKey)
-                const useSquareThumbnail = SQUARE_THUMBNAIL_SERVICES.has(serviceKey)
-                const duration = entry?.durationString || formatDuration(entry?.duration)
-                const title = String(entry?.title || '').trim() || String(entry?.url || '').trim()
-                const uploader = String(entry?.uploader || '').trim()
-                const thumbnail = String(entry?.thumbnail || '').trim()
-                const itemId = getSearchEntryIdentity(entry) || String(entry?.url || `${serviceKey}-${title}`).trim()
-                const isSelected = selectedEntriesMap.has(itemId)
-                const thumbnailWidth = useSquareThumbnail
-                  ? { xs: 110, sm: 130 }
-                  : { xs: 140, sm: 230 }
-
-                return (
-                  <Card elevation={0} key={itemId} sx={{ position: 'relative', borderRadius: 1.5, border: '1px solid', borderColor: 'divider', display: 'flex', overflow: 'hidden', height: { xs: 110, sm: 130 } }}>
-                    <Box
-                      sx={{ display: 'flex', alignItems: 'stretch', width: '100%', justifyContent: 'flex-start' }}
-                    >
-                      <Box sx={{
-                        width: thumbnailWidth,
-                        minWidth: thumbnailWidth,
-                        position: 'relative',
-                        bgcolor: 'action.hover',
-                        flexShrink: 0,
-                        ...(supportsEmbedPreview ? {
-                          '&:hover .search-thumb-duration, &:focus-within .search-thumb-duration': {
-                            opacity: 0,
-                          },
-                        } : {}),
-                      }}>
-                        {supportsEmbedPreview ? (
-                          <CardActionArea
-                            onClick={() => handleOpenEmbedPreview(entry)}
-                            aria-label={t('search.openPreview', { service: serviceLabel })}
-                            sx={{
-                              position: 'absolute',
-                              inset: 0,
-                              transition: 'none',
-                              '& .search-thumb-overlay': {
-                                opacity: 0,
-                                transition: 'none',
-                              },
-                              '&:hover .search-thumb-media, &.Mui-focusVisible .search-thumb-media': {
-                                filter: 'brightness(0.6)',
-                              },
-                              '&:hover .search-thumb-overlay, &.Mui-focusVisible .search-thumb-overlay': {
-                                opacity: 1,
-                              },
-                              '& .MuiCardActionArea-focusHighlight': {
-                                transition: 'none',
-                              }
-                            }}
-                          >
-                            {thumbnail ? (
-                              <Box
-                                component="img"
-                                src={thumbnail}
-                                alt=""
-                                className="search-thumb-media"
-                                sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                                loading="lazy"
-                              />
-                            ) : (
-                              <Stack
-                                className="search-thumb-media"
-                                sx={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}
-                              >
-                                <ServiceIcon serviceKey={serviceKey} size={34} title={serviceLabel} />
-                              </Stack>
-                            )}
-
-                            <Stack
-                              className="search-thumb-overlay"
-                              sx={{
-                                position: 'absolute',
-                                inset: 0,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                bgcolor: 'rgba(0,0,0,0.25)',
-                                pointerEvents: 'none',
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  width: 44,
-                                  height: 44,
-                                  borderRadius: '50%',
-                                  bgcolor: 'rgba(0,0,0,0.66)',
-                                  border: '1px solid rgba(255,255,255,0.6)',
-                                  color: '#fff',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}
-                              >
-                                <Play size={20} fill="currentColor" />
-                              </Box>
-                            </Stack>
-                          </CardActionArea>
-                        ) : thumbnail ? (
-                          <Box
-                            component="img"
-                            src={thumbnail}
-                            alt=""
-                            sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                            loading="lazy"
-                          />
-                        ) : (
-                          <Stack
-                            sx={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <ServiceIcon serviceKey={serviceKey} size={34} title={serviceLabel} />
-                          </Stack>
-                        )}
-
-                        {duration ? (
-                          <Box
-                            className="search-thumb-duration"
-                            sx={{
-                              position: 'absolute',
-                              right: 8,
-                              bottom: 8,
-                              bgcolor: 'rgba(0,0,0,0.72)',
-                              color: '#fff',
-                              px: 0.8,
-                              py: 0.2,
-                              borderRadius: 0.75,
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              fontFeatureSettings: '"tnum"',
-                              zIndex: 2,
-                              transition: 'none',
-                              pointerEvents: 'none',
-                              userSelect: 'none',
-                            }}
-                          >
-                            {duration}
-                          </Box>
-                        ) : null}
-                      </Box>
-
-                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: { xs: 1.5, sm: 2 }, pr: { xs: 7, sm: 10 }, overflow: 'hidden', justifyContent: 'center', position: 'relative' }}>
-                        <Typography variant="body1" fontWeight={800} noWrap>
-                          {title}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" noWrap sx={{ mt: 0.5 }}>
-                          {uploader || t('search.unknownUploader')}
-                        </Typography>
-
-                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                          <ServiceIcon serviceKey={serviceKey} size={14} title={serviceLabel} />
-                          <Typography variant="caption" fontWeight={700}>{serviceLabel}</Typography>
-                        </Box>
-                      </Box>
-                    </Box>
-
-                    <Checkbox
-                      size="small"
-                      checked={isSelected}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) => {
-                        event.stopPropagation()
-                        toggleEntrySelection(entry, event.target.checked)
-                      }}
-                      inputProps={{ 'aria-label': t('search.selectResultAria', { title }) }}
-                      sx={{
-                        position: 'absolute',
-                        top: 6,
-                        left: 6,
-                        zIndex: 3,
-                        p: 0.25,
-                        borderRadius: 0.75,
-                        color: '#ffffff',
-                        bgcolor: 'rgba(0,0,0,0.45)',
-                        '&.Mui-checked': {
-                          color: '#ffffff',
-                          bgcolor: 'rgba(0,0,0,0.62)',
-                        },
-                        '&:hover': {
-                          bgcolor: 'rgba(0,0,0,0.58)',
-                        },
-                      }}
-                    />
-
-                    <IconButton
-                      size="small"
-                      onClick={(e) => handleOpenKebab(e, entry)}
-                      sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'background.paper', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', '&:hover': { bgcolor: 'action.hover' } }}
-                    >
-                      <MoreVertical size={16} />
-                    </IconButton>
-
-                    <ButtonGroup
-                      variant="contained"
-                      disableElevation
-                      size="small"
-                      sx={(theme) => {
-                        const baseColor = getServiceThemeColor(serviceKey)
-                        const bgColor = (theme.palette.mode === 'dark' && /^#000000$/i.test(baseColor)) ? '#333333' : baseColor
-                        const effectiveBg = bgColor || 'primary.main'
-                        const effectiveText = (theme.palette.mode === 'light' && /^#FFFFFF$/i.test(baseColor)) ? '#000000' : '#ffffff'
-
-                        return {
-                          position: 'absolute',
-                          bottom: 12,
-                          right: 12,
-                          borderRadius: 9999,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                          '& .MuiButton-root': {
-                            textTransform: 'none',
-                            fontWeight: 700,
-                            bgcolor: effectiveBg,
-                            color: effectiveText,
-                          },
-                          '& .MuiButton-root:hover': {
-                            bgcolor: effectiveBg,
-                            filter: 'brightness(1.15)',
-                          },
-                          '& .MuiButtonGroup-grouped:not(:last-of-type)': {
-                            borderColor: theme.palette.mode === 'light' && /^#FFFFFF$/i.test(baseColor) 
-                              ? 'rgba(0,0,0,0.15)' 
-                              : 'rgba(255,255,255,0.25)',
-                          }
-                        }
-                      }}
-                    >
-                      <Button onClick={() => handleDownloadMain(entry)} sx={{ px: 2, borderRadius: '9999px 0 0 9999px' }}>
-                        {t('search.download')}
-                      </Button>
-                      <Button size="small" onClick={(e) => handleOpenDownloadDropdown(e, entry)} sx={{ px: 0.75, minWidth: 0, borderRadius: '0 9999px 9999px 0' }}>
-                        <ChevronDown size={16} />
-                      </Button>
-                    </ButtonGroup>
-                  </Card>
-                )
-              })}
-            </Stack>
-          )}
-
-          {results.length > 0 && (
-            <Box ref={loadMoreSentinelRef} sx={{ width: '100%', height: 1 }} />
-          )}
-
-          {loadingMore && results.length > 0 && (
-            <Stack spacing={1} alignItems="center" justifyContent="center" sx={{ py: 3 }}>
-              <CircularProgress size={22} />
-              <Typography variant="body2" color="text.secondary">{t('search.loadingMore')}</Typography>
-            </Stack>
-          )}
-
-          {selectedCount > 0 && (
-            <Box
-              sx={{
-                position: 'sticky',
-                bottom: 0,
-                zIndex: 24,
-                mt: 2,
-                ml: { xs: -1.25, sm: -1.75 },
-                mr: { xs: -1.25, sm: -1.75 },
-              }}
-            >
-              <Box
-                sx={{
-                  borderRadius: '18px 18px 0 0',
-                  border: '1px solid',
-                  borderBottom: 'none',
-                  borderColor: 'divider',
-                  bgcolor: 'background.paper',
-                  px: { xs: 1.5, sm: 2 },
-                  py: 1.15,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 1,
-                  boxShadow: '0 8px 26px rgba(0,0,0,0.14)',
-                }}
-              >
-                <Button
-                  size="small"
-                  onClick={selectedListOpen ? handleCloseSelectedList : handleOpenSelectedList}
-                  endIcon={selectedListOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  sx={{ textTransform: 'none', fontWeight: 800, px: 1.4, cursor: 'pointer' }}
-                >
-                  {t('search.selectedCount', { count: selectedCount })}
-                </Button>
-
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    size="small"
-                    variant="text"
-                    onClick={handleClearSelectedEntries}
-                    sx={{ textTransform: 'none', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    {t('tabs.cancel')}
-                  </Button>
-
-                  <ButtonGroup
-                    variant="contained"
-                    disableElevation
-                    size="small"
-                    sx={{
-                      borderRadius: 3.5,
-                      overflow: 'hidden',
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
-                      '& .MuiButtonGroup-grouped': {
-                        minHeight: 34,
-                      },
-                    }}
-                  >
-                    <Button
-                      onClick={handleDownloadSelectedEntries}
-                      sx={{ textTransform: 'none', fontWeight: 800, px: 1.9, borderRadius: '14px 0 0 14px', cursor: 'pointer' }}
-                    >
-                      {t('search.downloadSelected')}
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={handleOpenSelectedDownloadOptions}
-                      aria-label={t('search.downloadSelectedOptionsAria')}
-                      sx={{ minWidth: 34, px: 0.8, borderRadius: '0 14px 14px 0', cursor: 'pointer' }}
-                    >
-                      <ChevronDown size={15} />
-                    </Button>
-                  </ButtonGroup>
-                </Stack>
-              </Box>
-            </Box>
-          )}
+          <SearchResultsPane
+            availableHeight={availableHeight}
+            getServiceLabel={getServiceLabel}
+            handleClearSelectedEntries={handleClearSelectedEntries}
+            handleCloseSelectedList={handleCloseSelectedList}
+            handleDownloadMain={handleDownloadMain}
+            handleDownloadSelectedEntries={handleDownloadSelectedEntries}
+            handleOpenDownloadDropdown={handleOpenDownloadDropdown}
+            handleOpenEmbedPreview={handleOpenEmbedPreview}
+            handleOpenKebab={handleOpenKebab}
+            handleOpenSelectedDownloadOptions={handleOpenSelectedDownloadOptions}
+            handleOpenSelectedList={handleOpenSelectedList}
+            hasMeasured={hasMeasured}
+            loadMoreSentinelRef={loadMoreSentinelRef}
+            loadingInitial={loadingInitial}
+            loadingMore={loadingMore}
+            results={results}
+            selectedCount={selectedCount}
+            selectedEntriesMap={selectedEntriesMap}
+            selectedListOpen={selectedListOpen}
+            selectedService={selectedService}
+            showEmptyState={showEmptyState}
+            showInitialLoading={showInitialLoading}
+            t={t}
+            toggleEntrySelection={toggleEntrySelection}
+          />
         </Box>
 
-        <Menu
-          anchorEl={kebabAnchorEl}
-          open={Boolean(kebabAnchorEl)}
-          onClose={handleCloseKebab}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-          slotProps={{ paper: { sx: { width: 220, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
-        >
-          <MenuItem onClick={handleKebabNewTab} sx={{ py: 1.5, borderRadius: 2, mx: 1 }}>
-            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.25 }}>
-              <ExternalLink size={16} />
-              <Typography variant="body2" fontWeight={700}>{t('search.openInNewTab')}</Typography>
-            </Box>
-          </MenuItem>
-          <MenuItem onClick={handleKebabBrowser} sx={{ py: 1.5, borderRadius: 2, mx: 1 }}>
-            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.25 }}>
-              <Globe size={16} />
-              <Typography variant="body2" fontWeight={700}>{t('search.openInBrowser')}</Typography>
-            </Box>
-          </MenuItem>
-        </Menu>
-
-        <Menu
-          anchorEl={downloadAnchorEl}
-          open={Boolean(downloadAnchorEl)}
-          onClose={handleCloseDownloadDropdown}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-          slotProps={{ paper: { sx: { width: 240, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
-        >
-          {quickDownloadOptions.map((option) => {
-            const Icon = option.icon
-
-            return (
-              <MenuItem
-                key={option.key}
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  void handleDownloadQuick(option.key)
-                }}
-                sx={{
-                  py: 1.5,
-                  borderRadius: 2,
-                  mx: 1,
-                }}
-              >
-                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.25 }}>
-                  <Icon size={16} />
-                  <Typography variant="body2" fontWeight={700}>{option.label}</Typography>
-                </Box>
-              </MenuItem>
-            )
-          })}
-        </Menu>
-
-        <Menu
-          anchorEl={selectedDownloadAnchorEl}
-          open={selectedDownloadOptionsOpen}
-          onClose={handleCloseSelectedDownloadOptions}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-          slotProps={{ paper: { sx: { width: 240, mt: 1, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } } }}
-        >
-          <MenuItem
-            onClick={handleDownloadSelectedEntriesInNewTab}
-            sx={{ py: 1.5, borderRadius: 2, mx: 1 }}
-          >
-            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.25 }}>
-              <ExternalLink size={16} />
-              <Typography variant="body2" fontWeight={700}>{t('search.downloadSelectedInNewTab')}</Typography>
-            </Box>
-          </MenuItem>
-        </Menu>
-
-        <Menu
-          anchorEl={selectedListAnchorEl}
-          open={selectedListOpen}
-          onClose={handleCloseSelectedList}
-          transformOrigin={{ horizontal: 'left', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
-          slotProps={{ paper: { sx: { width: 'min(480px, calc(100vw - 32px))', mt: 1, borderRadius: 3, boxShadow: '0 8px 30px rgba(0,0,0,0.16)', maxHeight: 'min(56vh, 460px)', overflow: 'auto' } } }}
-        >
-          {selectedEntries.length === 0 ? (
-            <MenuItem disabled sx={{ py: 1.5, borderRadius: 2, mx: 1 }}>
-              <Typography variant="body2" color="text.secondary">{t('search.selectedListEmpty')}</Typography>
-            </MenuItem>
-          ) : selectedEntries.map((item) => (
-            <Box
-              key={item.identity}
-              sx={{
-                px: 1.25,
-                py: 0.9,
-                mx: 1,
-                my: 0.45,
-                borderRadius: 2,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                bgcolor: 'action.hover',
-              }}
-            >
-              <Box sx={{ width: 44, height: 44, borderRadius: 1, overflow: 'hidden', bgcolor: 'action.selected', flexShrink: 0 }}>
-                {item.thumbnail ? (
-                  <Box component="img" src={item.thumbnail} alt="" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
-                ) : (
-                  <Stack sx={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-                    <ServiceIcon serviceKey={item.service || 'generic'} size={18} />
-                  </Stack>
-                )}
-              </Box>
-
-              <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography variant="body2" fontWeight={700} noWrap>{item.title}</Typography>
-                <Typography variant="caption" color="text.secondary" noWrap>{item.url}</Typography>
-              </Box>
-
-              <IconButton
-                size="small"
-                aria-label={t('search.removeSelectedAria', { title: item.title })}
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  handleRemoveSelectedEntry(item.identity)
-                }}
-              >
-                <X size={15} />
-              </IconButton>
-            </Box>
-          ))}
-        </Menu>
-
-        <Dialog
-          open={isQuickDownloadActive}
-          onClose={() => {}}
-          fullScreen
-          disableEscapeKeyDown
-          PaperProps={{
-            sx: {
-              m: 0,
-              p: 0,
-              borderRadius: 0,
-              maxWidth: 'none',
-              bgcolor: 'transparent',
-              boxShadow: 'none',
-            },
-          }}
-          BackdropProps={{
-            sx: {
-              backdropFilter: 'blur(8px)',
-              bgcolor: (theme) => theme.palette.mode === 'dark'
-                ? 'rgba(0,0,0,0.42)'
-                : 'rgba(245,245,245,0.48)',
-            },
-          }}
-        >
-          <DialogContent sx={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
-            <Box
-              sx={{
-                width: 'min(560px, calc(100vw - 32px))',
-                borderRadius: 3,
-                border: '1px solid',
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-                boxShadow: '0 20px 42px rgba(0,0,0,0.22)',
-                px: { xs: 2, sm: 2.5 },
-                py: { xs: 2, sm: 2.5 },
-              }}
-            >
-              <Typography variant="h6" fontWeight={800}>
-                {t('search.quickDownloadModalTitle')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {t('search.quickDownloadModalDescription', { format: quickDownloadFormatLabel })}
-              </Typography>
-              {quickDownloadTitle ? (
-                <Typography variant="body2" fontWeight={700} noWrap sx={{ mt: 1.25 }}>
-                  {quickDownloadTitle}
-                </Typography>
-              ) : null}
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                {quickDownloadStageLabel}
-              </Typography>
-
-              <LinearProgress
-                variant="determinate"
-                value={activeQuickDownloadProgress}
-                sx={{
-                  mt: 1.15,
-                  height: 8,
-                  borderRadius: 999,
-                  bgcolor: (theme) => theme.palette.mode === 'dark'
-                    ? 'rgba(255,255,255,0.15)'
-                    : 'rgba(0,0,0,0.1)',
-                  '& .MuiLinearProgress-bar': {
-                    bgcolor: (theme) => theme.palette.mode === 'dark'
-                      ? 'rgba(255,255,255,0.56)'
-                      : 'rgba(0,0,0,0.46)',
-                  },
-                }}
-              />
-
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                {`${Math.round(activeQuickDownloadProgress)}%`}
-              </Typography>
-            </Box>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={Boolean(embedPreview?.embedUrl)}
-          onClose={handleCloseEmbedPreview}
-          fullWidth
-          maxWidth={false}
-          keepMounted={false}
-          PaperProps={{
-            sx: {
-              width: embedPreview?.serviceKey === 'soundcloud'
-                ? 'min(680px, calc(100vw - 24px))'
-                : 'min(980px, calc(100vw - 24px))',
-              m: 1.5,
-              borderRadius: 2.5,
-              overflow: 'hidden',
-            },
-          }}
-        >
-          <DialogTitle
-            sx={{
-              px: 2,
-              py: 1.25,
-              borderBottom: '1px solid',
-              borderColor: 'divider',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 2,
-            }}
-          >
-            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
-              <ServiceIcon serviceKey={embedPreview?.serviceKey || 'generic'} size={18} />
-              <Typography variant="subtitle1" fontWeight={800} noWrap>
-                {embedPreview?.serviceLabel || t('search.title')}
-              </Typography>
-            </Box>
-
-            <IconButton
-              size="small"
-              aria-label={t('search.closePreview')}
-              onClick={handleCloseEmbedPreview}
-            >
-              <X size={18} />
-            </IconButton>
-          </DialogTitle>
-
-          <DialogContent sx={{ p: 0, bgcolor: embedPreview?.serviceKey === 'soundcloud' ? 'background.default' : '#000' }}>
-            {embedPreview?.embedUrl ? (
-              <Box
-                sx={{
-                  position: 'relative',
-                  width: '100%',
-                  ...(embedPreview?.serviceKey === 'soundcloud'
-                    ? { height: 166, bgcolor: 'transparent' }
-                    : { pt: '56.25%', bgcolor: '#000' }),
-                }}
-              >
-                <Box
-                  key={embedPreview.embedUrl}
-                  component="iframe"
-                  src={embedPreview.embedUrl}
-                  scrolling={embedPreview?.serviceKey === 'soundcloud' ? 'no' : undefined}
-                  title={t('search.previewFrameTitle', { service: embedPreview.serviceLabel || t('search.title') })}
-                  allow={embedPreview?.serviceKey === 'soundcloud' ? 'autoplay' : 'autoplay; encrypted-media; picture-in-picture; web-share'}
-                  allowFullScreen={embedPreview?.serviceKey !== 'soundcloud'}
-                  loading="eager"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    width: '100%',
-                    height: '100%',
-                    border: 0,
-                  }}
-                />
-              </Box>
-            ) : null}
-          </DialogContent>
-        </Dialog>
+        <SearchOverlays
+          activeQuickDownloadProgress={activeQuickDownloadProgress}
+          downloadAnchorEl={downloadAnchorEl}
+          embedPreview={embedPreview}
+          handleCloseDownloadDropdown={handleCloseDownloadDropdown}
+          handleCloseEmbedPreview={handleCloseEmbedPreview}
+          handleCloseKebab={handleCloseKebab}
+          handleCloseSelectedDownloadOptions={handleCloseSelectedDownloadOptions}
+          handleCloseSelectedList={handleCloseSelectedList}
+          handleDownloadQuick={handleDownloadQuick}
+          handleDownloadSelectedEntriesInNewTab={handleDownloadSelectedEntriesInNewTab}
+          handleKebabBrowser={handleKebabBrowser}
+          handleKebabNewTab={handleKebabNewTab}
+          handleRemoveSelectedEntry={handleRemoveSelectedEntry}
+          isQuickDownloadActive={isQuickDownloadActive}
+          kebabAnchorEl={kebabAnchorEl}
+          quickDownloadFormatLabel={quickDownloadFormatLabel}
+          quickDownloadOptions={quickDownloadOptions}
+          quickDownloadStageLabel={quickDownloadStageLabel}
+          quickDownloadTitle={quickDownloadTitle}
+          selectedDownloadAnchorEl={selectedDownloadAnchorEl}
+          selectedDownloadOptionsOpen={selectedDownloadOptionsOpen}
+          selectedEntries={selectedEntries}
+          selectedListAnchorEl={selectedListAnchorEl}
+          selectedListOpen={selectedListOpen}
+          t={t}
+        />
       </Container>
     </SimpleBarScrollArea>
   )
