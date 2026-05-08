@@ -27,6 +27,7 @@ export default function VideoTabContent({
   durationSeconds,
   durationLoading = false,
   durationUnavailable = false,
+  videoCutsData,
   setVideoCutsData,
   selectedVideoFormat,
   setSelectedVideoFormat,
@@ -35,6 +36,7 @@ export default function VideoTabContent({
   loadingFormats,
   isElectronRuntime = false,
   downloadTargetSettings = null,
+  defaultVideoContainer,
   videoTitle = '',
   filenameValue,
   setFilenameValue,
@@ -68,6 +70,39 @@ export default function VideoTabContent({
   const showCutLoader = durationLoading
   const showCutUnavailable = !durationLoading && durationUnavailable
   const showQualityLoader = loadingFormats
+  const normalizeValue = (value) => String(value || '').trim()
+  const normalizedVideoTitle = normalizeValue(videoTitle)
+  const defaultVideoContainerValue = normalizeValue(defaultVideoContainer) || 'mp4'
+  const filenameBaseName = normalizedVideoTitle || 'download'
+  const defaultFilenameValue = pathModeEnabled
+    ? resolveFullPathValue({
+      inputValue: '',
+      defaultDirectory,
+      fallbackBaseName: filenameBaseName,
+      extension: defaultVideoContainerValue,
+    })
+    : filenameBaseName
+  const normalizedFilenameValue = normalizeValue(filenameValue)
+  const normalizedDefaultFilename = normalizeValue(defaultFilenameValue)
+  const filenameChanged = normalizedFilenameValue
+    ? normalizedFilenameValue !== normalizedDefaultFilename
+    : false
+  const containerChanged = normalizeValue(videoContainer) !== defaultVideoContainerValue
+  const qualityChanged = Boolean(selectedVideoFormat && selectedVideoFormat !== 'best')
+  const cutChanged = React.useMemo(() => {
+    if (!videoCutsData) return false
+    const enabled = Boolean(videoCutsData.enabled)
+    const mode = String(videoCutsData.mode || 'keep')
+    const trimStart = Number(videoCutsData.trimStart) || 0
+    const trimEnd = Number(videoCutsData.trimEnd) || 0
+    const segments = Array.isArray(videoCutsData.segments) ? videoCutsData.segments : []
+    const hasSegments = segments.length > 0
+    const duration = Number(durationSeconds)
+    const hasDuration = Number.isFinite(duration) && duration > 0
+    const defaultEnd = hasDuration ? duration : 1
+    const endChanged = hasDuration ? trimEnd < duration : trimEnd !== defaultEnd
+    return enabled || mode !== 'keep' || trimStart > 0 || endChanged || hasSegments
+  }, [durationSeconds, videoCutsData])
 
   React.useEffect(() => {
     if (!pathModeEnabled) {
@@ -181,6 +216,7 @@ export default function VideoTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
+        iconColor={qualityChanged ? brandColor : undefined}
         icon={<Video size={18} />}
         label={i18nT('downloader.quality')}
         theme={theme}
@@ -214,6 +250,7 @@ export default function VideoTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
+        iconColor={cutChanged ? brandColor : undefined}
         icon={<Scissors size={18} />}
         label={i18nT('downloader.cutVideo')}
         theme={theme}
@@ -255,6 +292,7 @@ export default function VideoTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
+        iconColor={(filenameChanged || containerChanged) ? brandColor : undefined}
         icon={<Tag size={18} />}
         label={i18nT(pathModeEnabled ? 'downloader.filePathAndFormat' : 'downloader.filenameAndFormat')}
         theme={theme}

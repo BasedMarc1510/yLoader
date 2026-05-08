@@ -436,6 +436,7 @@ export default function OptionsTabs({
             setArtistValue={data.setArtistValue}
             albumValue={data.albumValue}
             setAlbumValue={data.setAlbumValue}
+            audioCutsData={data.audioCutsData}
             setAudioCutsData={data.setAudioCutsData}
             coverEmbedEnabled={data.coverEmbedEnabled}
             setCoverEmbedEnabled={data.setCoverEmbedEnabled}
@@ -459,7 +460,10 @@ export default function OptionsTabs({
             loadingFormats={data.loadingFormats}
             isElectronRuntime={isElectronRuntime}
             downloadTargetSettings={data.audioDownloadTargetSettings}
+            defaultAudioContainer={data.downloadSettings?.defaultAudioContainer}
+            defaultCoverEmbedEnabled={data.downloadSettings?.defaultEmbedCoverArt}
             videoTitle={videoTitle}
+            videoAuthor={videoAuthor}
             filenameValue={data.audioFilenameValue}
             setFilenameValue={data.setAudioFilenameValue}
             audioContainer={data.audioContainer}
@@ -483,6 +487,7 @@ export default function OptionsTabs({
             durationSeconds={normalizedDurationSeconds}
             durationLoading={isDurationLoading}
             durationUnavailable={isDurationUnavailable}
+            videoCutsData={data.videoCutsData}
             setVideoCutsData={data.setVideoCutsData}
             selectedVideoFormat={data.selectedVideoFormat}
             setSelectedVideoFormat={data.setSelectedVideoFormat}
@@ -491,6 +496,7 @@ export default function OptionsTabs({
             loadingFormats={data.loadingFormats}
             isElectronRuntime={isElectronRuntime}
             downloadTargetSettings={data.videoDownloadTargetSettings}
+            defaultVideoContainer={data.downloadSettings?.defaultVideoContainer}
             videoTitle={videoTitle}
             filenameValue={data.videoFilenameValue}
             setFilenameValue={data.setVideoFilenameValue}

@@ -18,6 +18,7 @@ import SectionLoadingState from './SectionLoadingState'
 import { getDownloadProgressLabel } from './downloadProgressLabel'
 import { buildAudioOptions } from './formatOptions'
 import { adjustColorBrightness, getContrastTextColor } from './styleUtils'
+import { parseVideoTitle } from '../../../utils/metadataParser'
 import {
   getPathDirectory,
   getPathFilename,
@@ -42,6 +43,7 @@ export default function AudioTabContent({
   setArtistValue,
   albumValue,
   setAlbumValue,
+  audioCutsData,
   setAudioCutsData,
   coverEmbedEnabled,
   setCoverEmbedEnabled,
@@ -65,7 +67,10 @@ export default function AudioTabContent({
   loadingFormats,
   isElectronRuntime = false,
   downloadTargetSettings = null,
+  defaultAudioContainer,
+  defaultCoverEmbedEnabled,
   videoTitle = '',
+  videoAuthor = '',
   filenameValue,
   setFilenameValue,
   audioContainer,
@@ -98,6 +103,62 @@ export default function AudioTabContent({
   const showCutLoader = durationLoading
   const showCutUnavailable = !durationLoading && durationUnavailable
   const showBitrateLoader = loadingFormats
+  const normalizeValue = (value) => String(value || '').trim()
+  const normalizedVideoTitle = normalizeValue(videoTitle)
+  const normalizedVideoAuthor = normalizeValue(videoAuthor)
+  const parsedMetadata = parseVideoTitle(normalizedVideoTitle)
+  const metadataDefaults = {
+    title: normalizeValue(parsedMetadata.title || normalizedVideoTitle || ''),
+    artist: normalizeValue(parsedMetadata.artist || normalizedVideoAuthor || ''),
+    album: normalizeValue(parsedMetadata.album || ''),
+  }
+  const metadataChanged =
+    normalizeValue(titleValue) !== metadataDefaults.title
+    || normalizeValue(artistValue) !== metadataDefaults.artist
+    || normalizeValue(albumValue) !== metadataDefaults.album
+  const defaultAudioContainerValue = normalizeValue(defaultAudioContainer) || 'mp3'
+  const filenameBaseName = normalizedVideoTitle || normalizeValue(titleValue) || 'download'
+  const defaultFilenameValue = pathModeEnabled
+    ? resolveFullPathValue({
+      inputValue: '',
+      defaultDirectory,
+      fallbackBaseName: filenameBaseName,
+      extension: defaultAudioContainerValue,
+    })
+    : filenameBaseName
+  const normalizedFilenameValue = normalizeValue(filenameValue)
+  const normalizedDefaultFilename = normalizeValue(defaultFilenameValue)
+  const filenameChanged = normalizedFilenameValue
+    ? normalizedFilenameValue !== normalizedDefaultFilename
+    : false
+  const containerChanged = normalizeValue(audioContainer) !== defaultAudioContainerValue
+  const bitrateChanged = Boolean(selectedAudioFormat && selectedAudioFormat !== 'best')
+  const coverDefaultSource = (videoThumbnailChecked && !videoThumbnailChecking && !hasVideoThumbnail)
+    ? 'upload'
+    : 'video'
+  const coverDefaultEmbedEnabled = (videoThumbnailChecked && !videoThumbnailChecking && !hasVideoThumbnail)
+    ? false
+    : Boolean(defaultCoverEmbedEnabled)
+  const coverHasUpload = Boolean(coverUpload?.dataUrl || coverUpload?.originalDataUrl)
+  const coverHasVideoEdit = Boolean(coverVideoEdit?.dataUrl)
+  const coverChanged = coverSource !== coverDefaultSource
+    || coverEmbedEnabled !== coverDefaultEmbedEnabled
+    || coverHasUpload
+    || coverHasVideoEdit
+  const cutChanged = React.useMemo(() => {
+    if (!audioCutsData) return false
+    const enabled = Boolean(audioCutsData.enabled)
+    const mode = String(audioCutsData.mode || 'keep')
+    const trimStart = Number(audioCutsData.trimStart) || 0
+    const trimEnd = Number(audioCutsData.trimEnd) || 0
+    const segments = Array.isArray(audioCutsData.segments) ? audioCutsData.segments : []
+    const hasSegments = segments.length > 0
+    const duration = Number(durationSeconds)
+    const hasDuration = Number.isFinite(duration) && duration > 0
+    const defaultEnd = hasDuration ? duration : 1
+    const endChanged = hasDuration ? trimEnd < duration : trimEnd !== defaultEnd
+    return enabled || mode !== 'keep' || trimStart > 0 || endChanged || hasSegments
+  }, [audioCutsData, durationSeconds])
 
   React.useEffect(() => {
     if (!pathModeEnabled) {
@@ -214,6 +275,7 @@ export default function AudioTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
+        iconColor={metadataChanged ? brandColor : undefined}
         icon={<Info size={18} />}
         label={i18nT('downloader.metadata')}
         theme={theme}
@@ -255,6 +317,7 @@ export default function AudioTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
+        iconColor={cutChanged ? brandColor : undefined}
         icon={<Scissors size={18} />}
         label={i18nT('downloader.cutAudio')}
         theme={theme}
@@ -297,6 +360,7 @@ export default function AudioTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
+        iconColor={coverChanged ? brandColor : undefined}
         icon={<ImageIcon size={18} />}
         label={i18nT('downloader.albumCover')}
         theme={theme}
@@ -333,6 +397,7 @@ export default function AudioTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
+        iconColor={bitrateChanged ? brandColor : undefined}
         icon={<TrendingUp size={18} />}
         label={i18nT('downloader.audioBitrate')}
         theme={theme}
@@ -366,6 +431,7 @@ export default function AudioTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
+        iconColor={(filenameChanged || containerChanged) ? brandColor : undefined}
         icon={<Tag size={18} />}
         label={i18nT(pathModeEnabled ? 'downloader.filePathAndFormat' : 'downloader.filenameAndFormat')}
         theme={theme}

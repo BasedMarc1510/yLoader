@@ -12,12 +12,20 @@ export default function CollapsibleSection({
   isDark,
   textColor,
   icon,
+  iconColor,
   label,
   children,
   theme,
 }) {
   const isOpen = activeSection === id
   const isCompact = variant === 'compact'
+
+  const iconProps = {
+    size: isCompact ? 16 : 18,
+  }
+  if (iconColor) {
+    iconProps.color = iconColor
+  }
   
   const collapseBg = isDark 
     ? (isCompact ? 'rgba(255,255,255,0.02)' : '#272727') 
@@ -51,7 +59,7 @@ export default function CollapsibleSection({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          {React.cloneElement(icon, { size: isCompact ? 16 : 18 })}
+          {React.cloneElement(icon, iconProps)}
           <Typography sx={{ fontWeight: isCompact ? 700 : 600, fontSize: isCompact ? '0.85rem' : '1rem' }}>{label}</Typography>
         </Box>
       </Button>
