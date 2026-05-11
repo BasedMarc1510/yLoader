@@ -79,15 +79,12 @@ jobs:
         with:
           path: release-assets
 
-      - name: Publish assets via GitHub CLI
+      - name: Prepare release assets
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
-          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
+          mkdir -p release-upload
           mapfile -d '' files < <(find release-assets -type f -print0 | sort -z)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No release assets were downloaded."
@@ -123,6 +120,7 @@ jobs:
 
             seen_by_name[$name]="$file"
             upload_files+=("$file")
+            cp "$file" "release-upload/$name"
           done
 
           if [ "${#upload_files[@]}" -eq 0 ]; then
@@ -130,16 +128,17 @@ jobs:
             exit 1
           fi
 
-          prerelease_args=()
-          if [[ "$TAG_NAME" == *-* ]]; then
-            prerelease_args+=(--prerelease)
+          if [ "${#upload_files[@]}" -eq 0 ]; then
+            echo "No release assets remain after filtering duplicates."
+            exit 1
           fi
 
-          if ! gh release view "$TAG_NAME" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release create "$TAG_NAME" --repo "$GH_REPO" --title "$TAG_NAME" --generate-notes "${prerelease_args[@]}"
-          fi
-
-          for file in "${upload_files[@]}"; do
-            echo "Uploading $(basename "$file")"
-            gh release upload "$TAG_NAME" "$file" --repo "$GH_REPO" --clobber
-          done
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: release-upload/*
+          fail_on_unmatched_files: true
