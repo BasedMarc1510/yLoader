@@ -74,7 +74,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # Install Node dependencies
 COPY backend/package*.json ./
-RUN npm ci --omit=dev --no-audit --no-fund \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+		--mount=type=cache,target=/var/lib/apt,sharing=locked \
+		apt-get update \
+		&& apt-get install -y --no-install-recommends python3 make g++ \
+		&& npm_config_build_from_source=true npm ci --omit=dev --no-audit --no-fund \
+		&& apt-get purge -y --auto-remove python3 make g++ \
+		&& rm -rf /var/lib/apt/lists/* \
 		&& npm cache clean --force
 
 # Copy application source
