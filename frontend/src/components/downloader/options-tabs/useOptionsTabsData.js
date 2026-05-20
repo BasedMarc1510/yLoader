@@ -300,16 +300,6 @@ export default function useOptionsTabsData({
   }, [normalizedVideoThumbnail, videoUrl])
 
   React.useEffect(() => {
-    if (!videoThumbnailChecked || videoThumbnailChecking || hasVideoThumbnail) return
-    if (coverSource !== 'video') return
-
-    setCoverSource('upload')
-    if (coverEmbedEnabled) {
-      setCoverEmbedEnabled(false)
-    }
-  }, [coverEmbedEnabled, coverSource, hasVideoThumbnail, videoThumbnailChecked, videoThumbnailChecking])
-
-  React.useEffect(() => {
     if (!videoTitle) return
 
     const parsed = parseVideoTitle(videoTitle)

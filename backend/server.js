@@ -1485,6 +1485,12 @@ function buildUniqueFilePath(directoryPath, baseName, extension) {
   return path.join(safeDirectory, `${safeBaseName}-${Date.now()}${extSuffix}`)
 }
 
+function buildUniqueTempOutputBaseName(directoryPath, preferredBaseName, extension, fallbackBaseName = 'content') {
+  const safePreferredBaseName = sanitizeFilename(preferredBaseName || fallbackBaseName, 120) || fallbackBaseName
+  const candidatePath = buildUniqueFilePath(directoryPath, safePreferredBaseName, extension)
+  return sanitizeFilename(path.parse(candidatePath).name, 120) || safePreferredBaseName
+}
+
 function normalizeDownloadDirectoryPath(value, fallbackPath) {
   const fallback = String(fallbackPath || '').trim()
   const raw = String(value || '')
@@ -5312,14 +5318,20 @@ app.post('/api/download/stream', async (req, res) => {
         if (electronSavePath) {
           const parsedSavePath = path.parse(electronSavePath)
           const requestedBaseName = sanitizeFilename(parsedSavePath.name || finalBaseFilename, 120) || finalBaseFilename
-          tempOutputBaseName = requestedBaseName
           directTargetSavePath = path.join(resolvedDirectoryPath, `${requestedBaseName}.${ext}`)
         } else {
           const uniqueTargetPath = buildUniqueFilePath(resolvedDirectoryPath, finalBaseFilename, ext)
-          const uniqueBaseName = sanitizeFilename(path.parse(uniqueTargetPath).name, 120) || finalBaseFilename
-          tempOutputBaseName = uniqueBaseName
           directTargetSavePath = uniqueTargetPath
         }
+
+        const directTempTargetBase = sanitizeFilename(path.parse(directTargetSavePath).name, 120) || finalBaseFilename
+        const directTempBaseSeed = `yloader_${downloadHash.slice(0, 8)}_${directTempTargetBase}`
+        tempOutputBaseName = buildUniqueTempOutputBaseName(
+          resolvedDirectoryPath,
+          directTempBaseSeed,
+          ext,
+          `yloader_${downloadHash.slice(0, 8)}`
+        )
 
         if (directTargetSavePath && fs.existsSync(directTargetSavePath)) {
           const existingTargetStat = fs.statSync(directTargetSavePath)
