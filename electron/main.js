@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, screen, session, dialog, Menu, Tray } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, screen, session, dialog, Menu, Tray, nativeImage } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const { spawn } = require('child_process')
 const { Readable } = require('stream')
@@ -2402,7 +2402,11 @@ function ensureTray() {
   }
 
   try {
-    tray = new Tray(trayIconPath)
+    let icon = nativeImage.createFromPath(trayIconPath)
+    if (process.platform === 'darwin') {
+      icon = icon.resize({ width: 16, height: 16 })
+    }
+    tray = new Tray(icon)
   } catch {
     tray = null
     return null
@@ -3150,7 +3154,7 @@ app.on('before-quit', (event) => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' || !desktopSettings.closeToTrayOnWindowClose) {
     app.quit()
   }
 })
