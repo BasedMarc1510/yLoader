@@ -83,8 +83,8 @@ Open http://localhost:8080
 If you need a pinned version instead of `latest`:
 
 ```bash
-docker pull yloader/yloader:2026.1.0
-docker run -d --name yloader -p 8080:8080 yloader/yloader:2026.1.0
+docker pull yloader/yloader:2026.1.1
+docker run -d --name yloader -p 8080:8080 yloader/yloader:2026.1.1
 ```
 
 ### Option 3: Docker Compose (from source)
@@ -132,7 +132,7 @@ npm run start:electron:clear
 - The image runs the app on container port `8080`
 - If you do not publish a host port with `-p`, the app runs but is not reachable from your browser
 - `latest` tracks the newest pushed `v*` release tag
-- Version tags are also published in both forms (for example `v2026.1.0` and `2026.1.0`)
+- Version tags are also published in both forms (for example `v2026.1.1` and `2026.1.1`)
 - In Docker mode, Settings > General can check for newer yLoader releases and will show a hint to update the container manually
 
 ## Configuration
