@@ -235,8 +235,13 @@ async function main() {
   fs.rmSync(SQLITE_SMOKE_FILE, { force: true })
 
   info('Running electron-builder...')
+  const builderEnv = {
+    ...process.env,
+    CSC_IDENTITY_AUTO_DISCOVERY: 'false',
+  }
   await runCommand(process.execPath, [ELECTRON_BUILDER_CLI, ...builderArgs], {
     prefix: 'builder',
+    env: builderEnv,
   })
 }
 
