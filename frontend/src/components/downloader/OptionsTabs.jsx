@@ -1,4 +1,5 @@
 import React from 'react'
+import CompletedDownloadEditor from '../media-editor/CompletedDownloadEditor'
 import { Box, Button, Skeleton, useTheme } from '@mui/material'
 import { Image as ImageIcon, Music2, Video } from 'lucide-react'
 import { useNotification } from '../../providers/NotificationProvider'
@@ -111,6 +112,8 @@ export default function OptionsTabs({
     [data.selectedThumbValue, data.thumbOptions]
   )
 
+  const [maximumCompatibility, setMaximumCompatibility] = React.useState(false)
+
   const isCompact = variant === 'compact'
 
   const onDownloadStateChangeRef = React.useRef(onDownloadStateChange)
@@ -194,6 +197,7 @@ export default function OptionsTabs({
     artistValue: data.artistValue,
     albumValue: data.albumValue,
     videoContainer: data.videoContainer,
+    maximumCompatibility,
     audioContainer: data.audioContainer,
     selectedAudioFormat: data.selectedAudioFormat,
     selectedVideoFormat: data.selectedVideoFormat,
@@ -502,6 +506,8 @@ export default function OptionsTabs({
             setFilenameValue={data.setVideoFilenameValue}
             videoContainer={data.videoContainer}
             setVideoContainer={data.setVideoContainer}
+            maximumCompatibility={maximumCompatibility}
+            setMaximumCompatibility={setMaximumCompatibility}
             handleDownload={download.handleDownload}
             downloadProgress={download.downloadProgress}
             downloadStage={download.downloadStage}
@@ -529,6 +535,7 @@ export default function OptionsTabs({
         )}
       </Box>
 
+      <CompletedDownloadEditor entry={download.lastCompletedDownload} downloading={download.downloading} />
       <OverwriteConfirmDialog
         open={Boolean(overwriteDialogData)}
         title={overwriteDialogData?.title || i18nT('downloader.confirmOverwriteTitle')}

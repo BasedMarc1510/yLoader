@@ -119,6 +119,8 @@ function stageBackendFiles() {
   fs.copyFileSync(path.join(BACKEND_DIR, 'package.json'), path.join(STAGE_BACKEND_DIR, 'package.json'))
   fs.copyFileSync(path.join(BACKEND_DIR, 'package-lock.json'), path.join(STAGE_BACKEND_DIR, 'package-lock.json'))
   fs.copyFileSync(path.join(BACKEND_DIR, 'server.js'), path.join(STAGE_BACKEND_DIR, 'server.js'))
+  fs.cpSync(path.join(BACKEND_DIR, 'media-editor'), path.join(STAGE_BACKEND_DIR, 'media-editor'), { recursive: true })
+  fs.cpSync(path.join(BACKEND_DIR, 'video-compatibility'), path.join(STAGE_BACKEND_DIR, 'video-compatibility'), { recursive: true })
   fs.cpSync(SHARED_DIR, STAGE_SHARED_DIR, { recursive: true })
 }
 

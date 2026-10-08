@@ -16,6 +16,35 @@ yLoader is built for fast daily use: clean UI, advanced media controls, and feat
 
 <img width="1314" height="817" alt="image2_dark" src="https://github.com/user-attachments/assets/aab38a50-6e77-41d2-8468-27d9749f1cec" />
 
+## Maximum video compatibility
+
+Enable **Maximum compatibility** in the video downloader to re-encode the finished download with FFmpeg, after any cuts. It is off by default and applies equally to Web, Docker, and Electron.
+
+| Container | Video | Audio |
+| --- | --- | --- |
+| MP4 / MOV / MKV | H.264 Baseline, 8-bit YUV 4:2:0 | AAC-LC |
+| WebM | VP8, 8-bit YUV 4:2:0 | Vorbis |
+| AVI | MPEG-4 Part 2 (Xvid tag) | MP3 |
+
+Audio is converted to stereo at 48 kHz when present. Odd video dimensions are padded to even dimensions. MP4 and MOV use fast-start metadata for playback. Resolution and frame rate are retained; compatibility still depends on the player's resolution/frame-rate limits and container support. Converting takes additional time and may reduce quality or increase file size. This option changes the actual codecs, rather than just remuxing or renaming the file. FFmpeg needs the listed encoders; conversion failures are reported without publishing an unconverted result. Converted downloads use a separate cache identity.
+
+## Edit a completed download
+
+After a video or audio download finishes, choose **Edit** below the download options, or open the file's menu under **All downloads → Edit**.
+
+- Preview the downloaded file and trim on a zoomable timeline with actual video thumbnails and an audio waveform. Drag the start/end handles, click to seek, or enter precise times. Arrow keys move a focused handle by 0.1 seconds (Shift: 1 second; Alt: 0.01 seconds).
+- Adjust volume (0–200%), remove the audio track, add audio fades, or extract audio from a video.
+- **Save copy** creates an MP4 (H.264/AAC) or M4A (AAC) beside the original and adds it to the download history. The original is never overwritten. Exports are re-encoded.
+- Cancel stops processing and removes the incomplete copy. Only one edit is processed at a time.
+
+Thumbnails are extracted with independent seeks; waveform peaks are calculated from the source audio in a bounded streaming buffer. Timeline analysis runs only while the editor is open and is cancelled when it closes. Only one timeline analysis runs at a time; unavailable previews can be retried without preventing edits.
+
+The editor uses the existing backend ffmpeg and ffprobe binaries; it requires no extra npm packages. Browser playback depends on the source codec; files that cannot be previewed can still be edited. The preview reflects cuts, mute, and volume up to 100%; amplification and fades are applied on export.
+
+Web and Docker files, including edited copies, follow the existing 24-hour download cache retention. Electron downloads saved directly to a chosen folder remain in that folder. Their paths are recorded for new downloads; older direct-folder downloads must be downloaded again to become editable. The Docker build and Electron staging include the editor backend modules.
+
+Run the processing/API regression tests with `node --test backend/media-editor/editor.test.js frontend/src/components/media-editor/timelineUtils.test.js` (ffmpeg and ffprobe must be on PATH).
+
 ## Electron Desktop App
 
 Install yLoader directly from the latest release for your operating system:

@@ -1,10 +1,12 @@
 import React from 'react'
 import { Box, Menu, MenuItem, Typography } from '@mui/material'
-import { Download, Filter, RefreshCw, Trash2 } from 'lucide-react'
+import { Scissors, Download, Filter, RefreshCw, Trash2 } from 'lucide-react'
 import ServiceIcon from '../../components/ServiceIcon'
 
 export default function DownloadsMenus({
   canMenuSaveTarget,
+  canMenuEditTarget,
+  handleMenuEdit,
   closeEntryMenu,
   entryMenuAnchorEl,
   entryMenuItem,
@@ -80,6 +82,12 @@ export default function DownloadsMenus({
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
             <Download size={15} />
             <span>{t('downloads.save')}</span>
+          </Box>
+        </MenuItem>
+
+        <MenuItem onClick={handleMenuEdit} disabled={!canMenuEditTarget}>
+          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+            <Scissors size={15} /><span>{t('editor.edit')}</span>
           </Box>
         </MenuItem>
 

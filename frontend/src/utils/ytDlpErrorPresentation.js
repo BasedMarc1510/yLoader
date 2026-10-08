@@ -4,6 +4,7 @@ import {
 } from '../../../shared/errors/ytDlpErrorCatalog.js'
 
 const TRANSLATION_KEY_BY_CODE = Object.freeze({
+  VIDEO_COMPATIBILITY_FAILED: 'downloader.errorVideoCompatibility',
   [YT_DLP_ERROR_CODES.UNSUPPORTED_URL]: 'downloader.errorUnsupportedUrl',
   [YT_DLP_ERROR_CODES.GEO_RESTRICTED]: 'downloader.errorGeoRestricted',
   [YT_DLP_ERROR_CODES.AUTH_REQUIRED]: 'downloader.errorAuthRequired',

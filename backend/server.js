@@ -1,3 +1,5 @@
+import { registerMediaEditor } from './media-editor/routes.js'
+import { buildCompatibilityArgs } from './video-compatibility/profiles.js'
 import express from 'express'
 import { execFile, spawn } from 'child_process'
 import os from 'os'
@@ -100,6 +102,7 @@ db.serialize(() => {
   db.run(`ALTER TABLE downloads ADD COLUMN thumbnail_url TEXT`, (err) => {
     // ignore error if column exists
   });
+  db.run(`ALTER TABLE downloads ADD COLUMN local_path TEXT`, () => {})
   db.run(`CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -140,10 +143,10 @@ function getDefaultSystemDownloadsDir() {
 const DEFAULT_SYSTEM_DOWNLOADS_DIR = getDefaultSystemDownloadsDir()
 
 const ALLOWED_AUDIO_CONTAINERS = new Set(['mp3', 'm4a', 'wav', 'ogg', 'flac', 'opus'])
-const ALLOWED_VIDEO_CONTAINERS = new Set(['mp4', 'webm', 'mkv'])
+const ALLOWED_VIDEO_CONTAINERS = new Set(['mp4', 'webm', 'mkv', 'avi', 'mov'])
 const ALLOWED_IMAGE_CONTAINERS = new Set(['jpg', 'png', 'webp'])
 const ALLOWED_DOWNLOAD_TYPES = new Set(['audio', 'video', 'thumbnail'])
-const STREAM_MEDIA_FILE_EXTENSIONS = new Set(['.mp3', '.mp4', '.mkv', '.webm', '.m4a', '.ogg', '.wav', '.flac', '.opus'])
+const STREAM_MEDIA_FILE_EXTENSIONS = new Set(['.mp3', '.mp4', '.mkv', '.webm', '.m4a', '.ogg', '.wav', '.flac', '.opus', '.avi', '.mov'])
 const FORMAT_ID_REGEX = /^[A-Za-z0-9_.,:+\-\/=~*]+$/
 const MAX_PROXY_IMAGE_SIZE_BYTES = 15 * 1024 * 1024
 const TAB_STATE_SETTINGS_KEY = 'ui.tabs.state.v1'
@@ -760,12 +763,13 @@ app.get('/api/downloads', (req, res) => {
 
     // Check file existence for each row
     const result = rows.map(row => {
-      const filePath = path.join(DOWNLOADS_DIR, row.filename || '');
+      const filePath = row.local_path || path.join(DOWNLOADS_DIR, path.basename(row.filename || ''));
       const thumbnailUrlRaw = String(row.thumbnail_url || '').trim()
       const thumbnailUrl = isValidHttpUrl(thumbnailUrlRaw) ? thumbnailUrlRaw : null
 
       return {
         ...row,
+        local_path: undefined,
         thumbnail_url: thumbnailUrl,
         cached: fs.existsSync(filePath)
       };
@@ -2628,6 +2632,8 @@ if (YT_DLP_COOKIES_FROM_BROWSER_ENV) {
 
 // Downloads directory and cache settings
 const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOAD_DIR || './downloads')
+registerMediaEditor(app, { db, downloadsDir: DOWNLOADS_DIR,
+  getFfmpeg: () => HAS_FFMPEG ? FFMPEG_BIN : '', getFfprobe: resolveFfprobeBinary })
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000 // 24 hours
 const activeDownloads = new Map() // Track active downloads by hash
 const downloadSlotEmitter = new EventEmitter()
@@ -4937,7 +4943,7 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
 })
 
 // POST /api/download/stream -> SSE with live yt-dlp download progress
-// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, metadata?, cover?, cuts? }
+// Body: { url, type: 'audio' | 'video', format?, audioFormat?, videoFormat?, maximumCompatibility?, metadata?, cover?, cuts? }
 app.post('/api/download/stream', async (req, res) => {
   const {
     url: rawUrl,
@@ -4945,6 +4951,7 @@ app.post('/api/download/stream', async (req, res) => {
     format: rawContainer,
     audioFormat: rawAudioFormat,
     videoFormat: rawVideoFormat,
+    maximumCompatibility: rawMaximumCompatibility,
     metadata: rawMetadata,
     cover,
     duration,
@@ -4962,6 +4969,7 @@ app.post('/api/download/stream', async (req, res) => {
   const container = String(rawContainer || '').trim().toLowerCase()
   const audioFormat = String(rawAudioFormat || '').trim()
   const videoFormat = String(rawVideoFormat || '').trim()
+  const maximumCompatibility = type === 'video' && rawMaximumCompatibility === true
   const electronSavePath = normalizeDownloadDirectoryPath(rawElectronSavePath, '')
   const electronTargetDirectory = normalizeDownloadDirectoryPath(rawElectronTargetDirectory, '')
   const electronAllowOverwrite = rawElectronAllowOverwrite === true
@@ -4991,6 +4999,13 @@ app.post('/api/download/stream', async (req, res) => {
   }
   if (type !== 'audio' && type !== 'video') {
     return res.status(400).json({ error: 'Invalid type. Must be audio or video' })
+  }
+
+  if (rawMaximumCompatibility !== undefined && typeof rawMaximumCompatibility !== 'boolean') {
+    return res.status(400).json({ error: 'maximumCompatibility must be a boolean' })
+  }
+  if (maximumCompatibility && !HAS_FFMPEG) {
+    return res.status(400).json({ error: 'ffmpeg is required for maximum compatibility' })
   }
 
   const normalizedVideoTitle = sanitizeMetadataValue(rawVideoTitle)
@@ -5141,6 +5156,7 @@ app.post('/api/download/stream', async (req, res) => {
         format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
         audioFormat: normalizedAudioFormatId || '',
         videoFormat: normalizedVideoFormatId || '',
+        ...(maximumCompatibility ? { maximumCompatibility: true, compatibilityProfileVersion: 1 } : {}),
         maxAudioBitrateKbps,
         maxVideoHeight,
         videoTitle: normalizedVideoTitle || null,
@@ -5214,7 +5230,8 @@ app.post('/api/download/stream', async (req, res) => {
             formatArgs = ['-f', 'bestvideo+bestaudio/best']
           }
         }
-        formatArgs.push('--merge-output-format', ext)
+        // Merge into a permissive intermediate container before explicit transcoding.
+        formatArgs.push('--merge-output-format', maximumCompatibility ? 'mkv' : ext)
       }
     }
 
@@ -5239,7 +5256,7 @@ app.post('/api/download/stream', async (req, res) => {
 
     if (!useElectronDirectTarget) {
       // Check if file already exists (cached) in FINAL destination
-      const possibleExts = type === 'audio' ? ['mp3', 'm4a', 'opus', 'webm', 'ogg', 'wav', 'flac'] : ['mp4', 'webm', 'mkv']
+      const possibleExts = type === 'audio' ? ['mp3', 'm4a', 'opus', 'webm', 'ogg', 'wav', 'flac'] : ['mp4', 'webm', 'mkv', 'avi', 'mov']
       let existingFile = null
       for (const e of possibleExts) {
         const testPath = path.join(DOWNLOADS_DIR, `${finalBaseFilename}.${e}`)
@@ -5262,7 +5279,11 @@ app.post('/api/download/stream', async (req, res) => {
       if (existingFile) {
         console.log(`File cached: ${existingFile}`)
         send('progress', { percent: 100, stage: 'cached' })
-        send('complete', { filename: existingFile, url: `/api/download/file/${encodeURIComponent(existingFile)}`, savePath: path.join(DOWNLOADS_DIR, existingFile) })
+        const existingRow = await new Promise((resolve, reject) => {
+          db.get('SELECT id FROM downloads WHERE filename = ? ORDER BY id DESC LIMIT 1', [existingFile],
+            (err, row) => err ? reject(err) : resolve(row))
+        })
+        send('complete', { id: existingRow?.id || null, filename: existingFile, url: `/api/download/file/${encodeURIComponent(existingFile)}`, savePath: path.join(DOWNLOADS_DIR, existingFile) })
         safeEnd()
         return
       }
@@ -5532,12 +5553,12 @@ app.post('/api/download/stream', async (req, res) => {
     })
 
     child.on('close', async (code, signal) => {
-      activeDownloads.delete(downloadHash)
-      notifyDownloadSlotsChanged()
       console.log(`yt-dlp closed with code ${code}`)
 
+      let completedDownloadId = null
       let finalFile = null
       let finalPath = ''
+      let compatibilityFailed = false
       let processingFailureMessage = ''
 
       // Check if we have a file in temp dir
@@ -5551,7 +5572,7 @@ app.post('/api/download/stream', async (req, res) => {
           })
 
           if (contentFile) {
-            const ext = path.extname(contentFile)
+            let ext = path.extname(contentFile)
             let sourcePath = path.join(tempDir, contentFile)
             const transientFiles = new Set()
             const parsedDuration = Number(duration)
@@ -5701,6 +5722,39 @@ app.post('/api/download/stream', async (req, res) => {
               })
             }
 
+            if (maximumCompatibility) {
+              postProcessSteps.push(async (stepIndex) => {
+                const previousSourcePath = sourcePath
+                const compatiblePath = path.join(tempDir, `${tempOutputBaseName}_compatible_${downloadHash}.${requestedVideoContainer}`)
+                transientFiles.add(compatiblePath)
+                try {
+                  emitPostProcessProgress(stepIndex, 0, 'converting')
+                  await runFfmpegWithProgress(
+                    buildCompatibilityArgs(sourcePath, compatiblePath, requestedVideoContainer),
+                    {
+                      durationSeconds: await getMediaDurationSeconds(sourcePath) || mediaDuration,
+                      onProgress: (progress) => emitPostProcessProgress(stepIndex, progress, 'converting'),
+                    },
+                  )
+                  if (!fs.existsSync(compatiblePath) || fs.statSync(compatiblePath).size === 0) {
+                    throw new Error('FFmpeg produced no video output')
+                  }
+                  sourcePath = compatiblePath
+                  ext = `.${requestedVideoContainer}`
+                  transientFiles.add(previousSourcePath)
+                } catch (err) {
+                  compatibilityFailed = true
+                  console.error('Video compatibility conversion failed:', err)
+                  // Direct Electron targets are not in a disposable cache directory.
+                  for (const transientPath of transientFiles) {
+                    try { fs.unlinkSync(transientPath) } catch { }
+                  }
+                  try { fs.unlinkSync(previousSourcePath) } catch { }
+                  throw new Error('Video compatibility conversion failed')
+                }
+              })
+            }
+
             if (postProcessSteps.length > 0) {
               for (let stepIndex = 0; stepIndex < postProcessSteps.length; stepIndex += 1) {
                 await postProcessSteps[stepIndex](stepIndex)
@@ -5761,6 +5815,8 @@ app.post('/api/download/stream', async (req, res) => {
                   format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
                   audioFormat: normalizedAudioFormatId || '',
                   videoFormat: normalizedVideoFormatId || '',
+                  maximumCompatibility,
+                  compatibilityProfileVersion: maximumCompatibility ? 1 : null,
                   maxAudioBitrateKbps,
                   maxVideoHeight,
                   videoTitle: normalizedVideoTitle || null,
@@ -5810,9 +5866,11 @@ app.post('/api/download/stream', async (req, res) => {
 
               const svc = resolvedService
 
-              const stmt = db.prepare(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-              stmt.run(videoId, targetTitle, duration || 0, timestamp, type, formatId, finalFile, svc, url, thumbnailUrl || null)
-              stmt.finalize()
+              completedDownloadId = await new Promise((resolve, reject) => {
+                db.run(`INSERT INTO downloads (video_id, title, duration, timestamp, download_type, format_id, filename, service, source_url, thumbnail_url, local_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [videoId, targetTitle, duration || 0, timestamp, type, formatId, finalFile, svc, url, thumbnailUrl || null, finalPath],
+                  function (err) { err ? reject(err) : resolve(this.lastID) })
+              })
               console.log('Metadata saved to DB for:', finalFile)
             } catch (dbErr) {
               console.error('Failed to save metadata to DB:', dbErr)
@@ -5839,6 +5897,7 @@ app.post('/api/download/stream', async (req, res) => {
         console.log(`Download successful: ${finalFile}`)
         emitProgress(100, 'complete')
         const completionPayload = {
+          id: completedDownloadId,
           filename: finalFile,
           savePath: finalPath,
         }
@@ -5854,7 +5913,9 @@ app.post('/api/download/stream', async (req, res) => {
           const fallbackMessage = 'Download reported success but file not found'
           const failureMessage = processingFailureMessage || fallbackMessage
           console.error('Download reported success but completion failed:', failureMessage)
-          send('error', failureMessage)
+          send('error', compatibilityFailed
+            ? { code: 'VIDEO_COMPATIBILITY_FAILED', message: failureMessage }
+            : failureMessage)
           send('end', 'failed')
         } else {
           const rawErrorText = errorOutput.length > 0
@@ -5870,6 +5931,8 @@ app.post('/api/download/stream', async (req, res) => {
           send('end', 'failed')
         }
       }
+      activeDownloads.delete(downloadHash)
+      notifyDownloadSlotsChanged()
       safeEnd()
     })
 

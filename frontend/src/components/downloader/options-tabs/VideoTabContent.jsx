@@ -5,6 +5,7 @@ import AudioCutSection from '../AudioCutSection'
 import CombinedFilenameInput from '../CombinedFilenameInput'
 import CustomSelect from '../CustomSelect'
 import CollapsibleSection from './CollapsibleSection'
+import VideoCompatibilityOption from './VideoCompatibilityOption'
 import SectionLoadingState from './SectionLoadingState'
 import { getDownloadProgressLabel } from './downloadProgressLabel'
 import { buildVideoOptions } from './formatOptions'
@@ -42,6 +43,8 @@ export default function VideoTabContent({
   setFilenameValue,
   videoContainer,
   setVideoContainer,
+  maximumCompatibility,
+  setMaximumCompatibility,
   handleDownload,
   downloadProgress,
   downloadStage,
@@ -292,7 +295,7 @@ export default function VideoTabContent({
         disabled={downloading}
         isDark={isDark}
         textColor={textColor}
-        iconColor={(filenameChanged || containerChanged) ? brandColor : undefined}
+        iconColor={(filenameChanged || containerChanged || maximumCompatibility) ? brandColor : undefined}
         icon={<Tag size={18} />}
         label={i18nT(pathModeEnabled ? 'downloader.filePathAndFormat' : 'downloader.filenameAndFormat')}
         theme={theme}
@@ -320,6 +323,13 @@ export default function VideoTabContent({
           pickPathAriaLabel={i18nT('downloader.browseFilePath')}
         />
       </CollapsibleSection>
+
+      <VideoCompatibilityOption
+        checked={maximumCompatibility}
+        onChange={setMaximumCompatibility}
+        disabled={downloading}
+        i18nT={i18nT}
+      />
 
       {!isCompact && (
         <Box sx={{ position: 'relative', mt: 2 }}>

@@ -16,6 +16,7 @@ export function getDownloadProgressLabel(t, stage, percent) {
     queued: 'downloader.stageQueued',
     merging: 'downloader.stageMerging',
     processing: 'downloader.stageProcessing',
+    converting: 'downloader.stageConverting',
   }
 
   const stageKey = stageKeyByValue[normalizedStage]

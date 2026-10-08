@@ -85,6 +85,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # Copy application source
 COPY backend/server.js ./
+COPY backend/media-editor ./media-editor
+COPY backend/video-compatibility ./video-compatibility
 COPY shared /app/shared
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 

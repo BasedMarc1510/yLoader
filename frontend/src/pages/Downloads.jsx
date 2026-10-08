@@ -1,4 +1,5 @@
 import React from 'react'
+import MediaEditorDialog from '../components/media-editor/MediaEditorDialog'
 import { Box, Container, Typography, useTheme } from '@mui/material'
 import { Image as ImageIcon, Music, Video } from 'lucide-react'
 import { useI18n } from '../providers/I18nProvider'
@@ -30,6 +31,7 @@ export default function DownloadsPage({ onOpenDownloader }) {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
 
+  const [editingEntry, setEditingEntry] = React.useState(null)
   const [downloads, setDownloads] = React.useState([])
   const [loading, setLoading] = React.useState(true)
   const [searchTerm, setSearchTerm] = React.useState('')
@@ -95,7 +97,9 @@ export default function DownloadsPage({ onOpenDownloader }) {
 
   const handleMenuSave = React.useCallback(() => {
     if (entryMenuItem?.cached && entryMenuItem?.filename) {
-      handleDownloadFile(entryMenuItem.filename)
+      if (['audio', 'video'].includes(entryMenuItem.download_type)) {
+        window.location.href = `${getApiBase()}/api/downloads/${entryMenuItem.id}/file`
+      } else handleDownloadFile(entryMenuItem.filename)
     }
     closeEntryMenu()
   }, [closeEntryMenu, entryMenuItem, handleDownloadFile])
@@ -315,6 +319,8 @@ export default function DownloadsPage({ onOpenDownloader }) {
         />
 
         <DownloadsMenus
+          handleMenuEdit={() => { setEditingEntry(entryMenuItem); closeEntryMenu() }}
+          canMenuEditTarget={canMenuSaveTarget && ['audio', 'video'].includes(entryMenuItem?.download_type)}
           canMenuSaveTarget={canMenuSaveTarget}
           closeEntryMenu={closeEntryMenu}
           entryMenuAnchorEl={entryMenuAnchorEl}
@@ -330,6 +336,7 @@ export default function DownloadsPage({ onOpenDownloader }) {
           setServiceMenuAnchorEl={setServiceMenuAnchorEl}
           t={t}
         />
+        {editingEntry && <MediaEditorDialog key={editingEntry.id} entry={editingEntry} onClose={() => setEditingEntry(null)} onSaved={fetchDownloads} />}
       </Container>
     </SimpleBarScrollArea>
   )

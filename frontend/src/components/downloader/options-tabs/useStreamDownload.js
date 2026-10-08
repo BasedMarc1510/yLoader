@@ -125,6 +125,7 @@ export default function useStreamDownload({
   artistValue,
   albumValue,
   videoContainer,
+  maximumCompatibility = false,
   audioContainer,
   selectedAudioFormat,
   selectedVideoFormat,
@@ -146,6 +147,7 @@ export default function useStreamDownload({
   confirmOverwriteInApp,
   onOpenCookieSettings,
 }) {
+  const [lastCompletedDownload, setLastCompletedDownload] = React.useState(null)
   const [downloading, setDownloading] = React.useState(false)
   const [downloadProgress, setDownloadProgress] = React.useState(0)
   const [downloadStage, setDownloadStage] = React.useState('')
@@ -314,6 +316,7 @@ export default function useStreamDownload({
     }
 
     setActiveDownloadType(type)
+    setLastCompletedDownload(null)
     setDownloading(true)
     setDownloadProgress(0)
     setDownloadStage('starting')
@@ -486,6 +489,7 @@ export default function useStreamDownload({
         thumbnailUrl: normalizedVideoThumbnailUrl || undefined,
         format: type === 'video' ? videoContainer : (type === 'audio' ? audioContainer : undefined),
         audioFormat: type === 'audio' ? selectedAudioFormat : undefined,
+        maximumCompatibility: type === 'video' ? maximumCompatibility : undefined,
         videoFormat: type === 'video' ? selectedVideoFormat : undefined,
         metadata: type === 'audio'
           ? (audioMetadataPayload?.hasAny
@@ -676,6 +680,7 @@ export default function useStreamDownload({
               relativeUrl,
               downloadUrl: relativeUrl ? `${apiBase}${relativeUrl}` : '',
             }
+            if (data.id) setLastCompletedDownload({ id: data.id, filename })
             emitDownloadEvent({
               type: 'complete',
               downloadType: type,
@@ -757,6 +762,7 @@ export default function useStreamDownload({
     titleValue,
     videoTitle,
     videoContainer,
+    maximumCompatibility,
     audioContainer,
     selectedAudioFormat,
     selectedVideoFormat,
@@ -777,6 +783,7 @@ export default function useStreamDownload({
   ])
 
   return {
+    lastCompletedDownload,
     downloading,
     downloadProgress,
     downloadStage,

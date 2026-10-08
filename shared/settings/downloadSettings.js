@@ -6,7 +6,7 @@ export const AUDIO_CONTAINER_VALUES = Object.freeze([
   'flac',
   'opus',
 ])
-export const VIDEO_CONTAINER_VALUES = Object.freeze(['mp4', 'webm', 'mkv'])
+export const VIDEO_CONTAINER_VALUES = Object.freeze(['mp4', 'webm', 'mkv', 'avi', 'mov'])
 export const DOWNLOAD_CONCURRENCY_VALUES = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8])
 export const DOWNLOAD_STAGGER_VALUES = Object.freeze([0, 100, 150, 250, 500, 1000])
 export const DOWNLOAD_AUDIO_BITRATE_VALUES = Object.freeze([0, 96, 128, 160, 192, 256, 320])
