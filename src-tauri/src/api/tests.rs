@@ -86,6 +86,47 @@ async fn requires_the_desktop_token_and_persists_valid_settings() {
 }
 
 #[tokio::test]
+#[cfg(unix)]
+async fn reconnects_to_the_existing_database_after_its_file_is_replaced() {
+    let (root, state) = fixture();
+    let current = root.path().join("tauri/metadata.db");
+    let previous = root.path().join("previous.db");
+    {
+        let db = state.db.lock().unwrap();
+        db.execute(
+            "INSERT INTO downloads (title) VALUES ('Existing download')",
+            [],
+        )
+        .unwrap();
+    }
+    fs::rename(&current, &previous).unwrap();
+    fs::copy(&previous, &current).unwrap();
+    let app = router(state, TOKEN);
+    let update = || {
+        Request::put(format!("/{TOKEN}/api/download/settings"))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"maxConcurrentDownloads":4}"#))
+            .unwrap()
+    };
+    let failed = app.clone().oneshot(update()).await.unwrap();
+    assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let saved = app.clone().oneshot(update()).await.unwrap();
+    assert_eq!(saved.status(), StatusCode::OK);
+    assert_eq!(json_body(saved).await["maxConcurrentDownloads"], 4);
+
+    let history = app
+        .oneshot(
+            Request::get(format!("/{TOKEN}/api/downloads"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(json_body(history).await[0]["title"], "Existing download");
+}
+
+#[tokio::test]
 async fn imports_an_electron_database_with_wal_and_serves_ranges() {
     let root = tempfile::tempdir().unwrap();
     let profile = root.path().join("legacy");
@@ -492,56 +533,64 @@ async fn downloads_real_media_and_thumbnails_with_the_desktop_api() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn reports_reddit_authentication_errors_without_forwarding_tool_output() {
+async fn reports_actionable_yt_dlp_errors_without_forwarding_tool_output() {
     use std::os::unix::fs::PermissionsExt;
 
     let (root, mut state) = fixture();
     let yt_dlp = root.path().join("yt-dlp");
-    fs::write(
-        &yt_dlp,
-        r#"#!/bin/sh
-printf '%s\n' 'ERROR: [Reddit] example: Account authentication is required. Private diagnostic.' >&2
-exit 1
-"#,
-    )
-    .unwrap();
-    fs::set_permissions(&yt_dlp, fs::Permissions::from_mode(0o755)).unwrap();
     state.tools.yt_dlp = yt_dlp.clone();
     state.tools.ffmpeg = yt_dlp.clone();
-    state.tools.ffprobe = yt_dlp;
+    state.tools.ffprobe = yt_dlp.clone();
     let app = router(state, TOKEN);
     let url = "https://www.reddit.com/r/test/comments/example/";
 
-    let metadata = app
-        .clone()
-        .oneshot(
-            Request::get(format!("/{TOKEN}/api/meta/formats?url={url}"))
-                .body(Body::empty())
-                .unwrap(),
+    for (diagnostic, reason) in [
+        (
+            "[Reddit] example: Account authentication is required. Private diagnostic.",
+            "Account authentication required",
+        ),
+        (
+            "could not find firefox cookies database in /Private diagnostic/Firefox/Profiles",
+            "Could not read browser cookies",
+        ),
+    ] {
+        fs::write(
+            &yt_dlp,
+            format!("#!/bin/sh\nprintf '%s\\n' 'ERROR: {diagnostic}' >&2\nexit 1\n"),
         )
-        .await
         .unwrap();
-    assert_eq!(metadata.status(), StatusCode::BAD_GATEWAY);
-    assert_eq!(
-        json_body(metadata).await,
-        json!({"error": "Account authentication required"})
-    );
+        fs::set_permissions(&yt_dlp, fs::Permissions::from_mode(0o755)).unwrap();
 
-    let download = app
-        .oneshot(
-            Request::post(format!("/{TOKEN}/api/download/stream"))
-                .header("content-type", "application/json")
-                .body(Body::from(json!({"url": url, "type": "video"}).to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let events = to_bytes(download.into_body(), 64 * 1024).await.unwrap();
-    let events = std::str::from_utf8(&events).unwrap();
-    assert!(
-        events.contains("event: error\ndata: {\"message\":\"Account authentication required\"}")
-    );
-    assert!(!events.contains("Private diagnostic"));
+        let metadata = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/{TOKEN}/api/meta/formats?url={url}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(metadata.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(json_body(metadata).await, json!({"error": reason}));
+
+        let download = app
+            .clone()
+            .oneshot(
+                Request::post(format!("/{TOKEN}/api/download/stream"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"url": url, "type": "video"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let events = to_bytes(download.into_body(), 64 * 1024).await.unwrap();
+        let events = std::str::from_utf8(&events).unwrap();
+        assert!(events.contains(&format!(
+            "event: error\ndata: {}",
+            json!({"message": reason})
+        )));
+        assert!(!events.contains("Private diagnostic"));
+    }
 }
 
 #[cfg(unix)]

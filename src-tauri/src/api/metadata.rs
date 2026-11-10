@@ -90,7 +90,17 @@ pub fn tool_error(error: ToolError) -> ApiError {
 
 pub fn yt_dlp_error(stderr: &[u8], fallback: ApiError) -> ApiError {
     for line in String::from_utf8_lossy(stderr).lines() {
-        let Some(message) = line.strip_prefix("ERROR: [Reddit] ") else {
+        let Some(message) = line.trim_start().strip_prefix("ERROR: ") else {
+            continue;
+        };
+        let lower = message.to_ascii_lowercase();
+        if (lower.starts_with("could not find ") && lower.contains(" cookies database"))
+            || lower.starts_with("could not copy chrome cookie database")
+            || lower.starts_with("custom safari cookies database not found")
+        {
+            return ApiError(StatusCode::BAD_GATEWAY, "Could not read browser cookies");
+        }
+        let Some(message) = message.strip_prefix("[Reddit] ") else {
             continue;
         };
         let reason = if message.contains("Private subreddit") {

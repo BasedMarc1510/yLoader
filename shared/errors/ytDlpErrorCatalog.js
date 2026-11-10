@@ -14,12 +14,17 @@ export const YT_DLP_ERROR_CODES = Object.freeze({
   HTTP_NOT_FOUND: 'http_not_found',
   CONTENT_TOO_SHORT: 'content_too_short',
   COOKIE_ERROR: 'cookie_error',
+  BROWSER_COOKIE_ACCESS: 'browser_cookie_access',
   NETWORK_ERROR: 'network_error',
   FFMPEG_REQUIRED: 'ffmpeg_required',
   UNKNOWN: 'unknown',
 })
 
 const ERROR_MATCHERS = [
+  {
+    code: YT_DLP_ERROR_CODES.BROWSER_COOKIE_ACCESS,
+    pattern: /^(could not read browser cookies\b|could not find \w+ cookies database\b|could not copy chrome cookie database\b|custom safari cookies database not found\b)/i,
+  },
   {
     code: YT_DLP_ERROR_CODES.RATE_LIMITED,
     pattern: /(\b429\b|too many requests|rate\s*limit|rate\s*limited)/i,

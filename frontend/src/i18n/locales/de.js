@@ -590,6 +590,7 @@ const de = {
     errorNotFound: 'Inhalt nicht gefunden (404 Not Found).',
     errorContentTooShort: 'Der Download wurde unterbrochen und war unvollständig.',
     errorCookieError: 'Cookies fehlen oder sind ungültig. Bitte Login-Cookies erneuern.',
+    errorBrowserCookieAccess: 'Die Browser-Cookies konnten nicht gelesen werden. Prüfe das gewählte Browserprofil und die Zugriffsrechte oder wähle eine Cookie-Datei aus.',
     errorNetwork: 'Beim Verbinden mit der Quelle ist ein Netzwerkfehler aufgetreten.',
     errorFfmpegRequired: 'Für diese Aktion wird ffmpeg benötigt.',
     errorPickSavePath: 'Speicherpfad konnte nicht ausgewählt werden: {message}',

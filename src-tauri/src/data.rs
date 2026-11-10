@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use rusqlite::{Connection, MAIN_DB, OpenFlags, OptionalExtension};
+use rusqlite::{Connection, Error, ErrorCode, MAIN_DB, OpenFlags, OptionalExtension, ffi};
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
@@ -20,6 +20,7 @@ const LEGACY_WEB_PREFERENCES_KEY: &str = "desktop.legacy-web-preferences.v1";
 #[derive(Clone)]
 pub struct State {
     pub db: Arc<Mutex<Connection>>,
+    db_path: PathBuf,
     pub downloads: PathBuf,
     pub system_downloads: PathBuf,
     pub tools: Tools,
@@ -57,7 +58,7 @@ impl State {
             snapshot.persist_noclobber(&db_path)?;
         }
 
-        let mut db = Connection::open(db_path)?;
+        let mut db = Connection::open(&db_path)?;
         db.busy_timeout(Duration::from_secs(5))?;
         initialize_schema(&mut db)?;
         if let Some(profile) = legacy_root.parent() {
@@ -65,6 +66,7 @@ impl State {
         }
         Ok(Self {
             db: Arc::new(Mutex::new(db)),
+            db_path,
             downloads,
             system_downloads,
             tools: Tools::locate(legacy_root, data_root.join("tools")),
@@ -77,6 +79,33 @@ impl State {
                 preview_root.join("downloads"),
             ],
         })
+    }
+
+    pub fn recover_database(&self, db: &mut Connection, error: &Error) {
+        let Error::SqliteFailure(code, _) = error else {
+            return;
+        };
+        eprintln!(
+            "Download database operation failed (SQLite {})",
+            code.extended_code
+        );
+        if code.code != ErrorCode::SystemIoFailure
+            && code.extended_code != ffi::SQLITE_READONLY_DBMOVED
+        {
+            return;
+        }
+
+        // Keep the failed operation failed: it may already have had filesystem side effects.
+        let reopen = || {
+            let replacement =
+                Connection::open_with_flags(&self.db_path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+            replacement.busy_timeout(Duration::from_secs(5))?;
+            replacement.prepare("SELECT 1 FROM downloads, settings LIMIT 0")?;
+            Ok::<_, Error>(replacement)
+        };
+        if let Ok(replacement) = reopen() {
+            *db = replacement;
+        }
     }
 
     pub fn download_path(&self, filename: &str, local_path: Option<&str>) -> Option<PathBuf> {

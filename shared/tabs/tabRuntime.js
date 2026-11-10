@@ -202,16 +202,6 @@ function normalizeDownloaderMeta(value) {
   }
 }
 
-function normalizeDownloaderFetchError(value) {
-  if (!value || typeof value !== 'object') return null
-
-  const url = sanitizeRuntimeUrl(value.url)
-  const message = sanitizeRuntimeText(value.message, 600)
-  if (!url || !message) return null
-
-  return { url, message }
-}
-
 function normalizeDownloaderRuntimeState(value) {
   const input = (value && typeof value === 'object') ? value : {}
 
@@ -220,7 +210,6 @@ function normalizeDownloaderRuntimeState(value) {
     sourceServiceKey: normalizeRuntimeServiceKey(input.sourceServiceKey),
     inputValue: sanitizeRuntimeUrl(input.inputValue),
     meta: normalizeDownloaderMeta(input.meta),
-    fetchError: normalizeDownloaderFetchError(input.fetchError),
   }
 }
 

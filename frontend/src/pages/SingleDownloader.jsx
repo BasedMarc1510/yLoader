@@ -195,10 +195,7 @@ export default function SingleDownloader({
       const cachedSourceUrl = String(runtimeState?.sourceUrl || '').trim()
       const cachedMeta = runtimeState?.meta
       const cachedMetaUrl = String(cachedMeta?.url || '').trim()
-      const cachedError = runtimeState?.fetchError
-      const cachedErrorUrl = String(cachedError?.url || '').trim()
       const hasMatchingCachedMeta = Boolean(cachedMeta && cachedSourceUrl && cachedSourceUrl === normalizedUrlParam && cachedMetaUrl === normalizedUrlParam)
-      const hasMatchingCachedError = Boolean(cachedError && cachedSourceUrl && cachedSourceUrl === normalizedUrlParam && cachedErrorUrl === normalizedUrlParam)
       const effectiveService = detectService(normalizedUrlParam) || serviceFromQuery || serviceKey || 'generic'
 
       setValue(normalizedUrlParam)
@@ -237,15 +234,6 @@ export default function SingleDownloader({
         return
       }
 
-      if (hasMatchingCachedError) {
-        invalidateActiveMetaRequest()
-        activeSourceUrlRef.current = normalizedUrlParam
-        setMeta(null)
-        setFetchError(cachedError)
-        setLoading(false)
-        return
-      }
-
       setFetchError(null)
 
       if (isLikelyValidUrlFor(effectiveService, normalizedUrlParam)) {
@@ -253,7 +241,7 @@ export default function SingleDownloader({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeSearch, routeToken, runtimeState, serviceFromQuery, serviceKey, tabsReady])
+  }, [routeSearch, routeToken, serviceFromQuery, serviceKey, tabsReady])
 
   React.useEffect(() => {
     const routeParams = new URLSearchParams(routeSearch)
@@ -444,16 +432,12 @@ export default function SingleDownloader({
     if (!tabsReady) return
 
     const runtimePayload = {
-      sourceUrl: String(queryUrl || meta?.url || fetchError?.url || '').trim(),
+      sourceUrl: String(queryUrl || meta?.url || '').trim(),
       sourceServiceKey: resolvedServiceKey,
       inputValue: String(value || '').trim(),
       meta: meta ? {
         ...meta,
         preloadedFormats: meta.preloadedFormats || null,
-      } : null,
-      fetchError: fetchError ? {
-        url: String(fetchError.url || '').trim(),
-        message: String(fetchError.message || '').trim(),
       } : null,
     }
 
@@ -464,7 +448,7 @@ export default function SingleDownloader({
     onTabStateChange?.({
       downloaderCache: runtimePayload,
     })
-  }, [fetchError, meta, onTabStateChange, queryUrl, resolvedServiceKey, tabsReady, value])
+  }, [meta, onTabStateChange, queryUrl, resolvedServiceKey, tabsReady, value])
 
   React.useEffect(() => () => {
     invalidateActiveMetaRequest()

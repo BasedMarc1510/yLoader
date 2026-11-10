@@ -49,8 +49,11 @@ async fn db_task<T: Send + 'static>(
     task: impl FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
 ) -> Result<T, ApiError> {
     tokio::task::spawn_blocking(move || {
-        let db = state.db.lock().map_err(|_| ApiError::database())?;
-        task(&db).map_err(|_| ApiError::database())
+        let mut db = state.db.lock().map_err(|_| ApiError::database())?;
+        task(&db).map_err(|error| {
+            state.recover_database(&mut db, &error);
+            ApiError::database()
+        })
     })
     .await
     .map_err(|_| ApiError::database())?

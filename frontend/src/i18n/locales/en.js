@@ -590,6 +590,7 @@ const en = {
     errorNotFound: 'The content could not be found (404 Not Found).',
     errorContentTooShort: 'The download was interrupted and returned incomplete data.',
     errorCookieError: 'Cookies are missing or invalid. Please refresh your login cookies.',
+    errorBrowserCookieAccess: 'Could not read browser cookies. Check the selected browser profile and permissions, or choose a cookie file.',
     errorNetwork: 'A network error occurred while contacting the source.',
     errorFfmpegRequired: 'ffmpeg is required for this operation.',
     errorPickSavePath: 'Failed to select save path: {message}',

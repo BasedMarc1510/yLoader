@@ -17,12 +17,14 @@ const TRANSLATION_KEY_BY_CODE = Object.freeze({
   [YT_DLP_ERROR_CODES.HTTP_NOT_FOUND]: 'downloader.errorNotFound',
   [YT_DLP_ERROR_CODES.CONTENT_TOO_SHORT]: 'downloader.errorContentTooShort',
   [YT_DLP_ERROR_CODES.COOKIE_ERROR]: 'downloader.errorCookieError',
+  [YT_DLP_ERROR_CODES.BROWSER_COOKIE_ACCESS]: 'downloader.errorBrowserCookieAccess',
   [YT_DLP_ERROR_CODES.NETWORK_ERROR]: 'downloader.errorNetwork',
   [YT_DLP_ERROR_CODES.FFMPEG_REQUIRED]: 'downloader.errorFfmpegRequired',
 })
 
 const COOKIE_SETTINGS_HINT_CODES = new Set([
   YT_DLP_ERROR_CODES.COOKIE_ERROR,
+  YT_DLP_ERROR_CODES.BROWSER_COOKIE_ACCESS,
   YT_DLP_ERROR_CODES.AUTH_REQUIRED,
   YT_DLP_ERROR_CODES.AGE_RESTRICTED,
 ])
@@ -128,6 +130,7 @@ export function shouldSuggestCookieSettings(value, options = {}) {
   if (typeof i18nT === 'function') {
     const knownLocalizedMessages = [
       i18nT('downloader.errorCookieError'),
+      i18nT('downloader.errorBrowserCookieAccess'),
       i18nT('downloader.errorAuthRequired'),
       i18nT('downloader.errorAgeRestricted'),
     ]
