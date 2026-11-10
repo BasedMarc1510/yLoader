@@ -14,6 +14,7 @@
     "url": "https://github.com/BasedMarc1510/yLoader/issues"
   },
   "scripts": {
+    "dev": "tauri dev --no-dev-server",
     "start": "node scripts/start.mjs",
     "icons:generate": "node scripts/generate-icons.mjs",
     "release:publish": "node scripts/publish-release.mjs",

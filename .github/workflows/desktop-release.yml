@@ -81,34 +81,43 @@ jobs:
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Build installer
+        id: installer
         shell: bash
         env:
           YLOADER_TAURI_UPDATE_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
           YLOADER_TAURI_UPDATE_PUBKEY: ${{ vars.YLOADER_TAURI_UPDATE_PUBKEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          YLOADER_MACOS_SIGNING: ${{ vars.YLOADER_MACOS_SIGNING }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY || secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD || secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          YLOADER_WINDOWS_SIGN_COMMAND: ${{ vars.YLOADER_WINDOWS_SIGN_COMMAND }}
         run: |
           set -euo pipefail
           args=(--ci --target "${{ matrix.target }}" --bundles "${{ matrix.bundle }}")
-          if [[ "$PUBLISH_DESKTOP" == true ]]; then
-            : "${YLOADER_TAURI_UPDATE_PUBKEY:?Set the Tauri updater public key in repository variables}"
-            : "${TAURI_SIGNING_PRIVATE_KEY:?Set the matching private key in repository secrets}"
-            if [[ "$RUNNER_OS" == macOS ]]; then
-              : "${APPLE_CERTIFICATE:?Set the Developer ID Application certificate}"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            if [[ "$PUBLISH_DESKTOP" == true && "$YLOADER_MACOS_SIGNING" == true ]]; then
+              : "${APPLE_CERTIFICATE:?Set the yLoader Developer ID Application certificate}"
               : "${APPLE_CERTIFICATE_PASSWORD:?Set the certificate password}"
               : "${APPLE_SIGNING_IDENTITY:?Set the Developer ID Application identity}"
               : "${APPLE_ID:?Set the Apple ID for notarization}"
               : "${APPLE_PASSWORD:?Set the Apple app-specific password for notarization}"
               : "${APPLE_TEAM_ID:?Set the Apple Developer team ID}"
+              echo 'macos_signed=true' >> "$GITHUB_OUTPUT"
+            else
+              unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+              export APPLE_SIGNING_IDENTITY=-
             fi
+          fi
+          if [[ "$PUBLISH_DESKTOP" == true ]]; then
+            : "${YLOADER_TAURI_UPDATE_PUBKEY:?Set the Tauri updater public key in repository variables}"
+            : "${TAURI_SIGNING_PRIVATE_KEY:?Set the matching private key in repository secrets}"
             node <<'NODE'
-          const { YLOADER_TAURI_UPDATE_ENDPOINT, YLOADER_TAURI_UPDATE_PUBKEY } = process.env
+          const { RUNNER_OS, YLOADER_TAURI_UPDATE_ENDPOINT, YLOADER_TAURI_UPDATE_PUBKEY, YLOADER_WINDOWS_SIGN_COMMAND } = process.env
           const config = {
             bundle: { createUpdaterArtifacts: true },
             plugins: { updater: {
@@ -117,14 +126,21 @@ jobs:
               requireSignedVersion: true,
             } },
           }
+          if (RUNNER_OS === 'Windows' && YLOADER_WINDOWS_SIGN_COMMAND) {
+            if (!YLOADER_WINDOWS_SIGN_COMMAND.split(/\s+/).includes('%1')) {
+              throw new Error('Set YLOADER_WINDOWS_SIGN_COMMAND to the Windows signing tool command with %1 as the file argument')
+            }
+            config.bundle.windows = { signCommand: YLOADER_WINDOWS_SIGN_COMMAND }
+          }
           require('node:fs').writeFileSync('src-tauri/tauri.updater-build.json', JSON.stringify(config))
           NODE
             args+=(--config src-tauri/tauri.updater-build.json)
+            if [[ "$RUNNER_OS" == Windows && -n "$YLOADER_WINDOWS_SIGN_COMMAND" ]]; then
+              echo 'windows_signed=true' >> "$GITHUB_OUTPUT"
+            fi
           else
             unset YLOADER_TAURI_UPDATE_ENDPOINT YLOADER_TAURI_UPDATE_PUBKEY
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
-            if [[ "$RUNNER_OS" == macOS ]]; then export APPLE_SIGNING_IDENTITY=-; fi
           fi
           npm run build:desktop -- "${args[@]}"
 
@@ -134,6 +150,48 @@ jobs:
           executable="src-tauri/target/universal-apple-darwin/release/bundle/macos/yLoader.app/Contents/MacOS/yloader"
           architectures=$(lipo -archs "$executable" | tr ' ' '\n' | sort)
           test "$architectures" = "$(printf 'arm64\nx86_64\n')"
+
+      - name: Verify macOS signing and notarize the DMG
+        if: steps.installer.outputs.macos_signed == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD || secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          bundle=src-tauri/target/universal-apple-darwin/release/bundle
+          app="$bundle/macos/yLoader.app"
+          dmgs=("$bundle"/dmg/*.dmg)
+          test "${#dmgs[@]}" -eq 1
+          dmg="${dmgs[0]}"
+          codesign --verify --deep --strict "$app"
+          codesign --verify --strict "$dmg"
+          for file in "$app" "$dmg"; do
+            signature=$(codesign --display --verbose=4 "$file" 2>&1)
+            grep -Fq "Authority=Developer ID Application:" <<< "$signature"
+            grep -Fxq "TeamIdentifier=$APPLE_TEAM_ID" <<< "$signature"
+            grep -q '^Timestamp=' <<< "$signature"
+          done
+          xcrun stapler validate "$app"
+          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait --timeout 30m
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+
+      - name: Verify Windows Authenticode signatures
+        if: steps.installer.outputs.windows_signed == 'true'
+        shell: pwsh
+        run: |
+          $release = 'src-tauri/target/x86_64-pc-windows-msvc/release'
+          $installers = @(Get-ChildItem -Path "$release/bundle/nsis" -Filter '*-setup.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          $executables = @((Join-Path $release 'yloader.exe'), $installers[0].FullName)
+          foreach ($exe in $executables) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $exe
+            if ($signature.Status -ne 'Valid' -or !$signature.TimeStamperCertificate) {
+              throw "Expected a valid timestamped Authenticode signature on $exe. Status was $($signature.Status)."
+            }
+          }
 
       - uses: actions/upload-artifact@v7
         with:

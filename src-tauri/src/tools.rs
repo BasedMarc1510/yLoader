@@ -1,13 +1,18 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{ExitStatus, Stdio},
     sync::Arc,
     time::Duration,
     time::Instant,
 };
 
-use tokio::{io::AsyncReadExt, process::Command, time::timeout};
+use tokio::{
+    io::AsyncReadExt,
+    process::{ChildStderr, Command},
+    sync::OnceCell,
+    time::timeout,
+};
 
 pub mod install;
 
@@ -39,6 +44,7 @@ pub struct Tools {
     pub ffprobe: PathBuf,
     quickjs: PathBuf,
     managed: PathBuf,
+    system_yt_dlp: Arc<OnceCell<PathBuf>>,
     install_lock: Arc<tokio::sync::Mutex<()>>,
     releases: Arc<tokio::sync::Mutex<ReleaseCache>>,
 }
@@ -59,11 +65,16 @@ impl Tools {
             .map(PathBuf::from)
             .filter(|path| path.is_absolute());
         let legacy = legacy_root.join("tools");
+        #[cfg(all(debug_assertions, not(test)))]
+        let dev = Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.tools"));
+        #[cfg(not(all(debug_assertions, not(test))))]
+        let dev: Option<PathBuf> = None;
         let locate = |directory: &Path, name: &str| {
             let executable = format!("{name}{}", std::env::consts::EXE_SUFFIX);
             configured
                 .iter()
                 .chain(std::iter::once(&legacy))
+                .chain(dev.iter())
                 .map(|root| root.join(directory).join(&executable))
                 .find(|file| file.is_file())
                 .unwrap_or_else(|| PathBuf::from(executable))
@@ -77,6 +88,7 @@ impl Tools {
             ffprobe: locate(&ffmpeg, "ffprobe"),
             quickjs: locate(Path::new("quickjs-bin"), "qjs"),
             managed,
+            system_yt_dlp: Default::default(),
             install_lock: Default::default(),
             releases: Default::default(),
         }
@@ -103,16 +115,31 @@ impl Tools {
     }
 
     pub async fn ensure(&self, tool: Tool) -> Result<PathBuf, ToolError> {
-        let existing = self.path(tool);
-        if let Some(path) = available_path(existing) {
+        if let Some(path) = self.existing(tool).await {
             return Ok(path);
         }
         let _guard = self.install_lock.lock().await;
-        if let Some(path) = available_path(self.path(tool)) {
+        if let Some(path) = self.existing(tool).await {
             return Ok(path);
         }
         self.install_locked(tool, false).await?;
         Ok(self.path(tool))
+    }
+
+    async fn existing(&self, tool: Tool) -> Option<PathBuf> {
+        let path = self.path(tool);
+        if tool != Tool::YtDlp || path.is_absolute() {
+            return available_path(path);
+        }
+        let path = available_path(path)?;
+        self.system_yt_dlp
+            .get_or_try_init(|| async {
+                version(tool, &path).await?;
+                Ok::<_, ToolError>(path)
+            })
+            .await
+            .ok()
+            .cloned()
     }
 
     pub async fn install(&self, tool: Tool) -> Result<String, ToolError> {
@@ -233,7 +260,31 @@ pub fn command(path: &Path) -> Command {
     command
 }
 
-pub async fn capture(mut command: Command, seconds: u64, limit: u64) -> Result<Vec<u8>, ToolError> {
+pub async fn capture(command: Command, seconds: u64, limit: u64) -> Result<Vec<u8>, ToolError> {
+    let (status, output, _) = capture_output(command, seconds, limit).await?;
+    if !status.success() {
+        return Err(ToolError::Failed);
+    }
+    Ok(output)
+}
+
+pub async fn read_stderr(stderr: Option<ChildStderr>) -> std::io::Result<Vec<u8>> {
+    let mut diagnostics = Vec::new();
+    if let Some(mut stderr) = stderr {
+        (&mut stderr)
+            .take(64 * 1024)
+            .read_to_end(&mut diagnostics)
+            .await?;
+        tokio::io::copy(&mut stderr, &mut tokio::io::sink()).await?;
+    }
+    Ok(diagnostics)
+}
+
+pub async fn capture_output(
+    mut command: Command,
+    seconds: u64,
+    limit: u64,
+) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), ToolError> {
     timeout(Duration::from_secs(seconds), async {
         let mut child = command.stdout(Stdio::piped()).spawn()?;
         let mut stdout = child
@@ -242,11 +293,15 @@ pub async fn capture(mut command: Command, seconds: u64, limit: u64) -> Result<V
             .ok_or(ToolError::Failed)?
             .take(limit + 1);
         let mut output = Vec::new();
-        stdout.read_to_end(&mut output).await?;
-        if output.len() as u64 > limit || !child.wait().await?.success() {
-            return Err(ToolError::Failed);
-        }
-        Ok(output)
+        let read_stdout = async {
+            stdout.read_to_end(&mut output).await?;
+            if output.len() as u64 > limit {
+                return Err(std::io::Error::other("Media tool output exceeded limit"));
+            }
+            Ok(())
+        };
+        let (_, diagnostics) = tokio::try_join!(read_stdout, read_stderr(child.stderr.take()))?;
+        Ok((child.wait().await?, output, diagnostics))
     })
     .await
     .map_err(|_| ToolError::Failed)?

@@ -1,3 +1,5 @@
+use std::process::Stdio;
+
 use axum::{
     Json, Router,
     extract::{Query, State as ExtractState},
@@ -12,7 +14,7 @@ use url::Url;
 use super::{ApiError, cookies};
 use crate::{
     data::State,
-    tools::{Tool, ToolError, available_path, capture, command},
+    tools::{Tool, ToolError, available_path, capture_output, command},
 };
 
 pub fn http_url(value: &str) -> Option<Url> {
@@ -44,7 +46,7 @@ pub async fn yt_command(
 ) -> Result<(Command, Option<tempfile::NamedTempFile>), ApiError> {
     let path = state.tools.ensure(Tool::YtDlp).await.map_err(tool_error)?;
     let mut command = command(&path);
-    command.args([
+    command.stderr(Stdio::piped()).args([
         "--ignore-config",
         "--no-warnings",
         "--no-colors",
@@ -86,6 +88,31 @@ pub fn tool_error(error: ToolError) -> ApiError {
     }
 }
 
+pub fn yt_dlp_error(stderr: &[u8], fallback: ApiError) -> ApiError {
+    for line in String::from_utf8_lossy(stderr).lines() {
+        let Some(message) = line.strip_prefix("ERROR: [Reddit] ") else {
+            continue;
+        };
+        let reason = if message.contains("Private subreddit") {
+            "Private subreddit"
+        } else if message.contains("Account authentication is required")
+            || message.contains("Quarantined subreddit")
+        {
+            "Account authentication required"
+        } else if message.contains("unable to access the Reddit API")
+            || message.contains("HTTP Error 403")
+        {
+            "Reddit API access denied (HTTP 403)"
+        } else if message.contains("HTTP Error 429") {
+            "Reddit API rate limited (HTTP 429)"
+        } else {
+            continue;
+        };
+        return ApiError(StatusCode::BAD_GATEWAY, reason);
+    }
+    fallback
+}
+
 async fn query_json(state: &State, args: &[&str], target: &str) -> Result<Value, ApiError> {
     let (mut command, _cookies) = yt_command(state, target).await?;
     command
@@ -93,9 +120,12 @@ async fn query_json(state: &State, args: &[&str], target: &str) -> Result<Value,
         .args(args)
         .arg("--")
         .arg(target);
-    let output = capture(command, 90, 32 * 1024 * 1024)
+    let (status, output, stderr) = capture_output(command, 90, 32 * 1024 * 1024)
         .await
         .map_err(tool_error)?;
+    if !status.success() {
+        return Err(yt_dlp_error(&stderr, tool_error(ToolError::Failed)));
+    }
     serde_json::from_slice(&output).map_err(|_| tool_error(ToolError::Failed))
 }
 

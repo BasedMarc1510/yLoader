@@ -4,6 +4,10 @@
   "version": "2026.2.0",
   "identifier": "com.yloader.app",
   "build": {
+    "beforeDevCommand": {
+      "script": "npm run build --prefix frontend",
+      "wait": true
+    },
     "beforeBuildCommand": "npm run build --prefix frontend",
     "frontendDist": "../frontend/dist"
   },

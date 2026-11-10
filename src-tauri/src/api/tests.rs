@@ -492,6 +492,60 @@ async fn downloads_real_media_and_thumbnails_with_the_desktop_api() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn reports_reddit_authentication_errors_without_forwarding_tool_output() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (root, mut state) = fixture();
+    let yt_dlp = root.path().join("yt-dlp");
+    fs::write(
+        &yt_dlp,
+        r#"#!/bin/sh
+printf '%s\n' 'ERROR: [Reddit] example: Account authentication is required. Private diagnostic.' >&2
+exit 1
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&yt_dlp, fs::Permissions::from_mode(0o755)).unwrap();
+    state.tools.yt_dlp = yt_dlp.clone();
+    state.tools.ffmpeg = yt_dlp.clone();
+    state.tools.ffprobe = yt_dlp;
+    let app = router(state, TOKEN);
+    let url = "https://www.reddit.com/r/test/comments/example/";
+
+    let metadata = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/{TOKEN}/api/meta/formats?url={url}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(metadata.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        json_body(metadata).await,
+        json!({"error": "Account authentication required"})
+    );
+
+    let download = app
+        .oneshot(
+            Request::post(format!("/{TOKEN}/api/download/stream"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"url": url, "type": "video"}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let events = to_bytes(download.into_body(), 64 * 1024).await.unwrap();
+    let events = std::str::from_utf8(&events).unwrap();
+    assert!(
+        events.contains("event: error\ndata: {\"message\":\"Account authentication required\"}")
+    );
+    assert!(!events.contains("Private diagnostic"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn search_uses_provider_and_pagination_arguments() {
     use std::os::unix::fs::PermissionsExt;
 

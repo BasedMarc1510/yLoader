@@ -43,7 +43,7 @@ export default function HeaderTabBar({
   const isDesktop = Boolean(runtime?.isDesktop)
   const isMacDesktop = isDesktop && runtime.platform === 'darwin'
   const windowControls = isDesktop && !isMacDesktop ? runtime.windowControls : null
-  const dragRegion = isDesktop ? '' : undefined
+  const dragRegion = isDesktop ? 'deep' : undefined
   const scrollContainerRef = React.useRef(null)
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
@@ -325,7 +325,7 @@ export default function HeaderTabBar({
             className="yl-tabstrip tabs-scrollbar-hidden"
             onScroll={checkScroll}
             onWheel={handleWheel}
-            onDoubleClick={handleTabstripDoubleClick}
+            onDoubleClick={isDesktop ? undefined : handleTabstripDoubleClick}
             role="tablist"
             aria-label={t('tabs.listAria')}
             aria-orientation="horizontal"

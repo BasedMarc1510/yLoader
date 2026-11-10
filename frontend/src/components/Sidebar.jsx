@@ -69,7 +69,7 @@ export default function Sidebar({
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const isMacDesktop = Boolean(runtime?.isDesktop && runtime.platform === 'darwin')
   const showMacInlineExpand = collapsed && isMacDesktop
-  const dragRegion = runtime?.kind === 'tauri' ? '' : undefined
+  const dragRegion = runtime?.kind === 'tauri' ? 'deep' : undefined
   const brandLeftPadding = logoLeftOffset + 8
   const brandIconSrc = `${import.meta.env.BASE_URL}yloader-icon.svg`
   const API_BASE = getApiBase()

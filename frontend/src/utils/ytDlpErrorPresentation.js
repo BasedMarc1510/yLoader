@@ -103,6 +103,9 @@ export function formatYtDlpErrorMessage(i18nT, value, options = {}) {
     if (rawMessage.toLowerCase() === String(fallbackText || '').toLowerCase()) {
       return fallbackText
     }
+    if (rawMessage.startsWith(i18nT('downloader.errorDownloadFailedWithReason', { reason: '' }).trim())) {
+      return rawMessage
+    }
     return i18nT('downloader.errorDownloadFailedWithReason', { reason: rawMessage })
   }
   return fallbackText

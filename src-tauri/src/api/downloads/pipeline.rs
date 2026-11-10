@@ -20,10 +20,10 @@ use super::{FAILED, IMAGE, Job, Kind, progress};
 use crate::{
     api::{
         ApiError,
-        metadata::{field, first, http_url, tool_error, yt_command},
+        metadata::{field, first, http_url, tool_error, yt_command, yt_dlp_error},
     },
     data::State,
-    tools::{Tool, capture, command},
+    tools::{Tool, capture, command, read_stderr},
 };
 
 const IMAGE_LIMIT: usize = 15 * 1024 * 1024;
@@ -197,25 +197,35 @@ async fn download(
         .spawn()
         .map_err(|error| tool_error(error.into()))?;
     let mut stdout = BufReader::new(child.stdout.take().ok_or(FAILED)?).lines();
-    let mut info = None;
-    let mut previous = 2.0_f64;
-    while let Some(line) = stdout.next_line().await.map_err(|_| FAILED)? {
-        if let Some(raw) = line.strip_prefix("YLPROGRESS:") {
-            if let Ok(percent) = raw.trim().trim_end_matches('%').parse::<f64>()
-                && percent.is_finite()
-            {
-                let percent = (2.0 + percent.clamp(0.0, 100.0) * 0.73).max(previous);
-                previous = percent;
-                progress(sender, percent, "downloading").await?;
+    let read_stdout = async {
+        let mut info = None;
+        let mut previous = 2.0_f64;
+        while let Some(line) = stdout.next_line().await.map_err(|_| FAILED)? {
+            if let Some(raw) = line.strip_prefix("YLPROGRESS:") {
+                if let Ok(percent) = raw.trim().trim_end_matches('%').parse::<f64>()
+                    && percent.is_finite()
+                {
+                    let percent = (2.0 + percent.clamp(0.0, 100.0) * 0.73).max(previous);
+                    previous = percent;
+                    progress(sender, percent, "downloading").await?;
+                }
+            } else if let Some(raw) = line.strip_prefix("YLMEDIA:") {
+                info = serde_json::from_str::<Value>(raw).ok();
             }
-        } else if let Some(raw) = line.strip_prefix("YLMEDIA:") {
-            info = serde_json::from_str::<Value>(raw).ok();
         }
-    }
+        Ok(info)
+    };
+    let stderr = child.stderr.take();
+    let (info, diagnostics) = tokio::try_join!(read_stdout, async {
+        read_stderr(stderr).await.map_err(|_| FAILED)
+    })?;
     if !child.wait().await.map_err(|_| FAILED)?.success() {
-        return Err(ApiError(
-            StatusCode::BAD_GATEWAY,
-            "yt-dlp could not download this source",
+        return Err(yt_dlp_error(
+            &diagnostics,
+            ApiError(
+                StatusCode::BAD_GATEWAY,
+                "yt-dlp could not download this source",
+            ),
         ));
     }
     let info = info.ok_or(FAILED)?;

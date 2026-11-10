@@ -160,8 +160,19 @@ Common variables:
 
 ## Development Commands
 
+Install the Tauri prerequisites for your OS. Then run these commands from the repository root to launch the desktop app. [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+
 ```bash
-npm run start
+npm ci
+npm ci --prefix frontend
+npm run dev
+```
+
+The command builds the React frontend and starts the Rust desktop backend. Restart it after editing the frontend to rebuild the assets. It uses the desktop app's local profile, so close an already running yLoader desktop instance before starting it.
+
+For local development in the browser, run `npm run start`. For Docker, use the commands below.
+
+```bash
 npm run docker:start
 npm run docker:logs
 npm run docker:stop
@@ -176,11 +187,16 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 npm run dist:mac
 ```
 
-For local testing, set `YLOADER_TAURI_TOOLS_DIR` to an absolute directory containing `yt-dlp-bin`, `ffmpeg-bin/<platform>-<arch>/bin`, and optionally `quickjs-bin`.
+During `npm run dev`, yLoader can reuse the repository's existing `.tools` cache. To point it at a different tool directory for local testing, set `YLOADER_TAURI_TOOLS_DIR` to an absolute path containing `yt-dlp-bin`, `ffmpeg-bin/<platform>-<arch>/bin`, and optionally `quickjs-bin`.
 
 The **Tauri Desktop Release** workflow builds a Universal macOS DMG, a Windows x64 NSIS installer and a Linux x64 AppImage. Run it manually to get workflow artifacts. To publish, push a `v<version>` tag or select an existing version tag with **publish** enabled. The workflow checks that the tag matches the source version and publishes all installers and update files together. Local builds and manual artifact runs without publishing have app updates disabled.
 
-Set the repository variable `YLOADER_TAURI_UPDATE_PUBKEY` to the public key contents from `tauri signer generate`. Set the matching `TAURI_SIGNING_PRIVATE_KEY` secret and, if the key is password-protected, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. For macOS signing and notarization, configure `APPLE_CERTIFICATE` (base64-encoded Developer ID Application certificate and private key), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (or `APPLE_APP_SPECIFIC_PASSWORD`), and `APPLE_TEAM_ID`.
+The updater uses its own key pair to verify downloaded updates. Set the repository variable `YLOADER_TAURI_UPDATE_PUBKEY` to the public key contents from `tauri signer generate`. Set the matching `TAURI_SIGNING_PRIVATE_KEY` secret and, if the key is password-protected, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+Publisher signing is optional. Without the platform signing settings below, the workflow publishes an ad hoc-signed macOS app in a DMG without notarization and an unsigned Windows installer. Gatekeeper and SmartScreen may warn when users open these downloads. The Tauri updater key is still required for public releases so installed apps can verify their updates.
+
+- For macOS, set `YLOADER_MACOS_SIGNING` to `true` to enable Developer ID signing. Set `APPLE_CERTIFICATE` to the base64-encoded PKCS#12 containing yLoader's Developer ID Application certificate and private key. Also configure `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (or `APPLE_APP_SPECIFIC_PASSWORD`), and `APPLE_TEAM_ID`. The workflow verifies the app's notarization ticket and notarizes and staples the Universal DMG before publishing it.
+- For Windows, set the repository variable `YLOADER_WINDOWS_SIGN_COMMAND` to the command for your signing provider, with `%1` as a separate argument for the file to sign. Set up the provider's CLI and authentication on the Windows runner before the installer build. Tauri invokes the command during bundling, and the workflow verifies that the executable and installer both have valid timestamped Authenticode signatures. SmartScreen can still warn until the signed release builds reputation. [Tauri signing configuration](https://v2.tauri.app/distribute/sign/windows/#custom-sign-command) · [Microsoft SmartScreen](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
 
 ## Legal Notice
 
