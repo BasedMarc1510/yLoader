@@ -1,4 +1,5 @@
 mod cuts;
+mod profiles;
 
 use std::{
     path::{Path, PathBuf},
@@ -26,10 +27,16 @@ use crate::{
     tools::{Tool, capture, command, read_stderr},
 };
 
+use profiles::{audio_encoder, audio_profile, video_encoders, video_profile};
+
 const IMAGE_LIMIT: usize = 15 * 1024 * 1024;
 
-async fn ffmpeg(state: &State) -> Result<Command, ApiError> {
-    let path = state.tools.ensure(Tool::Ffmpeg).await.map_err(tool_error)?;
+async fn ffmpeg(state: &State, encoders: &[&str]) -> Result<Command, ApiError> {
+    let path = state
+        .tools
+        .ensure_ffmpeg(encoders)
+        .await
+        .map_err(tool_error)?;
     let mut cmd = command(&path);
     cmd.args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y"]);
     Ok(cmd)
@@ -107,7 +114,12 @@ pub async fn image(
     let source = temp.path().join("image-source");
     fetch_image(url, &source).await?;
     let output = temp.path().join(format!("thumbnail.{ext}"));
-    let mut cmd = ffmpeg(state).await?;
+    let encoder = match ext.as_str() {
+        "png" => "png",
+        "webp" => "libwebp",
+        _ => "mjpeg",
+    };
+    let mut cmd = ffmpeg(state, &[encoder]).await?;
     cmd.args(["-protocol_whitelist", "file,pipe", "-i"])
         .arg(source)
         .args(["-frames:v", "1"])
@@ -290,7 +302,7 @@ async fn cover(
         }
     }
     let output = temp.path().join("cover.jpg");
-    let mut cmd = ffmpeg(state).await?;
+    let mut cmd = ffmpeg(state, &["mjpeg"]).await?;
     cmd.args(["-protocol_whitelist", "file,pipe", "-i"])
         .arg(source)
         .args(["-frames:v", "1"])
@@ -336,76 +348,6 @@ fn probe_duration(probe: &Value) -> Option<f64> {
         .filter(|v| v.is_finite() && *v > 0.0)
 }
 
-fn video_profile(cmd: &mut Command, ext: &str, maximum: bool, has_cuts: bool) {
-    if !has_cuts {
-        cmd.args(["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"]);
-    }
-    cmd.args(["-pix_fmt", "yuv420p"]);
-    match ext {
-        "webm" => {
-            cmd.args([
-                "-c:v",
-                "libvpx",
-                "-crf",
-                "10",
-                "-b:v",
-                "0",
-                "-deadline",
-                "good",
-                "-cpu-used",
-                "2",
-                "-c:a",
-                "libvorbis",
-                "-q:a",
-                "5",
-            ]);
-        }
-        "avi" => {
-            cmd.args([
-                "-c:v",
-                "mpeg4",
-                "-q:v",
-                "3",
-                "-vtag",
-                "XVID",
-                "-c:a",
-                "libmp3lame",
-                "-b:a",
-                "192k",
-            ]);
-        }
-        _ => {
-            cmd.args([
-                "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k",
-            ]);
-            if maximum {
-                cmd.args(["-profile:v", "baseline", "-profile:a", "aac_low"]);
-            }
-            if ext != "mkv" {
-                cmd.args(["-tag:v", "avc1", "-movflags", "+faststart"]);
-            }
-        }
-    }
-    if maximum {
-        cmd.args(["-ac", "2", "-ar", "48000"]);
-    }
-}
-
-fn audio_profile(cmd: &mut Command, ext: &str, bitrate: u64) {
-    let codec = match ext {
-        "mp3" => "libmp3lame",
-        "m4a" => "aac",
-        "wav" => "pcm_s16le",
-        "ogg" => "libvorbis",
-        "flac" => "flac",
-        _ => "libopus",
-    };
-    cmd.args(["-c:a", codec]);
-    if bitrate > 0 && !matches!(ext, "wav" | "flac") {
-        cmd.args(["-b:a", &format!("{bitrate}k")]);
-    }
-}
-
 pub async fn process(
     state: &State,
     job: &Job,
@@ -433,7 +375,7 @@ pub async fn process(
     });
     let has_cuts = cut_options.is_some_and(|options| options["enabled"] == true);
     if !is_audio && !maximum && !has_cuts {
-        let mut cmd = ffmpeg(state).await?;
+        let mut cmd = ffmpeg(state, &[]).await?;
         cmd.arg("-i")
             .arg(&source)
             .args(["-map", "0:V:0", "-map", "0:a:0?", "-c", "copy"])
@@ -443,13 +385,21 @@ pub async fn process(
         }
     }
 
-    let mut cmd = ffmpeg(state).await?;
-    cmd.arg("-i").arg(&source);
     let picture = if is_audio {
         cover(state, job, &info, temp).await?
     } else {
         None
     };
+    let mut cmd = if is_audio {
+        let mut encoders = vec![audio_encoder(&job.container)];
+        if picture.is_some() && job.container != "opus" {
+            encoders.push("mjpeg");
+        }
+        ffmpeg(state, &encoders).await?
+    } else {
+        ffmpeg(state, &video_encoders(&job.container)).await?
+    };
+    cmd.arg("-i").arg(&source);
     if let Some(path) = &picture {
         cmd.arg("-i").arg(path);
     }

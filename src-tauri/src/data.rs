@@ -9,12 +9,13 @@ use rusqlite::{Connection, Error, ErrorCode, MAIN_DB, OpenFlags, OptionalExtensi
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
-use crate::tools::Tools;
+use crate::tools::{Tools, YtDlpSource};
 
 pub type StartupResult<T> = Result<T, Box<dyn std::error::Error>>;
 pub const SHELL_SETTINGS_KEY: &str = "desktop.shell.settings.v1";
 pub const UPDATE_SETTINGS_KEY: &str = "desktop.app-update.settings.v1";
 pub const AUTOSTART_MIGRATION_KEY: &str = "desktop.autostart-migration.v1";
+pub const YT_DLP_SOURCE_KEY: &str = "desktop.yt-dlp.source.v1";
 const LEGACY_WEB_PREFERENCES_KEY: &str = "desktop.legacy-web-preferences.v1";
 
 #[derive(Clone)]
@@ -64,12 +65,16 @@ impl State {
         if let Some(profile) = legacy_root.parent() {
             import_legacy_settings(&mut db, profile)?;
         }
+        let tools = Tools::locate(legacy_root, data_root.join("tools"));
+        let source: YtDlpSource =
+            serde_json::from_value(read_setting(&db, YT_DLP_SOURCE_KEY)?).unwrap_or_default();
+        tools.set_yt_dlp_source(source);
         Ok(Self {
             db: Arc::new(Mutex::new(db)),
             db_path,
             downloads,
             system_downloads,
-            tools: Tools::locate(legacy_root, data_root.join("tools")),
+            tools,
             tool_updates: Default::default(),
             download_slots: Default::default(),
             edits: Arc::new(Semaphore::new(1)),

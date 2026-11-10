@@ -98,7 +98,11 @@ The tab bar also serves as the title bar. macOS uses native window controls on t
 
 ### Option 1: Desktop App
 
-Download the installer for your operating system from the links above. yLoader uses the existing local tool cache or tools on PATH when available. It downloads missing yt-dlp, FFmpeg, FFprobe, and QuickJS binaries on demand and verifies their release hashes.
+Download the installer for your operating system from the links above. The desktop app checks its `PATH` for working yt-dlp, FFmpeg, and FFprobe executables before trying its local caches. If an FFmpeg build lacks an encoder required for an export, the desktop app selects another build for that job. It downloads missing tools on demand and verifies their release hashes.
+
+In **Settings → System → yt-dlp**, choose **Managed by yLoader** to install and use an app-managed copy even if a working executable is on `PATH`. Choose **Automatic (prefer local)** to give `PATH` priority again. The selection is saved for future launches.
+
+The update button runs the selected external binary's own updater. For a detected Homebrew installation it runs `brew upgrade yt-dlp`. Other package-managed builds may require an update through their package manager. External FFmpeg installations are updated by their provider. Automatic updates apply to copies managed by the desktop app.
 
 ### Option 2: Docker Hub
 
@@ -187,7 +191,7 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 npm run dist:mac
 ```
 
-During `npm run dev`, yLoader can reuse the repository's existing `.tools` cache. To point it at a different tool directory for local testing, set `YLOADER_TAURI_TOOLS_DIR` to an absolute path containing `yt-dlp-bin`, `ffmpeg-bin/<platform>-<arch>/bin`, and optionally `quickjs-bin`.
+During `npm run dev`, yLoader uses the `PATH` inherited from the terminal and can fall back to the repository's existing `.tools` cache. To add a different fallback directory for local testing, set `YLOADER_TAURI_TOOLS_DIR` to an absolute path containing `yt-dlp-bin`, `ffmpeg-bin/<platform>-<arch>/bin`, and optionally `quickjs-bin`.
 
 The **Tauri Desktop Release** workflow builds a Universal macOS DMG, a Windows x64 NSIS installer and a Linux x64 AppImage. Run it manually to get workflow artifacts. To publish, push a `v<version>` tag or select an existing version tag with **publish** enabled. The workflow checks that the tag matches the source version and publishes all installers and update files together. Local builds and manual artifact runs without publishing have app updates disabled.
 

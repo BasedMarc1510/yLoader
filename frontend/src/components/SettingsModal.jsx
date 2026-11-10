@@ -380,6 +380,9 @@ function SettingsModalInner({
         binarySize: data.binarySizeHuman || '-',
         outdated: Boolean(data.outdated),
         updateSupported: data.updateSupported !== false,
+        manualUpdateAvailable: data.manualUpdateAvailable === true,
+        autoUpdateSupported: data.autoUpdateSupported !== false,
+        installationSource: data.installationSource,
         updateInProgress: Boolean(data.updateInProgress),
         autoUpdateEnabled: data.autoUpdateEnabled !== false,
         lastUpdatedAt: Number(data.lastUpdatedAt || 0),
@@ -424,6 +427,7 @@ function SettingsModalInner({
         fileSize: projectManaged ? (data.fileSizeHuman || '-') : t('settings.systemManagedFfmpegSize'),
         projectManaged,
         updateSupported: Boolean(data.updateSupported),
+        autoUpdateSupported: data.autoUpdateSupported !== false,
         updateInProgress: Boolean(data.updateInProgress),
         autoUpdateEnabled: data.autoUpdateEnabled !== false,
         lastUpdatedAt: Number(data.lastUpdatedAt || 0),
@@ -758,14 +762,40 @@ function SettingsModalInner({
 
   /* ─── update streams (hardened SSE) ─── */
 
+  const changeYtDlpSource = async (source) => {
+    if (ytInfo.sourceChanging || source === ytInfo.installationSource) return
+    setYtInfo((state) => ({ ...state, sourceChanging: true, sourceError: '', updateError: '' }))
+    try {
+      const response = await fetch(`${API_BASE}/api/yt-dlp/source`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      })
+      if (!response.ok) throw new Error(await parseApiError(response))
+      const saved = await response.json()
+      setYtInfo((state) => ({ ...state, installationSource: saved.source }))
+      await fetchStatus()
+    } catch (error) {
+      setYtInfo((state) => ({
+        ...state,
+        sourceError: t(error?.message === 'yt_dlp_managed_install_failed'
+          ? 'settings.ytDlpManagedInstallFailed'
+          : 'settings.ytDlpSourceSaveFailed'),
+      }))
+    } finally {
+      setYtInfo((state) => ({ ...state, sourceChanging: false }))
+    }
+  }
+
   const startUpdate = () => {
     if (!ytInfo.updateSupported) {
       setLogLines((lines) => [...lines, t('settings.updateManagedExternally')])
       return
     }
-    if (updating || ytInfo.updateInProgress) return
+    if (updating || ytInfo.updateInProgress || ytInfo.sourceChanging) return
 
     setUpdating(true)
+    setYtInfo((state) => ({ ...state, updateError: '' }))
     setLogLines((lines) => [...lines, t('settings.startUpdate')])
 
     const es = new EventSource(`${API_BASE}/api/yt-dlp/update/stream`)
@@ -796,7 +826,13 @@ function SettingsModalInner({
     })
     es.addEventListener('error', (event) => {
       lastEventAt = Date.now()
-      const message = typeof event?.data === 'string' && event.data ? event.data : t('settings.updateErrorOccurred')
+      const reason = event?.data
+      const message = reason === 'external_yt_dlp_update_failed'
+        ? t('settings.externalYtDlpUpdateFailed')
+        : reason === 'tool_update_failed' ? t('settings.updateErrorOccurred') : reason || t('settings.updateErrorOccurred')
+      if (reason === 'external_yt_dlp_update_failed') {
+        setYtInfo((state) => ({ ...state, updateError: message }))
+      }
       setLogLines((lines) => [...lines, `ERROR: ${message}`])
     })
     es.addEventListener('end', (event) => {
@@ -851,7 +887,10 @@ function SettingsModalInner({
     })
     es.addEventListener('error', (event) => {
       lastEventAt = Date.now()
-      const message = typeof event?.data === 'string' && event.data ? event.data : t('settings.updateErrorOccurred')
+      const reason = event?.data
+      const message = reason === 'managed_externally'
+        ? t('settings.updateManagedExternally')
+        : reason === 'tool_update_failed' ? t('settings.updateErrorOccurred') : reason || t('settings.updateErrorOccurred')
       setFfmpegLogLines((lines) => [...lines, `ERROR: ${message}`])
     })
     es.addEventListener('end', (event) => {
@@ -1205,6 +1244,7 @@ function SettingsModalInner({
           ytUpdating={updating}
           ffmpegUpdating={ffmpegUpdating}
           startYtUpdate={startUpdate}
+          onChangeYtDlpSource={changeYtDlpSource}
           startFfmpegUpdate={startFfmpegUpdate}
           onToggleYtAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ytDlp', enabled)}
           onToggleFfmpegAutoUpdate={(enabled) => setToolAutoUpdateEnabled('ffmpeg', enabled)}

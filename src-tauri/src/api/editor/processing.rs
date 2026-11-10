@@ -3,7 +3,10 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::tools::{ToolError, capture, command};
+use crate::tools::{ToolError, Tools, capture, command};
+
+const VIDEO_ENCODER: &str = "libx264";
+const AUDIO_ENCODER: &str = "aac";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,13 +104,21 @@ impl Edit {
 
     pub async fn render(
         &self,
-        ffmpeg: &Path,
+        tools: &Tools,
         input: &Path,
         output: &Path,
         media: &Media,
     ) -> Result<(), ToolError> {
+        let mut encoders = Vec::new();
+        if !self.audio_only {
+            encoders.push(VIDEO_ENCODER);
+        }
+        if !self.mute && media.has_audio {
+            encoders.push(AUDIO_ENCODER);
+        }
+        let ffmpeg = tools.ensure_ffmpeg(&encoders).await?;
         let duration = self.duration();
-        let mut render = command(ffmpeg);
+        let mut render = command(&ffmpeg);
         render
             .args([
                 "-nostdin",
@@ -128,7 +139,7 @@ impl Edit {
                 "-map",
                 "0:V:0",
                 "-c:v",
-                "libx264",
+                VIDEO_ENCODER,
                 "-preset",
                 "veryfast",
                 "-crf",
@@ -159,7 +170,7 @@ impl Edit {
                 "-af",
                 &filters.join(","),
                 "-c:a",
-                "aac",
+                AUDIO_ENCODER,
                 "-b:a",
                 "192k",
             ]);

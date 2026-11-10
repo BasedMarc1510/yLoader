@@ -6,11 +6,12 @@ use std::{
 use axum::{
     Json, Router,
     extract::{Query, State as ExtractState},
+    http::StatusCode,
     response::{
         IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
     },
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -18,8 +19,8 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::{ApiError, db_task};
 use crate::{
-    data::{State, read_setting, write_setting},
-    tools::{Tool, available_path, install, version},
+    data::{State, YT_DLP_SOURCE_KEY, read_setting, write_setting},
+    tools::{Tool, ToolSource, YtDlpSource, install},
 };
 
 const KEY: &str = "tools.updater.settings.v1";
@@ -90,13 +91,16 @@ fn size(length: Option<u64>) -> String {
 }
 
 async fn status(state: &State, tool: Tool, options: StatusQuery, settings: &Value) -> Value {
-    let path = available_path(state.tools.path(tool));
-    let (current, project_managed) = if let Some(path) = &path {
-        (version(tool, path).await.ok(), state.tools.managed(path))
-    } else {
-        (None, true)
-    };
-    let remote = if flag(options.local_only) {
+    let resolved = state.tools.existing(tool).await;
+    let path = resolved.as_ref().map(|found| found.path.as_path());
+    let current = resolved.as_ref().map(|found| found.version.as_str());
+    let external = resolved
+        .as_ref()
+        .is_some_and(|found| found.source == ToolSource::Path);
+    let project_managed = resolved
+        .as_ref()
+        .is_none_or(|found| found.source == ToolSource::Managed);
+    let remote = if flag(options.local_only) || (external && tool == Tool::Ffmpeg) {
         None
     } else {
         state
@@ -116,32 +120,68 @@ async fn status(state: &State, tool: Tool, options: StatusQuery, settings: &Valu
             )
         })
         .unwrap_or_default();
-    let outdated = current.as_ref().is_some_and(|current| {
-        !latest.is_empty() && current.split('-').next().unwrap_or(current) != latest
+    let outdated = current.is_some_and(|current| {
+        !latest.is_empty()
+            && if tool == Tool::YtDlp {
+                current < latest
+            } else {
+                current.split('-').next().unwrap_or(current) != latest
+            }
     });
-    let length = path.as_deref().and_then(bytes);
-    let probe_path = available_path(state.tools.path(Tool::Ffprobe));
-    let probe_version = if tool == Tool::Ffmpeg {
-        if let Some(path) = &probe_path {
-            version(Tool::Ffprobe, path).await.ok()
-        } else {
-            None
-        }
+    let length = path.and_then(bytes);
+    let probe = if tool == Tool::Ffmpeg {
+        state.tools.existing(Tool::Ffprobe).await
     } else {
         None
     };
-    let supported = install::source(tool).is_some();
+    let supported = if external {
+        tool == Tool::YtDlp
+    } else {
+        install::source(tool).is_some()
+    };
+    let installation_source = (tool == Tool::YtDlp && install::source(tool).is_some())
+        .then(|| state.tools.yt_dlp_source());
     json!({
-        "available": current.is_some(), "currentVersion": current.as_deref().unwrap_or_default(),
-        "version": current.as_deref().unwrap_or_default(), "latestVersion": latest,
+        "available": current.is_some(), "currentVersion": current.unwrap_or_default(),
+        "version": current.unwrap_or_default(), "latestVersion": latest,
         "latestReleaseTag": tag, "latestHtmlUrl": url, "outdated": outdated,
         "updateAvailable": outdated, "updateSupported": supported, "updateInProgress": state.tools.installing(),
+        "manualUpdateAvailable": external && tool == Tool::YtDlp, "autoUpdateSupported": !external,
+        "installationSource": installation_source,
         "autoUpdateEnabled": settings[enabled_key(tool)], "projectManaged": project_managed,
         "path": path, "binaryPath": path, "fileSizeHuman": size(length), "binarySizeHuman": size(length),
-        "ffprobePath": probe_path, "ffprobeVersion": probe_version,
+        "ffprobePath": probe.as_ref().map(|found| &found.path), "ffprobeVersion": probe.as_ref().map(|found| &found.version),
         "latestSource": if remote.is_some() { "github-release" } else { "none" },
         "lastUpdatedAt": state.tool_updates.last_update(tool),
     })
+}
+
+#[derive(Deserialize)]
+struct YtDlpSourceSetting {
+    source: YtDlpSource,
+}
+
+async fn put_yt_dlp_source(
+    ExtractState(state): ExtractState<State>,
+    Json(body): Json<YtDlpSourceSetting>,
+) -> Result<Json<Value>, ApiError> {
+    let _guard = state.tool_updates.yt_dlp_source_change.lock().await;
+    let source = body.source;
+    if source == YtDlpSource::Managed {
+        state
+            .tools
+            .prepare_managed_yt_dlp()
+            .await
+            .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "yt_dlp_managed_install_failed"))?;
+    }
+
+    let tools = state.tools.clone();
+    db_task(state.clone(), move |db| {
+        write_setting(db, YT_DLP_SOURCE_KEY, &json!(source))?;
+        tools.set_yt_dlp_source(source);
+        Ok(Json(json!({"source": source})))
+    })
+    .await
 }
 
 async fn yt_status(
@@ -187,6 +227,7 @@ async fn force_check(ExtractState(state): ExtractState<State>) -> Result<Json<Va
 
 #[derive(Default)]
 pub struct UpdateState {
+    yt_dlp_source_change: tokio::sync::Mutex<()>,
     notifications: std::sync::Mutex<Vec<Value>>,
     timestamps: [std::sync::atomic::AtomicU64; 2],
 }
@@ -243,13 +284,17 @@ pub async fn schedule(state: State) {
         if let Ok(settings) = settings(&state).await {
             for tool in [Tool::YtDlp, Tool::Ffmpeg] {
                 if settings[enabled_key(tool)] != true
-                    || !state.tools.managed(&state.tools.path(tool))
+                    || !state
+                        .tools
+                        .existing(tool)
+                        .await
+                        .is_some_and(|found| found.source == ToolSource::Managed)
                 {
                     continue;
                 }
                 let status = status(&state, tool, StatusQuery::default(), &settings).await;
                 if status["outdated"] == true
-                    && let Ok(version) = state.tools.install(tool).await
+                    && let Ok(Some(version)) = state.tools.update(tool, true).await
                 {
                     state.tool_updates.notify(tool, &version);
                 }
@@ -262,27 +307,33 @@ pub async fn schedule(state: State) {
 fn update_stream(state: State, tool: Tool) -> Response {
     let (sender, receiver) = tokio::sync::mpsc::channel(4);
     tokio::spawn(async move {
-        let mut update = std::pin::pin!(state.tools.install(tool));
+        let mut update = std::pin::pin!(state.tools.update(tool, false));
         let mut heartbeat = tokio::time::interval(Duration::from_secs(15));
         heartbeat.tick().await;
         let result = loop {
             tokio::select! {
                 result = &mut update => break result,
-                _ = sender.closed() => return,
+                _ = sender.closed() => break update.await,
                 _ = heartbeat.tick() => {
                     if sender.send(Ok(Event::default().data(tool.name()))).await.is_err() {
-                        return;
+                        break update.await;
                     }
                 }
             }
         };
         let end = match result {
-            Ok(version) => {
+            Ok(Some(version)) => {
                 state.tool_updates.notify(tool, &version);
                 let _ = sender.send(Ok(Event::default().data(version))).await;
                 "done"
             }
-            Err(_) => "failed",
+            Ok(None) => "done",
+            Err(reason) => {
+                let _ = sender
+                    .send(Ok(Event::default().event("error").data(reason)))
+                    .await;
+                "failed"
+            }
         };
         let _ = sender
             .send(Ok(Event::default().event("end").data(end)))
@@ -303,6 +354,7 @@ pub fn routes() -> Router<State> {
         .route("/api/tool-updates/check", post(force_check))
         .route("/api/tool-updates/notifications", get(notifications))
         .route("/api/yt-dlp/status", get(yt_status))
+        .route("/api/yt-dlp/source", put(put_yt_dlp_source))
         .route("/api/ffmpeg/status", get(ff_status))
         .route(
             "/api/yt-dlp/update/stream",

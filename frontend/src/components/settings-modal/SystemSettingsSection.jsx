@@ -5,6 +5,7 @@ import SettingRow from './SettingRow'
 import SettingGroup from './SettingGroup'
 import SettingsBreadcrumb from './SettingsBreadcrumb'
 import TerminalOutput from './TerminalOutput'
+import YtDlpSourceSetting from './YtDlpSourceSetting'
 
 /**
  * Status badge component for dependency cards.
@@ -114,6 +115,7 @@ function DependencyDetail({
   autoUpdateEnabled,
   updating,
   startUpdate,
+  onChangeSource,
   onToggleAutoUpdate,
   toolUpdateSettingsLoading,
   toolUpdateSettingsSaving,
@@ -124,10 +126,10 @@ function DependencyDetail({
   isMobileLayout = false,
 }) {
   const updateInProgress = Boolean(updating || info?.updateInProgress)
-  const autoUpdateBusy = Boolean(toolUpdateSettingsLoading || toolUpdateSettingsSaving)
-  const canRunUpdate = Boolean(info?.outdated && info?.updateSupported)
+  const autoUpdateBusy = Boolean(toolUpdateSettingsLoading || toolUpdateSettingsSaving || info.sourceChanging)
+  const canRunUpdate = Boolean(info?.updateSupported && (info.outdated || info.manualUpdateAvailable))
   const primaryActionIsUpdate = canRunUpdate
-  const primaryActionDisabled = Boolean(info.loading || updateInProgress || (primaryActionIsUpdate && !info?.updateSupported))
+  const primaryActionDisabled = Boolean(info.loading || info.sourceChanging || updateInProgress || (primaryActionIsUpdate && !info?.updateSupported))
   const handlePrimaryAction = primaryActionIsUpdate ? startUpdate : onCheckForUpdates
   const primaryActionLabel = primaryActionIsUpdate
     ? (updateInProgress ? t('settings.updating') : t('settings.updateNow'))
@@ -173,14 +175,18 @@ function DependencyDetail({
           <StatusBadge status={status} label={label} />
         </SettingRow>
 
+        {onChangeSource && info.installationSource && (
+          <YtDlpSourceSetting info={info} onChange={onChangeSource} updateInProgress={updateInProgress} t={t} />
+        )}
+
         <SettingRow
           label={t('settings.autoUpdateEnabled')}
-          description={t('settings.autoUpdateEnabledDesc')}
+          description={t(info.autoUpdateSupported === false ? 'settings.autoUpdateUnavailableForExternalTools' : 'settings.autoUpdateEnabledDesc')}
         >
           <Switch
-            checked={switchChecked}
+            checked={info.autoUpdateSupported !== false && switchChecked}
             onChange={(event) => onToggleAutoUpdate?.(event.target.checked)}
-            disabled={autoUpdateBusy}
+            disabled={autoUpdateBusy || info.autoUpdateSupported === false}
           />
         </SettingRow>
 
@@ -246,14 +252,14 @@ function DependencyDetail({
           </Typography>
         </Box>
       )}
-      {info.error && (
+      {(info.updateError || info.error) && (
         <Box sx={(th) => ({
           mt: 2, px: 2, py: 1.25, borderRadius: '4px',
           bgcolor: th.palette.mode === 'dark' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
           border: '1px solid rgba(239,68,68,0.3)',
         })}>
           <Typography variant="body2" sx={{ color: '#f87171', fontWeight: 500, fontSize: 13 }}>
-            {info.error}
+            {info.updateError || info.error}
           </Typography>
         </Box>
       )}
@@ -277,6 +283,7 @@ export default function SystemSettingsSection({
   ytUpdating,
   ffmpegUpdating,
   startYtUpdate,
+  onChangeYtDlpSource,
   startFfmpegUpdate,
   onToggleYtAutoUpdate,
   onToggleFfmpegAutoUpdate,
@@ -358,6 +365,7 @@ export default function SystemSettingsSection({
       autoUpdateEnabled={isYtDlp ? ytAutoUpdateEnabled : ffmpegAutoUpdateEnabled}
       updating={isYtDlp ? ytUpdating : ffmpegUpdating}
       startUpdate={isYtDlp ? startYtUpdate : startFfmpegUpdate}
+      onChangeSource={isYtDlp ? onChangeYtDlpSource : undefined}
       onToggleAutoUpdate={isYtDlp ? onToggleYtAutoUpdate : onToggleFfmpegAutoUpdate}
       toolUpdateSettingsLoading={toolUpdateSettingsLoading}
       toolUpdateSettingsSaving={toolUpdateSettingsSaving}

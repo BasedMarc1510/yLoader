@@ -97,8 +97,15 @@ async fn timeline(
     let _permit = state.visuals.try_acquire().map_err(|_| EditorError::Busy)?;
     let (_, input) = source(&state, id).await?;
     let media = probe(&state.tools.ensure(Tool::Ffprobe).await?, &input).await?;
+    let mut encoders = Vec::new();
+    if media.has_video {
+        encoders.push("mjpeg");
+    }
+    if media.has_audio {
+        encoders.push("pcm_s16le");
+    }
     Ok(Json(
-        visuals::create(&state.tools.ensure(Tool::Ffmpeg).await?, &input, &media).await,
+        visuals::create(&state.tools.ensure_ffmpeg(&encoders).await?, &input, &media).await,
     ))
 }
 
@@ -132,13 +139,8 @@ async fn edit(
     let output = parent.join(&filename);
     let staged_file = staging.path().join(&filename);
 
-    edit.render(
-        &state.tools.ensure(Tool::Ffmpeg).await?,
-        &input,
-        &staged_file,
-        &media,
-    )
-    .await?;
+    edit.render(&state.tools, &input, &staged_file, &media)
+        .await?;
     let duration = edit.duration();
     let kind = if edit.audio_only { "audio" } else { "video" };
 

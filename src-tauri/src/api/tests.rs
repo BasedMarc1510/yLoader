@@ -13,6 +13,7 @@ use crate::data::{
     AUTOSTART_MIGRATION_KEY, SHELL_SETTINGS_KEY, State, UPDATE_SETTINGS_KEY, read_setting,
     write_setting,
 };
+use crate::tools::Tool;
 
 const TOKEN: &str = "test-access-token";
 
@@ -334,34 +335,22 @@ async fn generates_editor_visuals_and_exports_an_audio_cut() {
 #[tokio::test]
 async fn downloads_real_media_and_thumbnails_with_the_desktop_api() {
     let (root, state) = fixture();
-    let available = [
-        &state.tools.yt_dlp,
-        &state.tools.ffmpeg,
-        &state.tools.ffprobe,
-    ]
-    .into_iter()
-    .all(|tool| {
-        Command::new(tool)
-            .arg(if tool == &state.tools.yt_dlp {
-                "--version"
-            } else {
-                "-version"
-            })
-            .output()
-            .is_ok_and(|output| output.status.success())
-    });
-    if !available {
+    let (Some(_), Some(ffmpeg), Some(_)) = tokio::join!(
+        state.tools.existing(Tool::YtDlp),
+        state.tools.existing(Tool::Ffmpeg),
+        state.tools.existing(Tool::Ffprobe),
+    ) else {
         assert!(
             std::env::var_os("YLOADER_REQUIRE_DOWNLOAD_TEST").is_none(),
             "yt-dlp and FFmpeg must be installed"
         );
         return;
-    }
+    };
 
     let source = root.path().join("source.mp4");
     let image = root.path().join("image.jpg");
     assert!(
-        Command::new(&state.tools.ffmpeg)
+        Command::new(&ffmpeg.path)
             .args([
                 "-v",
                 "error",
@@ -385,7 +374,7 @@ async fn downloads_real_media_and_thumbnails_with_the_desktop_api() {
             .success()
     );
     assert!(
-        Command::new(&state.tools.ffmpeg)
+        Command::new(&ffmpeg.path)
             .args(["-v", "error", "-i"])
             .arg(&source)
             .args(["-frames:v", "1"])
@@ -469,6 +458,10 @@ async fn downloads_real_media_and_thumbnails_with_the_desktop_api() {
         ),
         (
             "stream",
+            json!({"url":url,"type":"audio","format":"ogg","videoTitle":"Vorbis fixture","cover":{"enabled":false}}),
+        ),
+        (
+            "stream",
             json!({"url":url,"type":"video","format":"mp4","videoTitle":"Video fixture","maximumCompatibility":true,
             "cuts":{"enabled":true,"mode":"keep","segments":[{"start":0.3,"end":1.0},{"start":1.8,"end":2.4}]}}),
         ),
@@ -526,7 +519,7 @@ async fn downloads_real_media_and_thumbnails_with_the_desktop_api() {
         )
         .await
         .unwrap();
-    assert_eq!(json_body(history).await.as_array().unwrap().len(), 3);
+    assert_eq!(json_body(history).await.as_array().unwrap().len(), 4);
     assert_eq!(fs::read_to_string(cookie_file).unwrap(), cookie_contents);
     server.abort();
 }
@@ -538,9 +531,12 @@ async fn reports_actionable_yt_dlp_errors_without_forwarding_tool_output() {
 
     let (root, mut state) = fixture();
     let yt_dlp = root.path().join("yt-dlp");
-    state.tools.yt_dlp = yt_dlp.clone();
-    state.tools.ffmpeg = yt_dlp.clone();
-    state.tools.ffprobe = yt_dlp.clone();
+    state.tools.set_search_dirs(vec![root.path().to_owned()]);
+    for name in ["ffmpeg", "ffprobe"] {
+        let path = root.path().join(name);
+        fs::write(&path, format!("#!/bin/sh\necho '{name} version 7.0'\n")).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
     let app = router(state, TOKEN);
     let url = "https://www.reddit.com/r/test/comments/example/";
 
@@ -556,7 +552,7 @@ async fn reports_actionable_yt_dlp_errors_without_forwarding_tool_output() {
     ] {
         fs::write(
             &yt_dlp,
-            format!("#!/bin/sh\nprintf '%s\\n' 'ERROR: {diagnostic}' >&2\nexit 1\n"),
+            format!("#!/bin/sh\nif [ \"$2\" = --version ]; then echo 2026.01.01; exit 0; fi\nprintf '%s\\n' 'ERROR: {diagnostic}' >&2\nexit 1\n"),
         )
         .unwrap();
         fs::set_permissions(&yt_dlp, fs::Permissions::from_mode(0o755)).unwrap();
@@ -608,6 +604,7 @@ async fn search_uses_provider_and_pagination_arguments() {
     let yt_dlp = root.path().join("yt-dlp");
     fs::write(&yt_dlp, r#"#!/bin/sh
 case "$*" in
+  *"--version") echo 2026.01.01 ;;
   *"--flat-playlist --playlist-start 11 --playlist-end 20 -- scsearch20:some & query")
     printf '%s\n' '{"entries":[{"id":"7","title":"Example track","url":"https://soundcloud.com/example/track","duration":120,"uploader":"Example artist","thumbnail":"https://img.example.test/cover.jpg"}]}'
     ;;
@@ -615,7 +612,7 @@ case "$*" in
 esac
 "#).unwrap();
     fs::set_permissions(&yt_dlp, fs::Permissions::from_mode(0o755)).unwrap();
-    state.tools.yt_dlp = yt_dlp;
+    state.tools.set_search_dirs(vec![root.path().to_owned()]);
     let response = router(state, TOKEN)
         .oneshot(
             Request::get(format!(
@@ -639,14 +636,194 @@ esac
 }
 
 #[tokio::test]
+#[cfg(unix)]
+async fn uses_working_path_tools_and_updates_the_selected_yt_dlp() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (root, mut state) = fixture();
+    let broken = root.path().join("broken");
+    let external = root.path().join("external");
+    let managed = root.path().join("tauri/tools");
+    let write_tool = |path: &std::path::Path, script: &str| {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, script).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    let yt_dlp = external.join("yt-dlp");
+    write_tool(&broken.join("yt-dlp"), "#!/bin/sh\nexit 1\n");
+    write_tool(&broken.join("ffmpeg"), "#!/bin/sh\nexit 1\n");
+    write_tool(
+        &yt_dlp,
+        r#"#!/bin/sh
+case "$*" in
+  '--ignore-config --version')
+    if [ -f "$0.updated" ]; then echo 2026.10.01; else echo 2026.01.01; fi ;;
+  '--ignore-config --update') touch "$0.updated" ;;
+  *) exit 1 ;;
+esac
+"#,
+    );
+    write_tool(
+        &external.join("ffmpeg"),
+        "#!/bin/sh\ncase \"$*\" in *-encoders) echo ' A....D aac';; *) echo 'ffmpeg version 7.0';; esac\n",
+    );
+    write_tool(
+        &external.join("ffprobe"),
+        "#!/bin/sh\necho 'ffprobe version 7.0'\n",
+    );
+    write_tool(&managed.join("yt-dlp"), "#!/bin/sh\necho 2026.02.01\n");
+    write_tool(
+        &managed.join("ffmpeg"),
+        "#!/bin/sh\ncase \"$*\" in *-encoders) echo ' A....D libvorbis';; *) echo 'ffmpeg version 6.0';; esac\n",
+    );
+    state.tools.set_search_dirs(vec![broken, external.clone()]);
+    let app = router(state.clone(), TOKEN);
+    let get = |route: &str| {
+        app.clone().oneshot(
+            Request::get(format!("/{TOKEN}/api/{route}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+    };
+    let select_yt_dlp_source = |source: &str| {
+        app.clone().oneshot(
+            Request::put(format!("/{TOKEN}/api/yt-dlp/source"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"source": source}).to_string()))
+                .unwrap(),
+        )
+    };
+
+    let status = json_body(get("yt-dlp/status?localOnly=1").await.unwrap()).await;
+    assert_eq!(status["binaryPath"], json!(yt_dlp));
+    assert_eq!(status["currentVersion"], "2026.01.01");
+    assert_eq!(status["manualUpdateAvailable"], true);
+    assert_eq!(status["autoUpdateSupported"], false);
+    assert_eq!(state.tools.update(Tool::YtDlp, true).await.unwrap(), None);
+    assert!(!external.join("yt-dlp.updated").exists());
+
+    let update = get("yt-dlp/update/stream").await.unwrap();
+    let events = to_bytes(update.into_body(), 64 * 1024).await.unwrap();
+    assert!(
+        std::str::from_utf8(&events)
+            .unwrap()
+            .contains("event: end\ndata: done")
+    );
+    let status = json_body(get("yt-dlp/status?localOnly=1").await.unwrap()).await;
+    assert_eq!(status["currentVersion"], "2026.10.01");
+    assert_eq!(status["binaryPath"], json!(yt_dlp));
+
+    let switched = select_yt_dlp_source("managed").await.unwrap();
+    assert_eq!(switched.status(), StatusCode::OK);
+    assert_eq!(json_body(switched).await["source"], "managed");
+    let status = json_body(get("yt-dlp/status?localOnly=1").await.unwrap()).await;
+    assert_eq!(status["installationSource"], "managed");
+    assert_eq!(status["binaryPath"], json!(managed.join("yt-dlp")));
+    assert_eq!(status["autoUpdateSupported"], true);
+    assert_eq!(status["manualUpdateAvailable"], false);
+    let mut reopened = State::open(
+        &root.path().join("tauri"),
+        &root.path().join("legacy"),
+        root.path().join("system-downloads"),
+    )
+    .unwrap();
+    reopened.tools.set_search_dirs(vec![external.clone()]);
+    assert_eq!(
+        reopened.tools.ensure(Tool::YtDlp).await.unwrap(),
+        managed.join("yt-dlp")
+    );
+
+    assert_eq!(
+        select_yt_dlp_source("invalid").await.unwrap().status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let switched = select_yt_dlp_source("automatic").await.unwrap();
+    assert_eq!(switched.status(), StatusCode::OK);
+    assert_eq!(json_body(switched).await["source"], "automatic");
+    assert_eq!(state.tools.ensure(Tool::YtDlp).await.unwrap(), yt_dlp);
+
+    let status = json_body(get("ffmpeg/status?localOnly=1").await.unwrap()).await;
+    assert_eq!(status["path"], json!(external.join("ffmpeg")));
+    assert_eq!(status["ffprobePath"], json!(external.join("ffprobe")));
+    assert_eq!(status["updateSupported"], false);
+    assert_eq!(
+        state.tools.ensure_ffmpeg(&["aac"]).await.unwrap(),
+        external.join("ffmpeg")
+    );
+    assert_eq!(
+        state.tools.ensure_ffmpeg(&["libvorbis"]).await.unwrap(),
+        managed.join("ffmpeg")
+    );
+    assert_eq!(
+        state.tools.update(Tool::Ffmpeg, false).await,
+        Err("managed_externally")
+    );
+
+    let cellar_binary = root.path().join("Cellar/yt-dlp/2026.10.01/bin/yt-dlp");
+    write_tool(&cellar_binary, "#!/bin/sh\necho 2026.10.01\n");
+    write_tool(
+        &root.path().join("bin/brew"),
+        "#!/bin/sh\n[ \"$*\" = 'upgrade yt-dlp' ] || exit 1\ntouch \"$0.called\"\n",
+    );
+    fs::remove_file(&yt_dlp).unwrap();
+    std::os::unix::fs::symlink(cellar_binary, &yt_dlp).unwrap();
+    assert_eq!(state.tools.update(Tool::YtDlp, false).await.unwrap(), None);
+    assert!(root.path().join("bin/brew.called").is_file());
+
+    fs::remove_file(&yt_dlp).unwrap();
+    fs::remove_file(external.join("ffmpeg")).unwrap();
+    assert_eq!(
+        state.tools.ensure(Tool::YtDlp).await.unwrap(),
+        managed.join("yt-dlp")
+    );
+    assert_eq!(
+        state.tools.ensure(Tool::Ffmpeg).await.unwrap(),
+        managed.join("ffmpeg")
+    );
+}
+
+#[tokio::test]
+#[cfg(unix)]
+#[ignore = "downloads and verifies a real yt-dlp release from GitHub"]
+async fn installs_managed_yt_dlp_when_an_external_copy_is_available() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (root, mut state) = fixture();
+    let external = root.path().join("yt-dlp");
+    fs::write(&external, "#!/bin/sh\necho 2026.01.01\n").unwrap();
+    fs::set_permissions(&external, fs::Permissions::from_mode(0o755)).unwrap();
+    state.tools.set_search_dirs(vec![root.path().to_owned()]);
+    assert_eq!(state.tools.ensure(Tool::YtDlp).await.unwrap(), external);
+
+    let response = router(state.clone(), TOKEN)
+        .oneshot(
+            Request::put(format!("/{TOKEN}/api/yt-dlp/source"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"source":"managed"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let selected = state.tools.ensure(Tool::YtDlp).await.unwrap();
+    assert_eq!(selected, root.path().join("tauri/tools/yt-dlp"));
+    assert_eq!(
+        fs::read_to_string(external).unwrap(),
+        "#!/bin/sh\necho 2026.01.01\n"
+    );
+}
+
+#[tokio::test]
 #[ignore = "downloads a real QuickJS executable from GitHub"]
 async fn installs_and_runs_a_verified_tool() {
-    use crate::tools::{Tool, Tools, version};
+    use crate::tools::Tools;
     let root = tempfile::tempdir().unwrap();
     let managed = root.path().join("tools");
-    let tools = Tools::locate(&root.path().join("legacy"), managed.clone());
-    tools.install(Tool::QuickJs).await.unwrap();
-    let qjs = tools.path(Tool::QuickJs);
-    assert_eq!(qjs.parent(), Some(managed.as_path()));
-    assert_eq!(version(Tool::QuickJs, &qjs).await.unwrap(), "QuickJS");
+    let mut tools = Tools::locate(&root.path().join("legacy"), managed.clone());
+    tools.set_search_dirs(vec![]);
+    let path = tools.ensure(Tool::QuickJs).await.unwrap();
+    let qjs = tools.existing(Tool::QuickJs).await.unwrap();
+    assert_eq!(qjs.path, path);
+    assert_eq!(qjs.path.parent(), Some(managed.as_path()));
+    assert_eq!(qjs.version, "QuickJS");
 }

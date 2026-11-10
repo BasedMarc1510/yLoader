@@ -322,14 +322,13 @@ export default function VideoTabContent({
           pickPathLoading={pickingSavePath}
           pickPathAriaLabel={i18nT('downloader.browseFilePath')}
         />
+        <VideoCompatibilityOption
+          checked={maximumCompatibility}
+          onChange={setMaximumCompatibility}
+          disabled={downloading}
+          i18nT={i18nT}
+        />
       </CollapsibleSection>
-
-      <VideoCompatibilityOption
-        checked={maximumCompatibility}
-        onChange={setMaximumCompatibility}
-        disabled={downloading}
-        i18nT={i18nT}
-      />
 
       {!isCompact && (
         <Box sx={{ position: 'relative', mt: 2 }}>

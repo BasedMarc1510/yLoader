@@ -1,25 +1,27 @@
 import React from 'react'
-import { Box, Checkbox, FormControlLabel, Typography } from '@mui/material'
+import { Box, Checkbox, FormControlLabel, IconButton, Tooltip } from '@mui/material'
+import { CircleHelp } from 'lucide-react'
 
 export default function VideoCompatibilityOption({ checked, onChange, disabled, i18nT }) {
-  const descriptionId = React.useId()
+  const helpText = i18nT('downloader.maximumCompatibilityHelp')
   return (
-    <Box sx={{ mt: 1 }}>
+    <Box sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
       <FormControlLabel
-        sx={{ ml: 0, mr: 0 }}
+        sx={{ ml: 0, mr: 0.5 }}
         control={(
           <Checkbox
             checked={checked}
             onChange={(event) => onChange(event.target.checked)}
             disabled={disabled}
-            inputProps={{ 'aria-describedby': descriptionId }}
           />
         )}
         label={i18nT('downloader.maximumCompatibility')}
       />
-      <Typography id={descriptionId} variant="body2" color="text.secondary" sx={{ ml: 5.5 }}>
-        {i18nT('downloader.maximumCompatibilityHelp')}
-      </Typography>
+      <Tooltip title={helpText} arrow placement="top" enterTouchDelay={0}>
+        <IconButton size="small" aria-label={helpText} sx={{ color: 'text.secondary' }}>
+          <CircleHelp size={16} />
+        </IconButton>
+      </Tooltip>
     </Box>
   )
 }

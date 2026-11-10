@@ -101,6 +101,8 @@ fn main() {
                 .visible(!starts_minimized)
                 .inner_size(1320.0, 860.0)
                 .min_inner_size(1024.0, 700.0)
+                .devtools(false)
+                .initialization_script_for_all_frames(include_str!("desktop-context-menu.js"))
                 .initialization_script(initialization_script)
                 .on_navigation(move |url| is_app_origin(url) || is_api_attachment(url, &api_base))
                 .on_new_window(move |url, _| {
