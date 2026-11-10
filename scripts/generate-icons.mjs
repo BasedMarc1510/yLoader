@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename)
 const ROOT_DIR = path.resolve(__dirname, '..')
 const FRONTEND_PUBLIC_DIR = path.join(ROOT_DIR, 'frontend', 'public')
 const BUILD_ICONS_DIR = path.join(ROOT_DIR, 'build', 'icons')
-const TMP_DIR = path.join(ROOT_DIR, '.electron-build', '.icon-gen')
+const TMP_DIR = path.join(ROOT_DIR, '.cache', 'icon-gen')
 
 const PNG_SIZES = [16, 24, 32, 48, 64, 96, 128, 180, 192, 256, 512, 1024]
 
@@ -67,22 +67,6 @@ function pickSourceIcon() {
   throw new Error('No icon source found. Expected frontend/public/icon-source.png, frontend/public/yloader-icon.svg, or frontend/public/favicon.svg.')
 }
 
-function pickInstallerSourceIcon(defaultSourcePath) {
-  const argIndex = process.argv.indexOf('--installer-source')
-  if (argIndex >= 0 && process.argv[argIndex + 1]) {
-    const candidate = path.resolve(ROOT_DIR, process.argv[argIndex + 1])
-    if (!fs.existsSync(candidate)) {
-      throw new Error(`Installer icon source not found: ${candidate}`)
-    }
-    return candidate
-  }
-
-  const installerPreferred = path.join(FRONTEND_PUBLIC_DIR, 'installer-icon-source.png')
-  if (fs.existsSync(installerPreferred)) return installerPreferred
-
-  return defaultSourcePath
-}
-
 function renderPng(sourcePath, size, outPath) {
   const rasterPath = `${outPath}.raster.png`
 
@@ -120,10 +104,8 @@ function main() {
   ensureMagickAvailable()
 
   const sourcePath = pickSourceIcon()
-  const installerSourcePath = pickInstallerSourceIcon(sourcePath)
   const isSourceSvg = path.extname(sourcePath).toLowerCase() === '.svg'
   info(`Using source icon: ${path.relative(ROOT_DIR, sourcePath)}`)
-  info(`Using installer icon source: ${path.relative(ROOT_DIR, installerSourcePath)}`)
 
   fs.mkdirSync(TMP_DIR, { recursive: true })
   fs.mkdirSync(BUILD_ICONS_DIR, { recursive: true })
@@ -157,7 +139,7 @@ function main() {
     path.join(FRONTEND_PUBLIC_DIR, 'favicon.ico'),
   ])
 
-  // Electron app icons.
+  // Desktop app icons.
   copyFile(rendered.get(512), path.join(BUILD_ICONS_DIR, 'icon-512.png'))
   copyFile(rendered.get(1024), path.join(BUILD_ICONS_DIR, 'icon.png'))
 
@@ -173,17 +155,7 @@ function main() {
     path.join(BUILD_ICONS_DIR, 'icon.icns'),
   ])
 
-  const installerRenderedPath = path.join(TMP_DIR, 'installer-icon-1024.png')
-  renderPng(installerSourcePath, 1024, installerRenderedPath)
-
-  runMagick([
-    installerRenderedPath,
-    '-background', 'none',
-    '-define', 'icon:auto-resize=256,128,64,48,32,24,16',
-    path.join(BUILD_ICONS_DIR, 'installer-icon.ico'),
-  ])
-
-  info('Generated web and Electron icon assets.')
+  info('Generated web and desktop icon assets.')
 }
 
 try {

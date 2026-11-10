@@ -4,18 +4,23 @@ import { Box, IconButton } from '@mui/material'
 import { Minus, Square, Copy, X } from 'lucide-react'
 import NotificationBellButton from './NotificationBellButton'
 
-export default function WindowControls({
-  show,
-  isWindowMaximized,
-  onMinimize,
-  onToggleMaximize,
-  onClose,
-  styleVars,
-  t,
-}) {
-  if (!show) return null
+export default function WindowControls({ controls, styleVars, t }) {
+  const [isWindowMaximized, setIsWindowMaximized] = React.useState(false)
 
-  const controls = (
+  React.useEffect(() => {
+    let active = true
+    const update = (state) => {
+      if (active) setIsWindowMaximized(Boolean(state?.isMaximized))
+    }
+    const unsubscribe = controls.onStateChange(update)
+    controls.getState().then(update).catch(() => {})
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [controls])
+
+  const controlGroup = (
     <Box className="yl-window-controls" style={styleVars} role="group" aria-label={t('tabs.windowControlsAria')}>
       <NotificationBellButton
         className="yl-window-btn yl-window-btn-notification"
@@ -28,7 +33,7 @@ export default function WindowControls({
         className="yl-window-btn yl-window-btn-control"
         disableRipple
         aria-label={t('tabs.windowMinimizeAria')}
-        onClick={onMinimize}
+        onClick={() => controls.minimize().catch(() => {})}
       >
         <Minus size={14} />
       </IconButton>
@@ -38,7 +43,9 @@ export default function WindowControls({
         className="yl-window-btn yl-window-btn-control"
         disableRipple
         aria-label={isWindowMaximized ? t('tabs.windowRestoreAria') : t('tabs.windowMaximizeAria')}
-        onClick={onToggleMaximize}
+        onClick={() => controls.toggleMaximize()
+          .then((state) => setIsWindowMaximized(Boolean(state?.isMaximized)))
+          .catch(() => {})}
       >
         {isWindowMaximized ? <Copy size={12} /> : <Square size={12} />}
       </IconButton>
@@ -48,13 +55,13 @@ export default function WindowControls({
         className="yl-window-btn yl-window-btn-control is-close"
         disableRipple
         aria-label={t('tabs.windowCloseAria')}
-        onClick={onClose}
+        onClick={() => controls.close().catch(() => {})}
       >
         <X size={14} />
       </IconButton>
     </Box>
   )
 
-  if (typeof document === 'undefined') return controls
-  return createPortal(controls, document.body)
+  if (typeof document === 'undefined') return controlGroup
+  return createPortal(controlGroup, document.body)
 }

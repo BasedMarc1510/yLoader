@@ -1,7 +1,7 @@
 import { getApiBase, normalizeUrlForNoembed, resolveServiceKey } from '../../../utils/metadata'
 import { formatYtDlpErrorMessage } from '../../../utils/ytDlpErrorPresentation'
 import { appendDownloadDiagnostic, resolveDownloadDiagnosticMessage } from '../../../utils/downloadStreamDiagnostics'
-import { buildSuggestedDownloadFilename, resolveElectronDownloadDestination } from '../../../utils/electronDownloadDestination'
+import { buildSuggestedDownloadFilename, resolveDesktopDownloadDestination } from '../../../utils/desktopDownloadDestination'
 import { getPathDirectory, getPathFilename, resolveFullPathValue } from '../../../utils/downloadPathInput'
 import { resolveDownloadFilenamePattern } from '../../../utils/downloadSettings'
 import { readSseEventsFromResponse } from '../../../utils/sse'
@@ -44,7 +44,7 @@ function normalizeImageDownloadFormat(value, fallback = 'jpg') {
   return fallback
 }
 
-function resolveExpectedElectronSavePath(rawPath, extension, fallbackBaseName = 'download') {
+function resolveExpectedDesktopSavePath(rawPath, extension, fallbackBaseName = 'download') {
   const input = String(rawPath || '').trim()
   if (!input) return ''
 
@@ -127,10 +127,10 @@ export async function runThumbnailStreamDownload({
   })
   const suggestedFilename = buildSuggestedDownloadFilename(suggestedBaseName, selectedFormat)
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const isElectronRuntime = Boolean(runtime?.isElectron)
+  const isDesktopRuntime = Boolean(runtime?.isDesktop)
   const normalizedForcedDownloadDirectory = String(forcedDownloadDirectory || '').trim()
   const hasForcedDownloadDirectory = Boolean(
-    isElectronRuntime
+    isDesktopRuntime
     && normalizedForcedDownloadDirectory
   )
   const resolvedDownloadTargetSettings = hasForcedDownloadDirectory
@@ -145,7 +145,7 @@ export async function runThumbnailStreamDownload({
       : (resolvedDownloadTargetSettings?.directoryPath || runtime?.downloadsPath || ''))
   ).trim()
   const usesFixedPathMode = Boolean(
-    isElectronRuntime
+    isDesktopRuntime
     && resolvedDownloadTargetSettings
     && resolvedDownloadTargetSettings.alwaysAsk === false
   )
@@ -159,7 +159,7 @@ export async function runThumbnailStreamDownload({
   let finalized = false
   let completionPayload = null
   let recentDiagnostics = []
-  let manualElectronSavePath = ''
+  let manualDesktopSavePath = ''
 
   try {
     emitDownloadEvent({ type: 'start', downloadType: type, sourceUrl: normalized || resolvedThumbnailUrl })
@@ -222,7 +222,7 @@ export async function runThumbnailStreamDownload({
         }
       }
 
-      manualElectronSavePath = resolvedPathValue
+      manualDesktopSavePath = resolvedPathValue
     }
 
     const payload = {
@@ -233,7 +233,7 @@ export async function runThumbnailStreamDownload({
       service: resolvedServiceKey,
     }
 
-    const electronDestination = await resolveElectronDownloadDestination({
+    const desktopDestination = await resolveDesktopDownloadDestination({
       apiBase,
       downloadType: type,
       suggestedFilename,
@@ -241,22 +241,22 @@ export async function runThumbnailStreamDownload({
       targetSettings: resolvedDownloadTargetSettings,
     })
 
-    if (electronDestination.enabled) {
-      if (electronDestination.canceled) {
+    if (desktopDestination.enabled) {
+      if (desktopDestination.canceled) {
         return false
       }
 
-      if (usesFixedPathMode && manualElectronSavePath) {
-        payload.electronSavePath = manualElectronSavePath
-        payload.electronTargetDirectory = undefined
+      if (usesFixedPathMode && manualDesktopSavePath) {
+        payload.desktopSavePath = manualDesktopSavePath
+        payload.desktopTargetDirectory = undefined
       } else {
-        payload.electronSavePath = electronDestination.electronSavePath || undefined
-        payload.electronTargetDirectory = electronDestination.electronTargetDirectory || undefined
+        payload.desktopSavePath = desktopDestination.desktopSavePath || undefined
+        payload.desktopTargetDirectory = desktopDestination.desktopTargetDirectory || undefined
       }
 
-      const overwriteTargetPath = payload.electronSavePath
-        ? resolveExpectedElectronSavePath(
-          payload.electronSavePath,
+      const overwriteTargetPath = payload.desktopSavePath
+        ? resolveExpectedDesktopSavePath(
+          payload.desktopSavePath,
           selectedFormat,
           normalizedVideoTitle,
         )
@@ -305,7 +305,7 @@ export async function runThumbnailStreamDownload({
             return false
           }
 
-          payload.electronAllowOverwrite = true
+          payload.desktopAllowOverwrite = true
         }
       }
     }
@@ -386,7 +386,7 @@ export async function runThumbnailStreamDownload({
             payload: completionPayload,
           })
 
-          if (!isElectronRuntime && relativeUrl) {
+          if (!isDesktopRuntime && relativeUrl) {
             const a = document.createElement('a')
             a.href = `${apiBase}${relativeUrl}`
             a.download = filename

@@ -200,7 +200,7 @@ const YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = (() => {
   const flag = String(process.env.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT || '').trim().toLowerCase()
   if (flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on') return true
   if (flag === '0' || flag === 'false' || flag === 'no' || flag === 'off') return false
-  return YLOADER_RUNTIME_TARGET === 'electron'
+  return false
 })()
 const YT_DLP_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
 const FFMPEG_LATEST_CACHE_TTL_MS = 10 * 60 * 1000
@@ -1455,44 +1455,6 @@ function buildUniqueDownloadFilename(baseName, ext) {
   }
 
   return `${safeBase}-${Date.now()}.${normalizedExt}`
-}
-
-function ensureWritableDirectory(directoryPath) {
-  const resolvedPath = normalizeDownloadDirectoryPath(directoryPath, '')
-  if (!resolvedPath) return false
-
-  try {
-    fs.mkdirSync(resolvedPath, { recursive: true })
-    const stat = fs.statSync(resolvedPath)
-    if (!stat.isDirectory()) return false
-    fs.accessSync(resolvedPath, fs.constants.W_OK)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function buildUniqueFilePath(directoryPath, baseName, extension) {
-  const safeDirectory = normalizeDownloadDirectoryPath(directoryPath, '')
-  const safeBaseName = sanitizeFilename(baseName || 'download', 120) || 'download'
-  const safeExtension = String(extension || '').trim().replace(/^\./, '').toLowerCase()
-  const extSuffix = safeExtension ? `.${safeExtension}` : ''
-
-  let attempt = 0
-  while (attempt < 1000) {
-    const suffix = attempt > 0 ? ` (${attempt})` : ''
-    const candidate = path.join(safeDirectory, `${safeBaseName}${suffix}${extSuffix}`)
-    if (!fs.existsSync(candidate)) return candidate
-    attempt += 1
-  }
-
-  return path.join(safeDirectory, `${safeBaseName}-${Date.now()}${extSuffix}`)
-}
-
-function buildUniqueTempOutputBaseName(directoryPath, preferredBaseName, extension, fallbackBaseName = 'content') {
-  const safePreferredBaseName = sanitizeFilename(preferredBaseName || fallbackBaseName, 120) || fallbackBaseName
-  const candidatePath = buildUniqueFilePath(directoryPath, safePreferredBaseName, extension)
-  return sanitizeFilename(path.parse(candidatePath).name, 120) || safePreferredBaseName
 }
 
 function normalizeDownloadDirectoryPath(value, fallbackPath) {
@@ -4661,13 +4623,6 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
   const requestedFormat = formatRaw ? normalizeImageContainer(formatRaw) : ''
   const requestedService = String(req.body?.service || '').trim()
   const rawTitle = String(req.body?.videoTitle || req.body?.filename || '').trim()
-  const electronSavePath = normalizeDownloadDirectoryPath(req.body?.electronSavePath, '')
-  const electronTargetDirectory = normalizeDownloadDirectoryPath(req.body?.electronTargetDirectory, '')
-  const electronAllowOverwrite = req.body?.electronAllowOverwrite === true
-  const useElectronDirectTarget = Boolean(
-    YLOADER_RUNTIME_TARGET === 'electron'
-    && (electronSavePath || electronTargetDirectory)
-  )
 
   if (!thumbnailUrl) {
     return res.status(400).json({ error: 'Missing required field: thumbnailUrl' })
@@ -4862,43 +4817,8 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
       send('progress', { percent: 92, stage: 'processing' })
     }
 
-    let finalFilename = ''
-    let finalPath = ''
-
-    if (useElectronDirectTarget) {
-      const requestedDirectoryPath = electronSavePath
-        ? normalizeDownloadDirectoryPath(path.dirname(electronSavePath), '')
-        : normalizeDownloadDirectoryPath(electronTargetDirectory, '')
-      const resolvedDirectoryPath = requestedDirectoryPath || DOWNLOADS_DIR
-
-      if (!ensureWritableDirectory(resolvedDirectoryPath)) {
-        throw new Error('Failed to access destination directory')
-      }
-
-      if (electronSavePath) {
-        const parsedSavePath = path.parse(electronSavePath)
-        const requestedBaseName = sanitizeFilename(parsedSavePath.name || finalBaseFilename, 120) || finalBaseFilename
-        finalPath = path.join(resolvedDirectoryPath, `${requestedBaseName}.${outputContainer}`)
-      } else {
-        finalPath = buildUniqueFilePath(resolvedDirectoryPath, finalBaseFilename, outputContainer)
-      }
-
-      if (fs.existsSync(finalPath)) {
-        const existingTargetStat = fs.statSync(finalPath)
-        if (!existingTargetStat.isFile()) {
-          throw new Error('Target path exists but is not a file')
-        }
-        if (!electronAllowOverwrite) {
-          throw new Error('Target file already exists. Replace was not confirmed.')
-        }
-        fs.unlinkSync(finalPath)
-      }
-
-      finalFilename = path.basename(finalPath)
-    } else {
-      finalFilename = buildUniqueDownloadFilename(finalBaseFilename, outputContainer)
-      finalPath = path.join(DOWNLOADS_DIR, finalFilename)
-    }
+    const finalFilename = buildUniqueDownloadFilename(finalBaseFilename, outputContainer)
+    const finalPath = path.join(DOWNLOADS_DIR, finalFilename)
 
     fs.writeFileSync(finalPath, outputBuffer)
 
@@ -4917,9 +4837,7 @@ app.post('/api/download/thumbnail/stream', async (req, res) => {
       savePath: finalPath,
       mime: inferImageMimeByContainer(outputContainer),
     }
-    if (!useElectronDirectTarget) {
-      completionPayload.url = `/api/download/file/${encodeURIComponent(finalFilename)}`
-    }
+    completionPayload.url = `/api/download/file/${encodeURIComponent(finalFilename)}`
     send('complete', completionPayload)
     send('end', 'done')
   } catch (err) {
@@ -4959,9 +4877,6 @@ app.post('/api/download/stream', async (req, res) => {
     thumbnailUrl: rawThumbnailUrl,
     videoTitle: rawVideoTitle,
     videoAuthor: rawVideoAuthor,
-    electronSavePath: rawElectronSavePath,
-    electronTargetDirectory: rawElectronTargetDirectory,
-    electronAllowOverwrite: rawElectronAllowOverwrite,
   } = req.body || {}
 
   const url = String(rawUrl || '').trim()
@@ -4970,14 +4885,7 @@ app.post('/api/download/stream', async (req, res) => {
   const audioFormat = String(rawAudioFormat || '').trim()
   const videoFormat = String(rawVideoFormat || '').trim()
   const maximumCompatibility = type === 'video' && rawMaximumCompatibility === true
-  const electronSavePath = normalizeDownloadDirectoryPath(rawElectronSavePath, '')
-  const electronTargetDirectory = normalizeDownloadDirectoryPath(rawElectronTargetDirectory, '')
-  const electronAllowOverwrite = rawElectronAllowOverwrite === true
   const thumbnailUrl = String(rawThumbnailUrl || '').trim()
-  const useElectronDirectTarget = Boolean(
-    YLOADER_RUNTIME_TARGET === 'electron'
-    && (electronSavePath || electronTargetDirectory)
-  )
   const effectiveDownloadSettings = await readDownloadSettings().catch(() => ({ ...DEFAULT_DOWNLOAD_SETTINGS }))
   const maxAudioBitrateRaw = Number(effectiveDownloadSettings.maxAudioBitrateKbps)
   const maxVideoHeightRaw = Number(effectiveDownloadSettings.maxVideoHeight)
@@ -5254,39 +5162,37 @@ app.post('/api/download/stream', async (req, res) => {
       fallbackBaseName: `download_${downloadHash}`,
     })
 
-    if (!useElectronDirectTarget) {
-      // Check if file already exists (cached) in FINAL destination
-      const possibleExts = type === 'audio' ? ['mp3', 'm4a', 'opus', 'webm', 'ogg', 'wav', 'flac'] : ['mp4', 'webm', 'mkv', 'avi', 'mov']
-      let existingFile = null
-      for (const e of possibleExts) {
-        const testPath = path.join(DOWNLOADS_DIR, `${finalBaseFilename}.${e}`)
-        if (!fs.existsSync(testPath)) continue
-        const metaPath = `${testPath}.ytdlp.json`
-        try {
-          if (fs.existsSync(metaPath)) {
-            const metaRaw = fs.readFileSync(metaPath, 'utf-8')
-            const meta = JSON.parse(metaRaw || '{}')
-            if (meta && meta.downloadHash === downloadHash) {
-              existingFile = `${finalBaseFilename}.${e}`
-              break
-            }
+    // Check if file already exists (cached) in FINAL destination
+    const possibleExts = type === 'audio' ? ['mp3', 'm4a', 'opus', 'webm', 'ogg', 'wav', 'flac'] : ['mp4', 'webm', 'mkv', 'avi', 'mov']
+    let existingFile = null
+    for (const e of possibleExts) {
+      const testPath = path.join(DOWNLOADS_DIR, `${finalBaseFilename}.${e}`)
+      if (!fs.existsSync(testPath)) continue
+      const metaPath = `${testPath}.ytdlp.json`
+      try {
+        if (fs.existsSync(metaPath)) {
+          const metaRaw = fs.readFileSync(metaPath, 'utf-8')
+          const meta = JSON.parse(metaRaw || '{}')
+          if (meta && meta.downloadHash === downloadHash) {
+            existingFile = `${finalBaseFilename}.${e}`
+            break
           }
-        } catch (err) {
-          console.warn('Cache metadata read failed:', err?.message || err)
         }
+      } catch (err) {
+        console.warn('Cache metadata read failed:', err?.message || err)
       }
+    }
 
-      if (existingFile) {
-        console.log(`File cached: ${existingFile}`)
-        send('progress', { percent: 100, stage: 'cached' })
-        const existingRow = await new Promise((resolve, reject) => {
-          db.get('SELECT id FROM downloads WHERE filename = ? ORDER BY id DESC LIMIT 1', [existingFile],
-            (err, row) => err ? reject(err) : resolve(row))
-        })
-        send('complete', { id: existingRow?.id || null, filename: existingFile, url: `/api/download/file/${encodeURIComponent(existingFile)}`, savePath: path.join(DOWNLOADS_DIR, existingFile) })
-        safeEnd()
-        return
-      }
+    if (existingFile) {
+      console.log(`File cached: ${existingFile}`)
+      send('progress', { percent: 100, stage: 'cached' })
+      const existingRow = await new Promise((resolve, reject) => {
+        db.get('SELECT id FROM downloads WHERE filename = ? ORDER BY id DESC LIMIT 1', [existingFile],
+          (err, row) => err ? reject(err) : resolve(row))
+      })
+      send('complete', { id: existingRow?.id || null, filename: existingFile, url: `/api/download/file/${encodeURIComponent(existingFile)}`, savePath: path.join(DOWNLOADS_DIR, existingFile) })
+      safeEnd()
+      return
     }
 
     // Check if download is already in progress
@@ -5317,60 +5223,10 @@ app.post('/api/download/stream', async (req, res) => {
     notifyDownloadSlotsChanged()
     send('started', { downloadHash })
 
-    let tempDir = ''
-    let tempDirIsTemporary = true
-    let tempOutputBaseName = 'content'
-    let directTargetSavePath = ''
-
+    const tempDir = path.join(DOWNLOADS_DIR, `temp_${downloadHash}`)
+    const tempOutputBaseName = 'content'
     try {
-      if (useElectronDirectTarget) {
-        const requestedDirectoryPath = electronSavePath
-          ? normalizeDownloadDirectoryPath(path.dirname(electronSavePath), '')
-          : normalizeDownloadDirectoryPath(electronTargetDirectory, '')
-        const resolvedDirectoryPath = requestedDirectoryPath || DOWNLOADS_DIR
-
-        if (!ensureWritableDirectory(resolvedDirectoryPath)) {
-          throw new Error('Failed to access destination directory')
-        }
-
-        tempDir = resolvedDirectoryPath
-        tempDirIsTemporary = false
-
-        if (electronSavePath) {
-          const parsedSavePath = path.parse(electronSavePath)
-          const requestedBaseName = sanitizeFilename(parsedSavePath.name || finalBaseFilename, 120) || finalBaseFilename
-          directTargetSavePath = path.join(resolvedDirectoryPath, `${requestedBaseName}.${ext}`)
-        } else {
-          const uniqueTargetPath = buildUniqueFilePath(resolvedDirectoryPath, finalBaseFilename, ext)
-          directTargetSavePath = uniqueTargetPath
-        }
-
-        const directTempTargetBase = sanitizeFilename(path.parse(directTargetSavePath).name, 120) || finalBaseFilename
-        const directTempBaseSeed = `yloader_${downloadHash.slice(0, 8)}_${directTempTargetBase}`
-        tempOutputBaseName = buildUniqueTempOutputBaseName(
-          resolvedDirectoryPath,
-          directTempBaseSeed,
-          ext,
-          `yloader_${downloadHash.slice(0, 8)}`
-        )
-
-        if (directTargetSavePath && fs.existsSync(directTargetSavePath)) {
-          const existingTargetStat = fs.statSync(directTargetSavePath)
-          if (!existingTargetStat.isFile()) {
-            throw new Error('Target path exists but is not a file')
-          }
-          if (!electronAllowOverwrite) {
-            throw new Error('Target file already exists. Replace was not confirmed.')
-          }
-        }
-      } else {
-        // Create a temporary directory for this download to avoid naming conflicts and quoting issues.
-        const tempDirName = `temp_${downloadHash}`
-        tempDir = path.join(DOWNLOADS_DIR, tempDirName)
-        if (!fs.existsSync(tempDir)) {
-          fs.mkdirSync(tempDir, { recursive: true })
-        }
-      }
+      fs.mkdirSync(tempDir, { recursive: true })
     } catch (err) {
       console.error('Failed to prepare output directory:', err)
       activeDownloads.delete(downloadHash)
@@ -5412,12 +5268,8 @@ app.post('/api/download/stream', async (req, res) => {
     console.log('===============================================')
     console.log('Starting download:')
     console.log('  Target Title:', targetTitle)
-    console.log('  Output Mode:', useElectronDirectTarget ? 'direct' : 'cache-temp')
     console.log('  Temp Dir:', tempDir)
     console.log('  Output template:', tempOutputTemplate)
-    if (useElectronDirectTarget) {
-      console.log('  Direct target hint:', directTargetSavePath || '(none)')
-    }
     if (type === 'audio' && normalizedMetadata.hasAny) {
       console.log('  Metadata:')
       console.log('    Title:', normalizedMetadata.title || '(none)')
@@ -5539,10 +5391,7 @@ app.post('/api/download/stream', async (req, res) => {
       activeDownloads.delete(downloadHash)
       notifyDownloadSlotsChanged()
       console.error('yt-dlp spawn error:', e)
-      if (tempDirIsTemporary) {
-        // Attempt cleanup for per-download temp directories only.
-        try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
-      }
+      try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
       const ytDlpError = buildYtDlpErrorPayload(`Failed to start yt-dlp: ${e?.message || e}`)
       send('error', {
         ...ytDlpError,
@@ -5745,7 +5594,6 @@ app.post('/api/download/stream', async (req, res) => {
                 } catch (err) {
                   compatibilityFailed = true
                   console.error('Video compatibility conversion failed:', err)
-                  // Direct Electron targets are not in a disposable cache directory.
                   for (const transientPath of transientFiles) {
                     try { fs.unlinkSync(transientPath) } catch { }
                   }
@@ -5762,76 +5610,43 @@ app.post('/api/download/stream', async (req, res) => {
               emitProgress(99, 'processing')
             }
 
-            let destPath = sourcePath
-            let destFilename = path.basename(sourcePath)
+            const destFilename = `${finalBaseFilename}${ext}`
+            const destPath = path.join(DOWNLOADS_DIR, destFilename)
 
-            if (useElectronDirectTarget) {
-              let requestedDestPath = ''
-              if (electronSavePath) {
-                const parsedSavePath = path.parse(electronSavePath)
-                const requestedBaseName = sanitizeFilename(parsedSavePath.name || finalBaseFilename, 120) || finalBaseFilename
-                requestedDestPath = path.join(path.dirname(electronSavePath), `${requestedBaseName}${ext}`)
-              } else if (directTargetSavePath) {
-                requestedDestPath = directTargetSavePath
+            // Move file to final destination
+            console.log(`Moving ${sourcePath} to ${destPath}`)
+
+            // If dest exists, delete it first (overwrite)
+            if (fs.existsSync(destPath)) {
+              fs.unlinkSync(destPath)
+            }
+
+            fs.renameSync(sourcePath, destPath)
+            try {
+              const metaPath = `${destPath}.ytdlp.json`
+              const meta = {
+                downloadHash,
+                url,
+                type,
+                format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
+                audioFormat: normalizedAudioFormatId || '',
+                videoFormat: normalizedVideoFormatId || '',
+                maximumCompatibility,
+                compatibilityProfileVersion: maximumCompatibility ? 1 : null,
+                maxAudioBitrateKbps,
+                maxVideoHeight,
+                videoTitle: normalizedVideoTitle || null,
+                metadata: metadataPayloadForCache,
+                cover: {
+                  enabled: coverEnabled,
+                  source: coverSource,
+                  upload: coverUploadHash || null,
+                },
+                cuts: cuts || null,
               }
-
-              const normalizedRequestedDest = normalizeDownloadDirectoryPath(requestedDestPath, sourcePath) || sourcePath
-              if (path.resolve(sourcePath) !== path.resolve(normalizedRequestedDest)) {
-                console.log(`Moving ${sourcePath} to ${normalizedRequestedDest}`)
-                if (fs.existsSync(normalizedRequestedDest)) {
-                  const existingTargetStat = fs.statSync(normalizedRequestedDest)
-                  if (!existingTargetStat.isFile()) {
-                    throw new Error('Target path exists but is not a file')
-                  }
-                  if (!electronAllowOverwrite) {
-                    throw new Error('Target file already exists. Replace was not confirmed.')
-                  }
-                  fs.unlinkSync(normalizedRequestedDest)
-                }
-                fs.renameSync(sourcePath, normalizedRequestedDest)
-              }
-
-              destPath = normalizedRequestedDest
-              destFilename = path.basename(destPath)
-            } else {
-              destFilename = `${finalBaseFilename}${ext}`
-              destPath = path.join(DOWNLOADS_DIR, destFilename)
-
-              // Move file to final destination
-              console.log(`Moving ${sourcePath} to ${destPath}`)
-
-              // If dest exists, delete it first (overwrite)
-              if (fs.existsSync(destPath)) {
-                fs.unlinkSync(destPath)
-              }
-
-              fs.renameSync(sourcePath, destPath)
-              try {
-                const metaPath = `${destPath}.ytdlp.json`
-                const meta = {
-                  downloadHash,
-                  url,
-                  type,
-                  format: type === 'audio' ? requestedAudioContainer : requestedVideoContainer,
-                  audioFormat: normalizedAudioFormatId || '',
-                  videoFormat: normalizedVideoFormatId || '',
-                  maximumCompatibility,
-                  compatibilityProfileVersion: maximumCompatibility ? 1 : null,
-                  maxAudioBitrateKbps,
-                  maxVideoHeight,
-                  videoTitle: normalizedVideoTitle || null,
-                  metadata: metadataPayloadForCache,
-                  cover: {
-                    enabled: coverEnabled,
-                    source: coverSource,
-                    upload: coverUploadHash || null,
-                  },
-                  cuts: cuts || null,
-                }
-                fs.writeFileSync(metaPath, JSON.stringify(meta))
-              } catch (err) {
-                console.warn('Failed to write cache metadata:', err?.message || err)
-              }
+              fs.writeFileSync(metaPath, JSON.stringify(meta))
+            } catch (err) {
+              console.warn('Failed to write cache metadata:', err?.message || err)
             }
 
             finalFile = destFilename
@@ -5882,15 +5697,13 @@ app.post('/api/download/stream', async (req, res) => {
         processingFailureMessage = String(err?.message || 'Failed to finalize download file')
       }
 
-      if (tempDirIsTemporary) {
-        // Always cleanup per-download temp dirs in cache mode.
-        try {
-          if (fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true, force: true })
-          }
-        } catch (err) {
-          console.error('Failed to remove temp dir:', err)
+      // Always cleanup per-download temp dirs in cache mode.
+      try {
+        if (fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true })
         }
+      } catch (err) {
+        console.error('Failed to remove temp dir:', err)
       }
 
       if (finalFile) {
@@ -5901,9 +5714,7 @@ app.post('/api/download/stream', async (req, res) => {
           filename: finalFile,
           savePath: finalPath,
         }
-        if (!useElectronDirectTarget) {
-          completionPayload.url = `/api/download/file/${encodeURIComponent(finalFile)}`
-        }
+        completionPayload.url = `/api/download/file/${encodeURIComponent(finalFile)}`
         send('complete', {
           ...completionPayload,
         })

@@ -76,7 +76,7 @@ function resolveFriendlyUpdaterError(rawMessage, t) {
 export default function AppVersionUpdateSection({
   t,
   appUpdateState,
-  isElectronUpdaterAvailable,
+  isDesktopUpdaterAvailable,
   checkForAppUpdates,
   downloadAppUpdate,
   installAppUpdate,
@@ -87,10 +87,10 @@ export default function AppVersionUpdateSection({
 
   const phase = String(appUpdateState?.phase || 'idle').trim()
   const canCheckForUpdates = Boolean(appUpdateState?.canCheckForUpdates)
-  const canAutoUpdate = Boolean(isElectronUpdaterAvailable && appUpdateState?.canAutoUpdate)
+  const canAutoUpdate = Boolean(isDesktopUpdaterAvailable && appUpdateState?.canAutoUpdate)
   const manualDownloadOnly = Boolean(appUpdateState?.manualDownloadOnly)
   const deploymentTarget = String(appUpdateState?.deploymentTarget || '').trim().toLowerCase()
-  const isDockerDeployment = !isElectronUpdaterAvailable && deploymentTarget === 'docker'
+  const isDockerDeployment = !isDesktopUpdaterAvailable && deploymentTarget === 'docker'
   const autoUpdateEnabled = Boolean(appUpdateState?.autoUpdateEnabled !== false)
   const releasePageUrl = String(appUpdateState?.releasePageUrl || '').trim()
   const currentVersion = String(appUpdateState?.currentVersion || '-').trim() || '-'
@@ -109,11 +109,11 @@ export default function AppVersionUpdateSection({
   const isReadyToInstall = phase === 'downloaded'
   const isUpToDate = phase === 'up-to-date'
   const isError = phase === 'error'
-  const isAutoUpdateSwitchVisible = Boolean(isElectronUpdaterAvailable && canAutoUpdate)
+  const isAutoUpdateSwitchVisible = Boolean(isDesktopUpdaterAvailable && canAutoUpdate)
 
   const statusText = React.useMemo(() => {
     if (!canCheckForUpdates) {
-      return isElectronUpdaterAvailable
+      return isDesktopUpdaterAvailable
         ? t('settings.appUpdateNotSupported')
         : t('settings.appUpdateLocalVersionOnly')
     }
@@ -136,7 +136,7 @@ export default function AppVersionUpdateSection({
     canCheckForUpdates,
     isChecking,
     isDownloading,
-    isElectronUpdaterAvailable,
+    isDesktopUpdaterAvailable,
     isError,
     manualDownloadOnly,
     isReadyToInstall,
@@ -168,7 +168,7 @@ export default function AppVersionUpdateSection({
     && !isReadyToInstall
   const showDownloadButton = canCheckForUpdates && isUpdateAvailable
   const showInstallButton = canAutoUpdate && isReadyToInstall
-  const showVersionOnly = !isElectronUpdaterAvailable && !canCheckForUpdates
+  const showVersionOnly = !isDesktopUpdaterAvailable && !canCheckForUpdates
 
   const isActionRunning = Boolean(runningAction)
   const transferredLabel = formatMegabytes(transferredBytes, t)

@@ -97,12 +97,15 @@ export default function DownloadsPage({ onOpenDownloader }) {
 
   const handleMenuSave = React.useCallback(() => {
     if (entryMenuItem?.cached && entryMenuItem?.filename) {
-      if (['audio', 'video'].includes(entryMenuItem.download_type)) {
+      const saveDownload = window.yloaderRuntime?.downloads?.saveDownload
+      if (saveDownload) {
+        saveDownload(entryMenuItem.id).catch(() => window.alert(t('downloader.errorDownloadFailed')))
+      } else if (['audio', 'video'].includes(entryMenuItem.download_type)) {
         window.location.href = `${getApiBase()}/api/downloads/${entryMenuItem.id}/file`
       } else handleDownloadFile(entryMenuItem.filename)
     }
     closeEntryMenu()
-  }, [closeEntryMenu, entryMenuItem, handleDownloadFile])
+  }, [closeEntryMenu, entryMenuItem, handleDownloadFile, t])
 
   const handleMenuDelete = React.useCallback(() => {
     if (entryMenuItem?.id != null) {

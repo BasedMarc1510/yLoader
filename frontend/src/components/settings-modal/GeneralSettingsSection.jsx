@@ -14,7 +14,7 @@ export default function GeneralSettingsSection({
   selectSx,
   t,
   appUpdateState,
-  isElectronUpdaterAvailable,
+  isDesktopUpdaterAvailable,
   checkForAppUpdates,
   downloadAppUpdate,
   installAppUpdate,
@@ -119,7 +119,7 @@ export default function GeneralSettingsSection({
         <AppVersionUpdateSection
           t={t}
           appUpdateState={appUpdateState}
-          isElectronUpdaterAvailable={isElectronUpdaterAvailable}
+          isDesktopUpdaterAvailable={isDesktopUpdaterAvailable}
           checkForAppUpdates={checkForAppUpdates}
           downloadAppUpdate={downloadAppUpdate}
           installAppUpdate={installAppUpdate}

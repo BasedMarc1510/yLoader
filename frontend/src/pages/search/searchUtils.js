@@ -64,24 +64,6 @@ export function triggerBrowserDownload(href, filename = '') {
   anchor.remove()
 }
 
-export function appendUrlQueryParam(rawUrl, key, value) {
-  const targetUrl = String(rawUrl || '').trim()
-  const targetKey = String(key || '').trim()
-  if (!targetUrl || !targetKey) return targetUrl
-
-  try {
-    const base = (typeof window !== 'undefined' && window.location)
-      ? window.location.href
-      : 'http://localhost'
-    const parsed = new URL(targetUrl, base)
-    parsed.searchParams.set(targetKey, String(value || ''))
-    return parsed.href
-  } catch {
-    const joinChar = targetUrl.includes('?') ? '&' : '?'
-    return `${targetUrl}${joinChar}${encodeURIComponent(targetKey)}=${encodeURIComponent(String(value || ''))}`
-  }
-}
-
 export function toHttpUrl(rawValue) {
   const value = String(rawValue || '').trim()
   if (!value) return null

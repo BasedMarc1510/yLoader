@@ -25,8 +25,8 @@ import {
 } from '../../utils/downloadStreamDiagnostics'
 import {
   buildSuggestedDownloadFilename,
-  resolveElectronDownloadDestination,
-} from '../../utils/electronDownloadDestination'
+  resolveDesktopDownloadDestination,
+} from '../../utils/desktopDownloadDestination'
 
 function parseSseStructuredPayload(value) {
   if (value == null) return null
@@ -260,14 +260,14 @@ export function useAutoDownload({
         ? String(autoSettings.fixedDownloadPath || '').trim()
         : ''
 
-      const electronDestination = await resolveElectronDownloadDestination({
+      const desktopDestination = await resolveDesktopDownloadDestination({
         apiBase: API_BASE,
         downloadType: isAudio ? 'audio' : 'video',
         suggestedFilename,
         preferredDirectory,
       })
 
-      if (electronDestination.enabled && electronDestination.canceled) {
+      if (desktopDestination.enabled && desktopDestination.canceled) {
         abortedByUser = true
         return
       }
@@ -299,11 +299,11 @@ export function useAutoDownload({
               source: 'video',
             }
           : undefined,
-        electronSavePath: electronDestination.enabled
-          ? (electronDestination.electronSavePath || undefined)
+        desktopSavePath: desktopDestination.enabled
+          ? (desktopDestination.desktopSavePath || undefined)
           : undefined,
-        electronTargetDirectory: electronDestination.enabled
-          ? (electronDestination.electronTargetDirectory || undefined)
+        desktopTargetDirectory: desktopDestination.enabled
+          ? (desktopDestination.desktopTargetDirectory || undefined)
           : undefined,
       }
 
@@ -376,7 +376,7 @@ export function useAutoDownload({
           try {
             const data = structuredPayload || JSON.parse(dataStr)
             const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-            const isElectronRuntime = Boolean(runtime?.isElectron)
+            const isDesktopRuntime = Boolean(runtime?.isDesktop)
             const savePath = String(data?.savePath || '').trim()
             const filename = String(data?.filename || '').trim()
               || (savePath ? String(savePath.split(/[\\/]/).pop() || '').trim() : '')
@@ -390,7 +390,7 @@ export function useAutoDownload({
               return
             }
 
-            if (!isElectronRuntime && relativeUrl) {
+            if (!isDesktopRuntime && relativeUrl) {
               const a = document.createElement('a')
               a.href = `${API_BASE}${relativeUrl}`
               a.download = filename
@@ -400,7 +400,7 @@ export function useAutoDownload({
             }
 
             clearInput()
-            if (isElectronRuntime && savePath && typeof runtime?.downloads?.revealFile === 'function') {
+            if (isDesktopRuntime && savePath && typeof runtime?.downloads?.revealFile === 'function') {
               showNotification(t('home.autoDownloadCompleted', { filename }), 'success', {
                 duration: 8000,
                 startTimerOnFocus: true,

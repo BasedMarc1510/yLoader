@@ -58,6 +58,10 @@ function normalizeDeepLinkEnvelope(envelope) {
 
 export default function App() {
   const { t } = useI18n()
+  const quitLabel = t('settings.trayQuit')
+  React.useEffect(() => {
+    window.yloaderRuntime?.desktopSettings?.setTrayLabels?.(quitLabel).catch(() => {})
+  }, [quitLabel])
 
   const {
     tabs,
@@ -145,7 +149,7 @@ export default function App() {
   React.useEffect(() => {
     const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
     const deepLinksApi = runtime?.deepLinks
-    if (!runtime?.isElectron || !deepLinksApi) return undefined
+    if (!runtime?.isDesktop || !deepLinksApi) return undefined
 
     let mounted = true
 

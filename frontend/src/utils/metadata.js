@@ -71,9 +71,11 @@ export async function fetchNoembed(rawUrl, fetchOptions = undefined) {
 }
 
 export function getApiBase() {
+  const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
+  if (runtime?.kind === 'tauri') return String(runtime.apiBase)
   if (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE
-  if (typeof window !== 'undefined' && window.yloaderRuntime && window.yloaderRuntime.apiBase) {
-    return String(window.yloaderRuntime.apiBase)
+  if (runtime?.apiBase) {
+    return String(runtime.apiBase)
   }
   if (import.meta && import.meta.env && import.meta.env.DEV) return ''
   if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {

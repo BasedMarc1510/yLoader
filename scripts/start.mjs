@@ -837,17 +837,9 @@ async function main() {
   sharedEnv.YLOADER_BACKEND_PORT = String(backendPort)
   sharedEnv.YLOADER_FRONTEND_PORT = String(frontendPort)
 
-  const runtimeTarget = String(sharedEnv.YLOADER_RUNTIME_TARGET || '').trim().toLowerCase()
-  if (runtimeTarget === 'electron') {
-    sharedEnv.YLOADER_RUNTIME_TARGET = 'electron'
-    sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '1'
-  } else {
-    sharedEnv.YLOADER_RUNTIME_TARGET = 'server'
-    // Local web dev runs on the same machine as the browser profile, so allow
-    // yt-dlp browser cookie import here too. Docker/runtime-packaged server
-    // builds still control this independently via their own environment.
-    sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '1'
-  }
+  sharedEnv.YLOADER_RUNTIME_TARGET = 'server'
+  // Local development can access browser profiles on the same machine.
+  sharedEnv.YLOADER_ALLOW_BROWSER_COOKIE_IMPORT = '1'
 
   if (!SKIP_TOOLS) {
     sharedEnv.YT_DLP_PATH = ytDlpPath

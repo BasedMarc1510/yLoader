@@ -10,8 +10,8 @@ import {
 } from '../../../utils/downloadStreamDiagnostics'
 import {
   buildSuggestedDownloadFilename,
-  resolveElectronDownloadDestination,
-} from '../../../utils/electronDownloadDestination'
+  resolveDesktopDownloadDestination,
+} from '../../../utils/desktopDownloadDestination'
 import {
   getPathDirectory,
   getPathFilename,
@@ -77,7 +77,7 @@ function buildAudioMetadataPayload({
   }
 }
 
-function resolveExpectedElectronSavePath(rawPath, extension, fallbackBaseName = 'download') {
+function resolveExpectedDesktopSavePath(rawPath, extension, fallbackBaseName = 'download') {
   const input = String(rawPath || '').trim()
   if (!input) return ''
 
@@ -391,10 +391,10 @@ export default function useStreamDownload({
         suggestedExtension,
       )
       const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-      const isElectronRuntime = Boolean(runtime?.isElectron)
+      const isDesktopRuntime = Boolean(runtime?.isDesktop)
       const normalizedForcedDownloadDirectory = String(forcedDownloadDirectory || '').trim()
       const hasForcedDownloadDirectory = Boolean(
-        isElectronRuntime
+        isDesktopRuntime
         && normalizedForcedDownloadDirectory
       )
       const resolvedDownloadTargetSettings = hasForcedDownloadDirectory
@@ -411,12 +411,12 @@ export default function useStreamDownload({
           : (resolvedDownloadTargetSettings?.directoryPath || runtime?.downloadsPath || ''))
       ).trim()
       const usesFixedPathMode = Boolean(
-        isElectronRuntime
+        isDesktopRuntime
         && resolvedDownloadTargetSettings
         && resolvedDownloadTargetSettings.alwaysAsk === false
       )
 
-      let manualElectronSavePath = ''
+      let manualDesktopSavePath = ''
 
       if (usesFixedPathMode) {
         const scopedRawValue = String(scopedFilename || '').trim()
@@ -476,7 +476,7 @@ export default function useStreamDownload({
           }
         }
 
-        manualElectronSavePath = resolvedPathValue
+        manualDesktopSavePath = resolvedPathValue
       }
 
       const payload = {
@@ -528,7 +528,7 @@ export default function useStreamDownload({
           : undefined,
       }
 
-      const electronDestination = await resolveElectronDownloadDestination({
+      const desktopDestination = await resolveDesktopDownloadDestination({
         apiBase,
         downloadType: type,
         suggestedFilename,
@@ -536,22 +536,22 @@ export default function useStreamDownload({
         targetSettings: resolvedDownloadTargetSettings,
       })
 
-      if (electronDestination.enabled) {
-        if (electronDestination.canceled) {
+      if (desktopDestination.enabled) {
+        if (desktopDestination.canceled) {
           return false
         }
 
-        if (usesFixedPathMode && manualElectronSavePath) {
-          payload.electronSavePath = manualElectronSavePath
-          payload.electronTargetDirectory = undefined
+        if (usesFixedPathMode && manualDesktopSavePath) {
+          payload.desktopSavePath = manualDesktopSavePath
+          payload.desktopTargetDirectory = undefined
         } else {
-          payload.electronSavePath = electronDestination.electronSavePath || undefined
-          payload.electronTargetDirectory = electronDestination.electronTargetDirectory || undefined
+          payload.desktopSavePath = desktopDestination.desktopSavePath || undefined
+          payload.desktopTargetDirectory = desktopDestination.desktopTargetDirectory || undefined
         }
 
-        const overwriteTargetPath = payload.electronSavePath
-          ? resolveExpectedElectronSavePath(
-            payload.electronSavePath,
+        const overwriteTargetPath = payload.desktopSavePath
+          ? resolveExpectedDesktopSavePath(
+            payload.desktopSavePath,
             suggestedExtension,
             normalizedVideoTitle,
           )
@@ -600,7 +600,7 @@ export default function useStreamDownload({
               return false
             }
 
-            payload.electronAllowOverwrite = true
+            payload.desktopAllowOverwrite = true
           }
         }
       }
@@ -666,7 +666,7 @@ export default function useStreamDownload({
             const filename = String(data?.filename || '').trim()
             const relativeUrl = String(data?.url || '').trim()
             const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-            const isElectronRuntime = Boolean(runtime?.isElectron)
+            const isDesktopRuntime = Boolean(runtime?.isDesktop)
 
             if (!filename) return
 
@@ -688,7 +688,7 @@ export default function useStreamDownload({
               payload: completionPayload,
             })
 
-            if (!isElectronRuntime && relativeUrl) {
+            if (!isDesktopRuntime && relativeUrl) {
               const a = document.createElement('a')
               a.href = `${apiBase}${relativeUrl}`
               a.download = filename

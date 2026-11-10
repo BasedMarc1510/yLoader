@@ -48,7 +48,7 @@ export default function DownloaderSettingsSection({
 }) {
   const disabled = downloadSettingsLoading
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const isElectronRuntime = Boolean(runtime?.isElectron)
+  const isDesktopRuntime = Boolean(runtime?.isDesktop)
   const canPickDirectory = Boolean(runtime?.downloads?.pickDirectory)
   const canValidateDirectory = Boolean(runtime?.downloads?.validateDirectory)
   const storageSettingsDisabled = disabled
@@ -81,7 +81,7 @@ export default function DownloaderSettingsSection({
   }, [])
 
   const handlePickDirectory = React.useCallback(async (pathKey) => {
-    if (!isElectronRuntime || storageSettingsDisabled || !canPickDirectory || pickingPathKey) return
+    if (!isDesktopRuntime || storageSettingsDisabled || !canPickDirectory || pickingPathKey) return
 
     setDirectoryPickerError('')
     setPickingPathKey(pathKey)
@@ -104,7 +104,7 @@ export default function DownloaderSettingsSection({
       setPickingPathKey('')
     }
   }, [
-    isElectronRuntime,
+    isDesktopRuntime,
     storageSettingsDisabled,
     canPickDirectory,
     pickingPathKey,
@@ -125,7 +125,7 @@ export default function DownloaderSettingsSection({
   )
 
   React.useEffect(() => {
-    if (!isElectronRuntime || !canValidateDirectory) {
+    if (!isDesktopRuntime || !canValidateDirectory) {
       setPathValidationByKey({})
       return undefined
     }
@@ -175,7 +175,7 @@ export default function DownloaderSettingsSection({
       clearTimeout(timer)
     }
   }, [
-    isElectronRuntime,
+    isDesktopRuntime,
     canValidateDirectory,
     activePathKeys,
     pathDrafts,
@@ -208,7 +208,7 @@ export default function DownloaderSettingsSection({
           }}
         />
 
-        {isElectronRuntime && (
+        {isDesktopRuntime && (
           <Button
             variant="outlined"
             size="small"
@@ -234,7 +234,7 @@ export default function DownloaderSettingsSection({
     t,
     handlePathDraftChange,
     commitPathDraft,
-    isElectronRuntime,
+    isDesktopRuntime,
     canPickDirectory,
     handlePickDirectory,
   ])
@@ -477,7 +477,7 @@ export default function DownloaderSettingsSection({
         </SettingRow>
       </SettingGroup>
 
-      {isElectronRuntime && (
+      {isDesktopRuntime && (
         <Box sx={{ mb: 3.5 }}>
           <Box sx={{ px: 2, pb: 1 }}>
             <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>

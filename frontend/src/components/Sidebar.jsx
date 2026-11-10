@@ -21,7 +21,7 @@ import { useTheme } from '@mui/material/styles'
 import Typography from '@mui/material/Typography'
 import SettingsModal from './SettingsModal'
 import { useI18n } from '../providers/I18nProvider'
-import useElectronAppUpdater from '../hooks/useElectronAppUpdater'
+import useDesktopAppUpdater from '../hooks/useDesktopAppUpdater'
 import { getApiBase } from '../utils/metadata'
 
 const drawerWidth = 240
@@ -60,19 +60,16 @@ export default function Sidebar({
   const [settingsFocusRequestId, setSettingsFocusRequestId] = React.useState('')
   const {
     state: appUpdateState,
-    isElectronUpdaterAvailable,
+    isDesktopUpdaterAvailable,
     checkForUpdates: checkForAppUpdates,
     downloadUpdate: downloadAppUpdate,
     quitAndInstall: installAppUpdate,
     setAutoUpdateEnabled: setAppAutoUpdateEnabled,
-  } = useElectronAppUpdater()
+  } = useDesktopAppUpdater()
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const isElectron = Boolean(
-    runtime
-    && runtime.isElectron
-  )
-  const isMacElectron = Boolean(runtime?.platform === 'darwin')
-  const showMacInlineExpand = collapsed && isMacElectron
+  const isMacDesktop = Boolean(runtime?.isDesktop && runtime.platform === 'darwin')
+  const showMacInlineExpand = collapsed && isMacDesktop
+  const dragRegion = runtime?.kind === 'tauri' ? '' : undefined
   const brandLeftPadding = logoLeftOffset + 8
   const brandIconSrc = `${import.meta.env.BASE_URL}yloader-icon.svg`
   const API_BASE = getApiBase()
@@ -159,7 +156,7 @@ export default function Sidebar({
   }, [API_BASE])
 
   React.useEffect(() => {
-    if (!isElectronUpdaterAvailable) return
+    if (!isDesktopUpdaterAvailable) return
 
     const phase = String(appUpdateState?.phase || 'idle').trim()
     const downloadedVersion = String(
@@ -184,7 +181,7 @@ export default function Sidebar({
     appUpdateState?.downloadedVersion,
     appUpdateState?.phase,
     dismissedDownloadedVersion,
-    isElectronUpdaterAvailable,
+    isDesktopUpdaterAvailable,
   ])
 
   const withCollapsedTooltip = (node, title) => (
@@ -215,10 +212,11 @@ export default function Sidebar({
 
   const SidebarTopBar = ({ bg }) => {
     if (collapsed) {
-      if (isMacElectron) {
+      if (isMacDesktop) {
         return (
           <Box
-            className={`yl-sidebar-topbar ${isElectron ? 'is-electron' : ''}`}
+            className="yl-sidebar-topbar"
+            data-tauri-drag-region={dragRegion}
             sx={{
               height: headerHeight,
               bgcolor: bg,
@@ -231,7 +229,8 @@ export default function Sidebar({
 
       return (
         <Box
-          className={`yl-sidebar-topbar ${isElectron ? 'is-electron' : ''}`}
+          className="yl-sidebar-topbar"
+          data-tauri-drag-region={dragRegion}
           sx={{
             height: headerHeight,
             bgcolor: bg,
@@ -260,21 +259,22 @@ export default function Sidebar({
 
     return (
       <Box
-        className={`yl-sidebar-topbar ${isElectron ? 'is-electron' : ''}`}
+        className="yl-sidebar-topbar"
+        data-tauri-drag-region={dragRegion}
         sx={{
           height: headerHeight,
           bgcolor: bg,
           display: 'flex',
-          alignItems: isMacElectron ? 'flex-end' : 'center',
+          alignItems: isMacDesktop ? 'flex-end' : 'center',
           px: 0,
           position: 'relative',
-          pt: isMacElectron ? `${MAC_TRAFFIC_LIGHTS_TOP_OFFSET}px` : 0,
-          pb: isMacElectron ? 0.5 : 0,
+          pt: isMacDesktop ? `${MAC_TRAFFIC_LIGHTS_TOP_OFFSET}px` : 0,
+          pb: isMacDesktop ? 0.5 : 0,
           borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
           borderRight: 'none',
         }}
       >
-        {isMacElectron && (
+        {isMacDesktop && (
           <Box
             aria-hidden="true"
             sx={{
@@ -320,7 +320,7 @@ export default function Sidebar({
           </Typography>
         </Box>
 
-        <Box className="yl-sidebar-topbar-drag-fill" aria-hidden="true" />
+        <Box className="yl-sidebar-topbar-drag-fill" data-tauri-drag-region={dragRegion} aria-hidden="true" />
 
         <Tooltip title={i18nT('sidebar.collapse')}>
           <IconButton
@@ -596,7 +596,7 @@ export default function Sidebar({
         requestedFocusRequestId={settingsFocusRequestId}
         onToolUpdateSummaryChange={setToolUpdateSummary}
         appUpdateState={appUpdateState}
-        isElectronUpdaterAvailable={isElectronUpdaterAvailable}
+        isDesktopUpdaterAvailable={isDesktopUpdaterAvailable}
         checkForAppUpdates={checkForAppUpdates}
         downloadAppUpdate={downloadAppUpdate}
         installAppUpdate={installAppUpdate}

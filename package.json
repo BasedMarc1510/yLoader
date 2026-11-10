@@ -1,7 +1,6 @@
 {
   "name": "yloader",
-  "version": "2026.1.1",
-  "main": "electron/main.js",
+  "version": "2026.2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/BasedMarc1510/yLoader.git"
@@ -16,103 +15,21 @@
   },
   "scripts": {
     "start": "node scripts/start.mjs",
-    "start:electron": "node scripts/start-electron.mjs",
-    "start:electron:clear": "node scripts/start-electron.mjs --clear",
     "icons:generate": "node scripts/generate-icons.mjs",
-    "build:electron": "node scripts/build-electron.mjs",
     "release:publish": "node scripts/publish-release.mjs",
-    "dist:win": "npm run build:electron -- --win",
-    "dist:mac": "npm run build:electron -- --mac",
-    "dist:linux": "npm run build:electron -- --linux",
+    "dist:win": "npm run build:desktop -- --bundles nsis",
+    "dist:mac": "npm run build:desktop -- --target universal-apple-darwin --bundles dmg",
+    "dist:linux": "npm run build:desktop -- --bundles appimage",
     "docker:start": "node scripts/docker-start.mjs",
     "docker:start:plain": "docker compose up -d --build --remove-orphans",
     "docker:start:fresh": "docker compose --progress plain build --no-cache --pull app && docker compose up -d --remove-orphans",
     "docker:start:guided": "node scripts/docker-start.mjs",
     "docker:stop": "docker compose down",
     "docker:logs": "docker compose logs -f --tail=100",
-    "docker:push": "docker compose push app"
+    "docker:push": "docker compose push app",
+    "build:desktop": "tauri build"
   },
   "devDependencies": {
-    "@electron/notarize": "^2.2.1",
-    "baseline-browser-mapping": "^2.10.20",
-    "electron": "^35.2.1",
-    "electron-builder": "^24.13.3"
-  },
-  "build": {
-    "appId": "com.yloader.app",
-    "productName": "yLoader",
-    "executableName": "yLoader",
-    "icon": "build/icons/icon.png",
-    "directories": {
-      "output": "release"
-    },
-    "asar": true,
-    "compression": "maximum",
-    "afterSign": "scripts/notarize.cjs",
-    "publish": [
-      {
-        "provider": "github"
-      }
-    ],
-    "protocols": [
-      {
-        "name": "yLoader",
-        "schemes": [
-          "yloader"
-        ]
-      }
-    ],
-    "files": [
-      "electron/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "frontend/dist",
-        "to": "frontend/dist"
-      },
-      {
-        "from": ".electron-build/backend",
-        "to": "backend"
-      },
-      {
-        "from": ".electron-build/shared",
-        "to": "shared"
-      }
-    ],
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "build/icons/icon.ico",
-      "artifactName": "yLoaderSetup.${ext}"
-    },
-    "mac": {
-      "target": [
-        "dmg"
-      ],
-      "icon": "build/icons/icon.icns",
-      "category": "public.app-category.utilities",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "artifactName": "yLoaderSetup.${ext}"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "icon": "build/icons/icon.png",
-      "category": "Utility",
-      "artifactName": "yLoaderSetup.${ext}"
-    },
-    "nsis": {
-      "shortcutName": "yLoader",
-      "uninstallDisplayName": "yLoader",
-      "installerIcon": "build/icons/installer-icon.ico",
-      "uninstallerIcon": "build/icons/installer-icon.ico"
-    }
-  },
-  "dependencies": {
-    "electron-updater": "^6.8.3"
+    "@tauri-apps/cli": "^2.12.4"
   }
 }

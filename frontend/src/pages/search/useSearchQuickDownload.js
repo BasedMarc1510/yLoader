@@ -3,8 +3,8 @@ import { Film, Image, Music2 } from 'lucide-react'
 import { GENERIC_SERVICE_KEY, getApiBase, normalizeServiceKey } from '../../utils/metadata'
 import { formatYtDlpErrorMessage } from '../../utils/ytDlpErrorPresentation'
 import { readSseEventsFromResponse } from '../../utils/sse'
+import { resolveDesktopDownloadDestination } from '../../utils/desktopDownloadDestination'
 import {
-  appendUrlQueryParam,
   DIRECT_DOWNLOAD_FORMAT_OPTIONS,
   getSearchEntryIdentity,
   resolvePreviewEmbedPayload,
@@ -21,7 +21,6 @@ export default function useSearchQuickDownload({
   t,
 }) {
   const quickDownloadResetTimerRef = React.useRef(null)
-  const pendingElectronDownloadRef = React.useRef(null)
   const [embedPreview, setEmbedPreview] = React.useState(null)
   const [quickDownloadState, setQuickDownloadState] = React.useState(null)
 
@@ -55,10 +54,6 @@ export default function useSearchQuickDownload({
       clearTimeout(quickDownloadResetTimerRef.current)
       quickDownloadResetTimerRef.current = null
     }
-    if (pendingElectronDownloadRef.current?.fallbackTimeout) {
-      clearTimeout(pendingElectronDownloadRef.current.fallbackTimeout)
-    }
-    pendingElectronDownloadRef.current = null
 
     setQuickDownloadState({
       active: true,
@@ -70,6 +65,7 @@ export default function useSearchQuickDownload({
     })
 
     const apiBase = getApiBase()
+    const runtime = window.yloaderRuntime
     const streamEndpoint = format === 'thumbnail'
       ? '/api/download/thumbnail/stream'
       : '/api/download/stream'
@@ -100,6 +96,21 @@ export default function useSearchQuickDownload({
     let completedPayload = null
 
     try {
+      if (runtime?.kind === 'tauri') {
+        const extension = format === 'thumbnail' ? 'jpg' : format
+        const destination = await resolveDesktopDownloadDestination({
+          apiBase,
+          downloadType: format === 'thumbnail' ? 'thumbnail' : payload.type,
+          suggestedFilename: `${title}.${extension}`,
+        })
+        if (destination.canceled) {
+          setQuickDownloadState(null)
+          return
+        }
+        payload.desktopSavePath = destination.desktopSavePath
+        payload.desktopTargetDirectory = destination.desktopTargetDirectory
+        payload.desktopAllowOverwrite = Boolean(destination.desktopSavePath)
+      }
       const response = await fetch(`${apiBase}${streamEndpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -192,6 +203,14 @@ export default function useSearchQuickDownload({
       if (streamError) {
         throw new Error(streamError)
       }
+      if (runtime?.kind === 'tauri' && !streamEndedAsFailed && completedPayload?.savePath) {
+        setQuickDownloadState(null)
+        showNotification(t('search.quickDownloadCompleted', { filename: completedPayload.filename }), 'success', {
+          actionLabel: t('search.openDownloadedFile'),
+          onAction: () => runtime.downloads.revealFile(completedPayload.savePath),
+        })
+        return
+      }
       if (streamEndedAsFailed || (!completedPayload?.url && !completedPayload?.directUrl)) {
         throw new Error(t('search.errorGeneric'))
       }
@@ -203,15 +222,6 @@ export default function useSearchQuickDownload({
         throw new Error(t('search.errorGeneric'))
       }
 
-      const runtime = (typeof window !== 'undefined' && window.yloaderRuntime) ? window.yloaderRuntime : null
-      const isElectronRuntime = Boolean(runtime?.isElectron)
-      const quickToken = isElectronRuntime
-        ? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-        : ''
-      const downloadUrl = quickToken
-        ? appendUrlQueryParam(resolvedDownloadUrl, 'quickToken', quickToken)
-        : resolvedDownloadUrl
-
       setQuickDownloadState((prev) => {
         if (!prev || prev.entryId !== entryId) return prev
         return {
@@ -221,37 +231,16 @@ export default function useSearchQuickDownload({
         }
       })
 
-      if (isElectronRuntime) {
-        const fallbackTimeout = setTimeout(() => {
-          const pending = pendingElectronDownloadRef.current
-          if (!pending || pending.sourceUrl !== downloadUrl) return
-          pendingElectronDownloadRef.current = null
-          setQuickDownloadState(null)
-          showNotification(t('search.quickDownloadCompleted', { filename }), 'success')
-        }, 12000)
-
-        pendingElectronDownloadRef.current = {
-          sourceUrl: downloadUrl,
-          filename,
-          fallbackTimeout,
-        }
-      } else {
-        quickDownloadResetTimerRef.current = setTimeout(() => {
-          setQuickDownloadState(null)
-          showNotification(t('search.quickDownloadCompleted', { filename }), 'success')
-        }, 500)
-      }
-
-      triggerBrowserDownload(downloadUrl, filename)
+      quickDownloadResetTimerRef.current = setTimeout(() => {
+        setQuickDownloadState(null)
+        showNotification(t('search.quickDownloadCompleted', { filename }), 'success')
+      }, 500)
+      triggerBrowserDownload(resolvedDownloadUrl, filename)
     } catch (error) {
       const message = String(error?.message || t('search.errorGeneric')).trim() || t('search.errorGeneric')
       showNotification(message, 'error')
       setQuickDownloadState(null)
 
-      if (pendingElectronDownloadRef.current?.fallbackTimeout) {
-        clearTimeout(pendingElectronDownloadRef.current.fallbackTimeout)
-      }
-      pendingElectronDownloadRef.current = null
     }
   }, [actionEntry, closeDownloadDropdown, isQuickDownloadActive, lastService, showNotification, t])
 
@@ -265,63 +254,11 @@ export default function useSearchQuickDownload({
     setEmbedPreview(previewPayload)
   }, [getServiceLabel, lastService])
 
-  React.useEffect(() => {
-    const runtime = (typeof window !== 'undefined' && window.yloaderRuntime) ? window.yloaderRuntime : null
-    const subscribeDownloadCompleted = runtime?.downloads?.onDownloadCompleted
-    if (typeof subscribeDownloadCompleted !== 'function') return undefined
-
-    return subscribeDownloadCompleted((payload) => {
-      const pending = pendingElectronDownloadRef.current
-      if (!pending) return
-
-      const payloadSourceUrl = String(payload?.sourceUrl || '').trim()
-      if (pending.sourceUrl && payloadSourceUrl && pending.sourceUrl !== payloadSourceUrl) {
-        const payloadFilename = String(payload?.filename || '').trim().toLowerCase()
-        const pendingFilename = String(pending.filename || '').trim().toLowerCase()
-        if (!payloadFilename || !pendingFilename || payloadFilename !== pendingFilename) return
-      }
-
-      if (pending.fallbackTimeout) {
-        clearTimeout(pending.fallbackTimeout)
-      }
-      pendingElectronDownloadRef.current = null
-
-      const state = String(payload?.state || '').trim().toLowerCase()
-      if (state === 'cancelled') {
-        setQuickDownloadState(null)
-        showNotification(t('search.quickDownloadCancelled'), 'warning')
-        return
-      }
-      if (state !== 'completed') return
-
-      const filename = String(payload?.filename || pending.filename || '').trim() || pending.filename || ''
-      const savePath = String(payload?.savePath || '').trim()
-      const revealFile = runtime?.downloads?.revealFile
-      setQuickDownloadState(null)
-
-      if (savePath && typeof revealFile === 'function') {
-        showNotification(t('search.quickDownloadCompleted', { filename }), 'success', {
-          actionLabel: t('search.openDownloadedFile'),
-          onAction: async () => {
-            await revealFile(savePath)
-          },
-        })
-        return
-      }
-
-      showNotification(t('search.quickDownloadCompleted', { filename }), 'success')
-    })
-  }, [showNotification, t])
-
   React.useEffect(() => () => {
     if (quickDownloadResetTimerRef.current) {
       clearTimeout(quickDownloadResetTimerRef.current)
       quickDownloadResetTimerRef.current = null
     }
-    if (pendingElectronDownloadRef.current?.fallbackTimeout) {
-      clearTimeout(pendingElectronDownloadRef.current.fallbackTimeout)
-    }
-    pendingElectronDownloadRef.current = null
   }, [])
 
   const quickDownloadOptions = React.useMemo(() => ([

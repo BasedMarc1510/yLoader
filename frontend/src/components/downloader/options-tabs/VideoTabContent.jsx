@@ -35,7 +35,7 @@ export default function VideoTabContent({
   videoFormats,
   maxVideoHeight,
   loadingFormats,
-  isElectronRuntime = false,
+  isDesktopRuntime = false,
   downloadTargetSettings = null,
   defaultVideoContainer,
   videoTitle = '',
@@ -62,7 +62,7 @@ export default function VideoTabContent({
     : 'rgba(255,255,255,0.22)'
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const pathModeEnabled = Boolean(
-    isElectronRuntime
+    isDesktopRuntime
     && downloadTargetSettings
     && downloadTargetSettings.alwaysAsk === false
   )

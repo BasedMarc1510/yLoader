@@ -30,7 +30,7 @@ export default function AutoDownloadSettingsSection({
   updateAutoDownloadSettings,
   selectSx,
   t,
-  isElectronRuntime = false,
+  isDesktopRuntime = false,
 }) {
   const controlsDisabled = autoDownloadLoading
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
@@ -54,7 +54,7 @@ export default function AutoDownloadSettingsSection({
   }, [autoDownloadSettings, fixedPathDraft, updateAutoDownloadSettings])
 
   const handlePickDirectory = React.useCallback(async () => {
-    if (!isElectronRuntime || controlsDisabled || !canPickDirectory || pickingPath) return
+    if (!isDesktopRuntime || controlsDisabled || !canPickDirectory || pickingPath) return
 
     setDirectoryPickerError('')
     setPickingPath(true)
@@ -74,7 +74,7 @@ export default function AutoDownloadSettingsSection({
       setPickingPath(false)
     }
   }, [
-    isElectronRuntime,
+    isDesktopRuntime,
     controlsDisabled,
     canPickDirectory,
     pickingPath,
@@ -86,7 +86,7 @@ export default function AutoDownloadSettingsSection({
   ])
 
   React.useEffect(() => {
-    if (!isElectronRuntime || !fixedPathEnabled || !canValidateDirectory) {
+    if (!isDesktopRuntime || !fixedPathEnabled || !canValidateDirectory) {
       setPathValidation(null)
       return undefined
     }
@@ -127,7 +127,7 @@ export default function AutoDownloadSettingsSection({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [isElectronRuntime, fixedPathEnabled, canValidateDirectory, fixedPathDraft, runtime])
+  }, [isDesktopRuntime, fixedPathEnabled, canValidateDirectory, fixedPathDraft, runtime])
 
   const pathValidationMessage = resolveValidationMessage(t, pathValidation?.state, pathValidation?.path)
 
@@ -195,7 +195,7 @@ export default function AutoDownloadSettingsSection({
         </SettingRow>
       </SettingGroup>
 
-      {isElectronRuntime && (
+      {isDesktopRuntime && (
         <SettingGroup title={t('settings.autoDownloadStorageTitle')}>
           <SettingRow
             label={t('settings.autoDownloadUseFixedPath')}
@@ -258,7 +258,7 @@ export default function AutoDownloadSettingsSection({
         </SettingGroup>
       )}
 
-      {isElectronRuntime && fixedPathEnabled && pathValidationMessage && (
+      {isDesktopRuntime && fixedPathEnabled && pathValidationMessage && (
         <Box
           sx={(theme) => ({
             mt: 1.5,

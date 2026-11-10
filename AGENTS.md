@@ -5,7 +5,7 @@
 yLoader is a local-first yt-dlp frontend wrapper that runs in three modes:
 - Web app (Vite frontend + Node/Express backend)
 - Docker deployment (frontend + backend containers)
-- Electron desktop wrapper (same frontend/backend behavior, desktop shell)
+- Tauri desktop app (shared frontend and native Rust backend)
 
 All code changes must preserve feature parity across these runtime modes unless a change is explicitly mode-specific and documented.
 
@@ -57,7 +57,7 @@ All code changes must preserve feature parity across these runtime modes unless 
 ## Runtime and Packaging Constraints
 
 - Assume local-first behavior by default.
-- Do not introduce changes that only work in browser mode while breaking Docker/Electron.
+- Do not introduce changes that only work in browser mode while breaking Docker or the desktop app.
 - When changing environment variables, runtime paths, or startup behavior, update README and related scripts/docs in the same change.
 
 ## Dependency Policy

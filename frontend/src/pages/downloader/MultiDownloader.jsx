@@ -61,7 +61,7 @@ export default function MultiDownloader({
   const services = React.useMemo(() => buildServices(i18nT, mode), [i18nT, mode])
 
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const isElectronRuntime = Boolean(runtime?.isElectron)
+  const isDesktopRuntime = Boolean(runtime?.isDesktop)
   const runtimeDownloadsPath = String(runtime?.downloadsPath || '').trim()
 
   const [globalDownloadType, setGlobalDownloadType] = React.useState('audio')
@@ -448,7 +448,7 @@ export default function MultiDownloader({
   }, [i18nT, setEntries, startableEntries])
 
   const handlePickDirectory = React.useCallback(async () => {
-    if (!isElectronRuntime || typeof runtime?.downloads?.pickDirectory !== 'function') return
+    if (!isDesktopRuntime || typeof runtime?.downloads?.pickDirectory !== 'function') return
 
     try {
       const result = await runtime.downloads.pickDirectory(downloadDirectory || runtimeDownloadsPath)
@@ -460,7 +460,7 @@ export default function MultiDownloader({
     } catch {
       // Keep current path unchanged when the picker fails.
     }
-  }, [downloadDirectory, isElectronRuntime, runtime, runtimeDownloadsPath])
+  }, [downloadDirectory, isDesktopRuntime, runtime, runtimeDownloadsPath])
 
   const handleOpenCompleted = React.useCallback((entry) => {
     const payload = entry?.download?.completedFile
@@ -470,7 +470,7 @@ export default function MultiDownloader({
     const downloadUrl = String(payload?.downloadUrl || '').trim()
 
     if (
-      isElectronRuntime
+      isDesktopRuntime
       && savePath
       && typeof runtime?.downloads?.revealFile === 'function'
     ) {
@@ -486,7 +486,7 @@ export default function MultiDownloader({
       link.click()
       document.body.removeChild(link)
     }
-  }, [isElectronRuntime, runtime])
+  }, [isDesktopRuntime, runtime])
 
   const openCookieSettings = React.useCallback(() => {
     openSettingsModal('yt-dlp', 'cookies')
@@ -548,7 +548,7 @@ export default function MultiDownloader({
           globalDownloadType={globalDownloadType}
           onGlobalTypeChange={handleGlobalTypeChange}
           unsupportedCount={unsupportedCountForGlobalType}
-          isElectronRuntime={isElectronRuntime}
+          isDesktopRuntime={isDesktopRuntime}
           downloadDirectory={downloadDirectory}
           onDownloadDirectoryChange={(val) => {
             directoryCustomizedRef.current = true
@@ -563,7 +563,7 @@ export default function MultiDownloader({
           services={services}
           entries={entries}
           downloadSettingsOverride={downloadSettings}
-          forcedDownloadDirectory={isElectronRuntime ? downloadDirectory : ''}
+          forcedDownloadDirectory={isDesktopRuntime ? downloadDirectory : ''}
           onToggleExpanded={handleToggleExpanded}
           onRemoveEntry={handleRemoveEntry}
           onEntryTypeChange={handleEntryTypeChange}

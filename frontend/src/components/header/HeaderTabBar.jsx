@@ -40,10 +40,10 @@ export default function HeaderTabBar({
   const TAB_SIZE_MINI = 48
 
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const isElectron = Boolean(runtime?.isElectron && runtime?.windowControls)
-  const isMacElectron = Boolean(runtime?.platform === 'darwin')
-  const showCustomWindowControls = isElectron && !isMacElectron
-  const [isWindowMaximized, setIsWindowMaximized] = React.useState(false)
+  const isDesktop = Boolean(runtime?.isDesktop)
+  const isMacDesktop = isDesktop && runtime.platform === 'darwin'
+  const windowControls = isDesktop && !isMacDesktop ? runtime.windowControls : null
+  const dragRegion = isDesktop ? '' : undefined
   const scrollContainerRef = React.useRef(null)
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
@@ -55,9 +55,9 @@ export default function HeaderTabBar({
   const tabOrderSignature = React.useMemo(() => tabs.map((tab) => tab.id).join('|'), [tabs])
   const tabbarClassName = [
     'yl-tabbar',
-    isElectron ? 'is-electron' : '',
-    isMacElectron ? 'is-mac-electron' : '',
-    showCustomWindowControls ? 'has-electron-controls' : '',
+    isDesktop ? 'is-desktop' : '',
+    isMacDesktop ? 'is-mac-desktop' : '',
+    windowControls ? 'has-window-controls' : '',
   ].filter(Boolean).join(' ')
 
   const computeTabWidth = React.useCallback(() => {
@@ -118,30 +118,6 @@ export default function HeaderTabBar({
     window.addEventListener('blur', handleBlur)
     return () => window.removeEventListener('blur', handleBlur)
   }, [cancelDrag])
-
-  React.useEffect(() => {
-    if (!showCustomWindowControls) return undefined
-    let isMounted = true
-    const controls = window.yloaderRuntime?.windowControls
-    if (!controls) return undefined
-    Promise.resolve(controls.getState?.())
-      .then((state) => {
-        if (!isMounted) return
-        setIsWindowMaximized(Boolean(state?.isMaximized))
-      })
-      .catch(() => {
-        // ignore transient state read errors
-      })
-    const unsubscribe = controls.onStateChange?.((state) => {
-      if (!isMounted) return
-      setIsWindowMaximized(Boolean(state?.isMaximized))
-    })
-
-    return () => {
-      isMounted = false
-      if (typeof unsubscribe === 'function') unsubscribe()
-    }
-  }, [showCustomWindowControls])
 
   const checkScroll = React.useCallback(() => {
     const element = scrollContainerRef.current
@@ -320,21 +296,6 @@ export default function HeaderTabBar({
     }
   }, [onTabClose, onTabSelect, selectTabByIndex, tabs])
 
-  const handleWindowMinimize = React.useCallback(() => {
-    if (!isElectron) return
-    window.yloaderRuntime?.windowControls?.minimize?.()
-  }, [isElectron])
-
-  const handleWindowToggleMaximize = React.useCallback(() => {
-    if (!isElectron) return
-    window.yloaderRuntime?.windowControls?.toggleMaximize?.()
-  }, [isElectron])
-
-  const handleWindowClose = React.useCallback(() => {
-    if (!isElectron) return
-    window.yloaderRuntime?.windowControls?.close?.()
-  }, [isElectron])
-
   const tabbarStyleVars = {
     '--yl-surface': sidebarBg,
     '--yl-card': mainBg,
@@ -350,8 +311,9 @@ export default function HeaderTabBar({
       className={tabbarClassName}
       style={tabbarStyleVars}
       sx={{ flex: 1, minWidth: 0 }}
+      data-tauri-drag-region={dragRegion}
     >
-      {isElectron && <Box className="yl-tabbar-drag-strip" aria-hidden="true" />}
+      {isDesktop && <Box className="yl-tabbar-drag-strip" data-tauri-drag-region={dragRegion} aria-hidden="true" />}
       <Box className="yl-tabbar-bottom-line" />
 
       <Box className="yl-tabbar-inner">
@@ -463,7 +425,7 @@ export default function HeaderTabBar({
                   <IconButton
                     size="small"
                     className="yl-tab-close"
-                    disableRipple={isElectron}
+                    disableRipple={isDesktop}
                     aria-label={closeTooltipLabel}
                     title={closeTooltipLabel}
                     disabled={isClosing}
@@ -480,7 +442,7 @@ export default function HeaderTabBar({
                     <IconButton
                       size="small"
                       className="yl-add-btn yl-add-btn-drag-proxy"
-                      disableRipple={isElectron}
+                      disableRipple={isDesktop}
                       aria-label={t('tabs.newTabAria')}
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
@@ -498,37 +460,29 @@ export default function HeaderTabBar({
             <IconButton
               size="small"
               className={`yl-add-btn ${showDragAddProxy ? 'is-hidden-while-drag' : ''}`}
-              disableRipple={isElectron}
+              disableRipple={isDesktop}
               onClick={onAddTab}
               aria-label={t('tabs.newTabAria')}
             >
               <Plus size={16} />
             </IconButton>
 
-            {isElectron && <Box className="yl-tab-free-drag" aria-hidden="true" />}
+            {isDesktop && <Box className="yl-tab-free-drag" data-tauri-drag-region={dragRegion} aria-hidden="true" />}
           </Box>
         </Box>
 
-        {!showCustomWindowControls && (
+        {!windowControls && (
           <Box className="yl-tabbar-right-actions">
             <NotificationBellButton
               className="yl-notification-btn"
-              disableRipple={isElectron}
+              disableRipple={isDesktop}
               iconSize={16}
             />
           </Box>
         )}
       </Box>
 
-      <WindowControls
-        show={showCustomWindowControls}
-        isWindowMaximized={isWindowMaximized}
-        onMinimize={handleWindowMinimize}
-        onToggleMaximize={handleWindowToggleMaximize}
-        onClose={handleWindowClose}
-        styleVars={tabbarStyleVars}
-        t={t}
-      />
+      {windowControls && <WindowControls controls={windowControls} styleVars={tabbarStyleVars} t={t} />}
 
       <TabContextMenu
         anchorPosition={contextMenu ? { top: contextMenu.top, left: contextMenu.left } : null}

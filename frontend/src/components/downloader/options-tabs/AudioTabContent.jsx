@@ -65,7 +65,7 @@ export default function AudioTabContent({
   audioFormats,
   maxAudioBitrateKbps,
   loadingFormats,
-  isElectronRuntime = false,
+  isDesktopRuntime = false,
   downloadTargetSettings = null,
   defaultAudioContainer,
   defaultCoverEmbedEnabled,
@@ -92,7 +92,7 @@ export default function AudioTabContent({
     : 'rgba(255,255,255,0.22)'
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const pathModeEnabled = Boolean(
-    isElectronRuntime
+    isDesktopRuntime
     && downloadTargetSettings
     && downloadTargetSettings.alwaysAsk === false
   )

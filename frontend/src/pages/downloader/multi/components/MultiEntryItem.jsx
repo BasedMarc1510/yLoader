@@ -51,7 +51,7 @@ export default function MultiEntryItem({
   const isDark = theme.palette.mode === 'dark'
   
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const isElectronRuntime = Boolean(runtime?.isElectron)
+  const isDesktopRuntime = Boolean(runtime?.isDesktop)
   
   const status = resolveEntryStatus(i18nT, entry)
   const isReady = entry.metaState === ENTRY_META_STATE.ready
@@ -266,7 +266,7 @@ export default function MultiEntryItem({
                 aria-label={i18nT('multiDownloader.openCompleted')}
                 onClick={() => onOpenCompleted?.(entry)}
               >
-                {isElectronRuntime ? <FolderOpen size={16} /> : <Download size={16} />}
+                {isDesktopRuntime ? <FolderOpen size={16} /> : <Download size={16} />}
               </IconButton>
             )}
             

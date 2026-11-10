@@ -6,9 +6,9 @@ All-in-one, local-first yt-dlp frontend for people who want one tool that can ru
 
 - Web app (frontend + backend)
 - Single Docker container
-- Electron desktop app
+- Tauri desktop app
 
-yLoader is built for fast daily use: clean UI, advanced media controls, and feature parity across web, Docker, and Electron runtimes.
+yLoader is built for fast daily use: clean UI, advanced media controls, and feature parity across web, Docker, and desktop runtimes.
 
 <img width="1314" height="817" alt="image1_dark" src="https://github.com/user-attachments/assets/b7577c6c-a76b-4372-ae10-8cb255fa6c5c" />
 
@@ -18,7 +18,7 @@ yLoader is built for fast daily use: clean UI, advanced media controls, and feat
 
 ## Maximum video compatibility
 
-Enable **Maximum compatibility** in the video downloader to re-encode the finished download with FFmpeg, after any cuts. It is off by default and applies equally to Web, Docker, and Electron.
+Enable **Maximum compatibility** in the video downloader to re-encode the finished download with FFmpeg, after any cuts. It is off by default and applies equally to Web, Docker, and desktop.
 
 | Container | Video | Audio |
 | --- | --- | --- |
@@ -41,11 +41,11 @@ Thumbnails are extracted with independent seeks; waveform peaks are calculated f
 
 The editor uses the existing backend ffmpeg and ffprobe binaries; it requires no extra npm packages. Browser playback depends on the source codec; files that cannot be previewed can still be edited. The preview reflects cuts, mute, and volume up to 100%; amplification and fades are applied on export.
 
-Web and Docker files, including edited copies, follow the existing 24-hour download cache retention. Electron downloads saved directly to a chosen folder remain in that folder. Their paths are recorded for new downloads; older direct-folder downloads must be downloaded again to become editable. The Docker build and Electron staging include the editor backend modules.
+Web and Docker files, including edited copies, follow the existing 24-hour download cache retention. Desktop downloads saved directly to a chosen folder remain in that folder. Their paths are recorded for new downloads; older direct-folder downloads must be downloaded again to become editable.
 
 Run the processing/API regression tests with `node --test backend/media-editor/editor.test.js frontend/src/components/media-editor/timelineUtils.test.js` (ffmpeg and ffprobe must be on PATH).
 
-## Electron Desktop App
+## Desktop App
 
 Install yLoader directly from the latest release for your operating system:
 
@@ -76,7 +76,7 @@ docker pull yloader/yloader
 - Format, bitrate, and resolution controls
 - SQLite-backed download history
 - Built-in yt-dlp and ffmpeg update handling
-- Same core behavior across Web, Docker, and Electron
+- Same core behavior across Web, Docker, and desktop
 
 ## Runtime Modes
 
@@ -84,21 +84,21 @@ docker pull yloader/yloader
 | --- | --- | --- |
 | Web (local dev) | React + Node backend | http://localhost:5173 (UI), http://localhost:4000 (API) |
 | Docker | Single container serving frontend + backend | http://localhost:8080 |
-| Electron | Desktop shell over the same backend/frontend behavior | Native app window |
+| Desktop | Tauri with the shared React frontend and a native Rust API | Native app window |
+
+## Upgrading to 2026.2.0
+
+Quit the previous desktop app before installing the update. On macOS, open the Universal DMG from the release page and replace yLoader in Applications. On Windows, the current-user installer replaces the previous installation. On Linux, the update replaces the AppImage if it is writable. You can also replace it manually and mark the new AppImage executable.
+
+On first launch, yLoader imports the previous SQLite database, including download history and cookie settings, as well as desktop preferences and supported interface preferences such as language and theme. Existing downloads and cookie files stay at their original paths. When both the released Electron app and the Tauri preview have a database, the released app's data takes precedence.
+
+The tab bar also serves as the title bar. macOS uses native window controls on the left. Windows and Linux use yLoader's controls on the right. The desktop app supports closing to the tray, autostart, and `yloader://` deep links.
 
 ## Quick Start
 
-### Option 1: Electron Desktop App
+### Option 1: Desktop App
 
-Download and run the installer for your operating system from the links above.
-On first launch, yLoader downloads the required runtime tools (yt-dlp and ffmpeg) and blocks downloads until setup is complete.
-
-Electron-only behavior (Settings > General):
-
-- Optional close-to-tray mode (disabled by default)
-- Tray icon is always available while the app is running
-- Autostart at system boot with selectable startup mode (normal window or tray-only)
-- Deep-link protocol registration via `yloader://` for app handoff integrations
+Download the installer for your operating system from the links above. yLoader uses the existing local tool cache or tools on PATH when available. It downloads missing yt-dlp, FFmpeg, FFprobe, and QuickJS binaries on demand and verifies their release hashes.
 
 ### Option 2: Docker Hub
 
@@ -136,25 +136,7 @@ npm run start
 ```
 
 If the local dev backend on `:4000` or frontend on `:5173` is already running, `npm run start` reuses the existing yLoader service and only starts what is missing.
-Local web dev started via `npm run start` also enables yt-dlp browser-cookie import on the same machine, matching local Electron behavior. Container/runtime deployments still depend on their own environment setup.
-
-### Option 5: Local Electron App
-
-```bash
-git clone https://github.com/BasedMarc1510/yLoader.git
-cd yLoader
-npm install
-npm run start:electron
-```
-
-The local Electron runtime also performs a first-run yt-dlp/ffmpeg setup inside the Electron user-data directory.
-Deep links are also registered in local Electron dev mode (`npm run start:electron`) so browser-extension style handoff flows can be tested without a packaged build.
-
-For a fresh Electron reset (clears local settings/state plus local yt-dlp/ffmpeg cache before launch):
-
-```bash
-npm run start:electron:clear
-```
+Local web dev started via `npm run start` also enables yt-dlp browser-cookie import on the same machine. Container/runtime deployments still depend on their own environment setup.
 
 ## Docker Image Notes
 
@@ -180,13 +162,25 @@ Common variables:
 
 ```bash
 npm run start
-npm run start:electron
-npm run start:electron:clear
-npm run build:electron
 npm run docker:start
 npm run docker:logs
 npm run docker:stop
 ```
+
+## Building and releasing the desktop app
+
+Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS, then run `npm ci` and `npm ci --prefix frontend` from the repository root. Build a Windows installer with `npm run dist:win` on Windows, or an AppImage with `npm run dist:linux` on Linux. On macOS, build a Universal DMG for Apple Silicon and Intel:
+
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+npm run dist:mac
+```
+
+For local testing, set `YLOADER_TAURI_TOOLS_DIR` to an absolute directory containing `yt-dlp-bin`, `ffmpeg-bin/<platform>-<arch>/bin`, and optionally `quickjs-bin`.
+
+The **Tauri Desktop Release** workflow builds a Universal macOS DMG, a Windows x64 NSIS installer and a Linux x64 AppImage. Run it manually to get workflow artifacts. To publish, push a `v<version>` tag or select an existing version tag with **publish** enabled. The workflow checks that the tag matches the source version and publishes all installers and update files together. Local builds and manual artifact runs without publishing have app updates disabled.
+
+Set the repository variable `YLOADER_TAURI_UPDATE_PUBKEY` to the public key contents from `tauri signer generate`. Set the matching `TAURI_SIGNING_PRIVATE_KEY` secret and, if the key is password-protected, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. For macOS signing and notarization, configure `APPLE_CERTIFICATE` (base64-encoded Developer ID Application certificate and private key), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (or `APPLE_APP_SPECIFIC_PASSWORD`), and `APPLE_TEAM_ID`.
 
 ## Legal Notice
 

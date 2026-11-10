@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "yLoader",
+  "version": "2026.2.0",
+  "identifier": "com.yloader.app",
+  "build": {
+    "beforeBuildCommand": "npm run build --prefix frontend",
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "windows": [],
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": [{
+        "identifier": "main-window",
+        "windows": ["main"],
+        "permissions": [
+          "core:event:allow-listen",
+          "core:event:allow-unlisten",
+          "core:window:allow-close",
+          "core:window:allow-minimize",
+          "core:window:allow-is-maximized",
+          "core:window:allow-toggle-maximize",
+          "core:window:allow-start-dragging",
+          "core:window:allow-internal-toggle-maximize"
+        ]
+      }],
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* https://noembed.com; img-src 'self' data: blob: https: http:; media-src 'self' blob: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-src https://www.youtube-nocookie.com https://w.soundcloud.com; base-uri 'none'; form-action 'none'"
+    }
+  },
+  "plugins": {
+    "deep-link": {"desktop": {"schemes": ["yloader"]}},
+    "updater": {"pubkey": ""}
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "windows/upgrade.nsh"
+      }
+    },
+    "icon": [
+      "../build/icons/icon-512.png",
+      "../build/icons/icon.ico",
+      "icons/icon.icns"
+    ]
+  }
+}

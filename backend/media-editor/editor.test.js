@@ -39,7 +39,7 @@ test('waveform reflects real silence and signal amplitude', async () => {
   } finally { await fs.rm(dir, { recursive: true, force: true }) }
 })
 
-test('real ffmpeg: preview ranges, cut/volume/fades, mute, audio extraction, originals and external Electron paths', async () => {
+test('real ffmpeg: preview ranges, cut/volume/fades, mute, audio extraction, originals and external download paths', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yloader-editor-'))
   const external = path.join(dir, 'chosen-folder')
   await fs.mkdir(external)

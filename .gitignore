@@ -32,12 +32,11 @@ backend/downloads/
 !/build/icons/icon.ico
 !/build/icons/icon.icns
 !/build/icons/icon-512.png
-!/build/icons/installer-icon.ico
 /coverage/
 .vite/
 .cache/
-/.electron-build/
-/release/
+/release-assets/
+/release-upload/
 
 # Docker / Compose
 # Keep main docker-compose.yml, ignore local overrides
@@ -48,3 +47,9 @@ docker-compose.override.yml
 .codex
 
 /Dokumentation
+
+# Tauri build artifacts
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/tauri.updater-build.json
+!/src-tauri/src/api/downloads/

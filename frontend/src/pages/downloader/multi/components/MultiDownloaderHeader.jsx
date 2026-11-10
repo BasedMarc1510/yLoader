@@ -40,7 +40,7 @@ export default function MultiDownloaderHeader({
   globalDownloadType,
   onGlobalTypeChange,
   unsupportedCount,
-  isElectronRuntime,
+  isDesktopRuntime,
   downloadDirectory,
   onDownloadDirectoryChange,
   onPickDirectory,
@@ -179,7 +179,7 @@ export default function MultiDownloaderHeader({
             ))}
           </ToggleButtonGroup>
 
-          {isElectronRuntime && (
+          {isDesktopRuntime && (
             <Stack direction="row" spacing={1}>
               <TextField
                 fullWidth

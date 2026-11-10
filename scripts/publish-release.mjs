@@ -12,7 +12,7 @@ const FRONTEND_DIR = path.join(ROOT_DIR, 'frontend')
 const BACKEND_DIR = path.join(ROOT_DIR, 'backend')
 const IS_WINDOWS = process.platform === 'win32'
 const NPM_CMD = IS_WINDOWS ? 'cmd.exe' : 'npm'
-const WORKFLOW_NAME = 'Electron Build and Release'
+const WORKFLOW_NAME = 'Tauri Desktop Release'
 const DEFAULT_TIMEOUT_MS = 90 * 60 * 1000
 const RELEASE_TIMEOUT_MS = 45 * 60 * 1000
 const AUTH_TOKEN = String(process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '').trim()
@@ -34,6 +34,7 @@ function run(command, args = [], options = {}) {
     cwd = ROOT_DIR,
     capture = false,
     allowFailure = false,
+    env = process.env,
   } = options
 
   // On Windows, .cmd/.bat wrappers (like npm.cmd) require shell execution.
@@ -41,6 +42,7 @@ function run(command, args = [], options = {}) {
 
   const result = spawnSync(command, args, {
     cwd,
+    env,
     encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     shell: useShell,
@@ -153,6 +155,16 @@ function updateAllPackageVersions(version) {
   run(NPM_CMD, npmArgs(['version', version, '--no-git-tag-version']), { cwd: ROOT_DIR })
   run(NPM_CMD, npmArgs(['version', version, '--no-git-tag-version']), { cwd: FRONTEND_DIR })
   run(NPM_CMD, npmArgs(['version', version, '--no-git-tag-version']), { cwd: BACKEND_DIR })
+  for (const [file, pattern] of [
+    ['src-tauri/tauri.conf.json', /(^  "version": ")[^"]+("[,]?$)/m],
+    ['src-tauri/Cargo.toml', /(^\[package\]\r?\nname = "yloader"\r?\nversion = ")[^"]+("$)/m],
+    ['src-tauri/Cargo.lock', /(^\[\[package\]\]\r?\nname = "yloader"\r?\nversion = ")[^"]+("$)/m],
+  ]) {
+    const filename = path.join(ROOT_DIR, file)
+    const source = fs.readFileSync(filename, 'utf8')
+    if (!pattern.test(source)) throw new Error(`Application version missing in ${file}`)
+    fs.writeFileSync(filename, source.replace(pattern, (_match, before, after) => `${before}${version}${after}`))
+  }
 }
 
 function stageVersionFiles() {
@@ -164,6 +176,9 @@ function stageVersionFiles() {
     'frontend/package-lock.json',
     'backend/package.json',
     'backend/package-lock.json',
+    'src-tauri/tauri.conf.json',
+    'src-tauri/Cargo.toml',
+    'src-tauri/Cargo.lock',
   ])
 }
 
@@ -304,19 +319,22 @@ async function main() {
   const branchName = getCurrentBranchName()
   const rootVersion = String(readPackageJson(ROOT_DIR)?.version || '').trim()
 
-  if (rootVersion === version) {
-    throw new Error(`Root package.json already uses version ${version}. Provide a newer version.`)
-  }
-
   assertCleanGitWorktree()
   assertTagDoesNotExist(tagName)
 
-  info(`Setze Versionen auf ${version}...`)
-  updateAllPackageVersions(version)
+  if (rootVersion !== version) {
+    info(`Setze Versionen auf ${version}...`)
+    updateAllPackageVersions(version)
+  }
+  run(process.execPath, ['scripts/desktop-release-assets.mjs', '--check-version'], {
+    env: { ...process.env, GITHUB_REF_NAME: tagName },
+  })
 
-  info('Stage und Commit der Versionsdateien...')
-  stageVersionFiles()
-  run('git', ['commit', '-m', `chore: prepare release ${tagName}`])
+  if (rootVersion !== version) {
+    info('Stage und Commit der Versionsdateien...')
+    stageVersionFiles()
+    run('git', ['commit', '-m', `chore: prepare release ${tagName}`])
+  }
 
   info(`Tag ${tagName} erstellen...`)
   run('git', ['tag', '-a', tagName, '-m', `release ${tagName}`])

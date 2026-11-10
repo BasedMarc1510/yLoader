@@ -12,8 +12,8 @@ export default function YtDlpCookieFileSettingsGroup({
   t,
 }) {
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const canPickCookieFile = Boolean(runtime?.isElectron && runtime?.downloads?.pickFile)
-  const canValidateCookieFile = Boolean(runtime?.isElectron && runtime?.downloads?.validateFile)
+  const canPickCookieFile = Boolean(runtime?.isDesktop && runtime?.downloads?.pickFile)
+  const canValidateCookieFile = Boolean(runtime?.isDesktop && runtime?.downloads?.validateFile)
   const [cookieFilePathDraft, setCookieFilePathDraft] = React.useState(String(cookieState.cookiesFilePath || ''))
   const [cookiePickerError, setCookiePickerError] = React.useState('')
   const [pickingCookieFile, setPickingCookieFile] = React.useState(false)

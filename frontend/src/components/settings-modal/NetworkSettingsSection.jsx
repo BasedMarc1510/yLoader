@@ -8,7 +8,7 @@ import SettingGroup from './SettingGroup'
 /**
  * Network & Authentication settings section.
  * - Web mode: only cookie file import
- * - Electron mode: cookie file + browser extraction
+ * - desktop mode: cookie file + browser extraction
  */
 export default function NetworkSettingsSection({
   cookieSettings,
@@ -20,13 +20,13 @@ export default function NetworkSettingsSection({
   requestedFocusTarget,
   requestedFocusRequestId,
   t,
-  isElectronRuntime,
+  isDesktopRuntime,
   isMobileLayout = false,
 }) {
   const cookieState = normalizeYtDlpCookieSettings(cookieSettings)
   const cookieControlsDisabled = Boolean(cookieSettingsLoading || cookieSettingsSaving)
   const cookieSectionRef = React.useRef(null)
-  const showBrowserImport = isElectronRuntime && cookieState.browserImportSupported
+  const showBrowserImport = isDesktopRuntime && cookieState.browserImportSupported
   const fileModeActive = Boolean(cookieState.cookiesFileEnabled)
   const browserModeActive = Boolean(showBrowserImport && cookieState.cookiesFromBrowserEnabled)
   const cookieFilePanelDisabled = Boolean(cookieControlsDisabled || browserModeActive)
@@ -109,7 +109,7 @@ export default function NetworkSettingsSection({
         </SettingGroup>
       </Box>
 
-      {/* Browser cookie extraction — Electron only */}
+      {/* Browser cookie extraction — desktop only */}
       {showBrowserImport && (
         <Box
           sx={{
@@ -131,7 +131,7 @@ export default function NetworkSettingsSection({
       )}
 
       {/* Unsupported hint for web mode */}
-      {!isElectronRuntime && (
+      {!isDesktopRuntime && (
         <Box sx={(theme) => ({
           mt: 1,
           px: 2,

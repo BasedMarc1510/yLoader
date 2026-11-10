@@ -26,7 +26,7 @@ export default function OverwriteConfirmDialog({
       onClose={onCancel}
       maxWidth="xs"
       fullWidth
-      // Keep the dialog below fixed Electron titlebar controls (z-index 1700).
+      // Keep the dialog below fixed desktop title bar controls (z-index 1700).
       sx={{ zIndex: 1600 }}
     >
       <DialogTitle>{title}</DialogTitle>

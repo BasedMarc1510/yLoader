@@ -25,7 +25,7 @@ function normalizeProgress(progress) {
   }
 }
 
-function normalizeUpdaterState(rawState, isElectronUpdaterAvailable) {
+function normalizeUpdaterState(rawState, isDesktopUpdaterAvailable) {
   const input = rawState && typeof rawState === 'object' ? rawState : {}
   const currentVersionRaw = String(input.currentVersion || FALLBACK_APP_VERSION).trim()
   const availableVersionRaw = String(input.availableVersion || '').trim()
@@ -41,10 +41,10 @@ function normalizeUpdaterState(rawState, isElectronUpdaterAvailable) {
     error: String(input.error || '').trim(),
     canCheckForUpdates: input.canCheckForUpdates !== undefined
       ? Boolean(input.canCheckForUpdates)
-      : Boolean(isElectronUpdaterAvailable),
+      : Boolean(isDesktopUpdaterAvailable),
     canAutoUpdate: input.canAutoUpdate !== undefined
       ? Boolean(input.canAutoUpdate)
-      : Boolean(isElectronUpdaterAvailable),
+      : Boolean(isDesktopUpdaterAvailable),
     autoUpdateEnabled: input.autoUpdateEnabled !== undefined
       ? Boolean(input.autoUpdateEnabled)
       : true,
@@ -66,18 +66,18 @@ async function fetchWebUpdaterStateSnapshot(apiBase, { forceLatest = false } = {
   return response.json()
 }
 
-export default function useElectronAppUpdater() {
+export default function useDesktopAppUpdater() {
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
   const updaterApi = runtime?.appUpdater
-  const isElectronUpdaterAvailable = Boolean(runtime?.isElectron && updaterApi)
+  const isDesktopUpdaterAvailable = Boolean(runtime?.isDesktop && updaterApi)
   const API_BASE = getApiBase()
 
-  const [state, setState] = React.useState(() => normalizeUpdaterState(null, isElectronUpdaterAvailable))
+  const [state, setState] = React.useState(() => normalizeUpdaterState(null, isDesktopUpdaterAvailable))
 
   React.useEffect(() => {
-    setState((previous) => normalizeUpdaterState(previous, isElectronUpdaterAvailable))
+    setState((previous) => normalizeUpdaterState(previous, isDesktopUpdaterAvailable))
 
-    if (!isElectronUpdaterAvailable) {
+    if (!isDesktopUpdaterAvailable) {
       let cancelled = false
 
       const syncWebState = async (forceLatest = false) => {
@@ -127,10 +127,10 @@ export default function useElectronAppUpdater() {
       mounted = false
       if (typeof unsubscribe === 'function') unsubscribe()
     }
-  }, [API_BASE, isElectronUpdaterAvailable, updaterApi])
+  }, [API_BASE, isDesktopUpdaterAvailable, updaterApi])
 
   const checkForUpdates = React.useCallback(() => {
-    if (isElectronUpdaterAvailable) {
+    if (isDesktopUpdaterAvailable) {
       if (typeof updaterApi?.checkForUpdates !== 'function') {
         return Promise.resolve({ ok: false, reason: 'unsupported' })
       }
@@ -152,10 +152,10 @@ export default function useElectronAppUpdater() {
         }, false))
         return { ok: false, error: message }
       })
-  }, [API_BASE, isElectronUpdaterAvailable, updaterApi])
+  }, [API_BASE, isDesktopUpdaterAvailable, updaterApi])
 
   const downloadUpdate = React.useCallback(() => {
-    if (isElectronUpdaterAvailable) {
+    if (isDesktopUpdaterAvailable) {
       if (typeof updaterApi?.downloadUpdate !== 'function') {
         return Promise.resolve({ ok: false, reason: 'unsupported' })
       }
@@ -170,18 +170,18 @@ export default function useElectronAppUpdater() {
 
     window.open(url, '_blank', 'noopener,noreferrer')
     return Promise.resolve({ ok: true, manual: true, url })
-  }, [isElectronUpdaterAvailable, state.releasePageUrl, updaterApi])
+  }, [isDesktopUpdaterAvailable, state.releasePageUrl, updaterApi])
 
   const quitAndInstall = React.useCallback(() => {
-    if (!isElectronUpdaterAvailable || typeof updaterApi?.quitAndInstall !== 'function') {
+    if (!isDesktopUpdaterAvailable || typeof updaterApi?.quitAndInstall !== 'function') {
       return Promise.resolve({ ok: false, reason: 'unsupported' })
     }
 
     return updaterApi.quitAndInstall()
-  }, [isElectronUpdaterAvailable, updaterApi])
+  }, [isDesktopUpdaterAvailable, updaterApi])
 
   const setAutoUpdateEnabled = React.useCallback((enabled) => {
-    if (!isElectronUpdaterAvailable || typeof updaterApi?.setAutoUpdateEnabled !== 'function') {
+    if (!isDesktopUpdaterAvailable || typeof updaterApi?.setAutoUpdateEnabled !== 'function') {
       return Promise.resolve({ ok: false, reason: 'unsupported' })
     }
 
@@ -193,10 +193,10 @@ export default function useElectronAppUpdater() {
         }, true))
         return result
       })
-  }, [isElectronUpdaterAvailable, updaterApi])
+  }, [isDesktopUpdaterAvailable, updaterApi])
 
   return {
-    isElectronUpdaterAvailable,
+    isDesktopUpdaterAvailable,
     state,
     checkForUpdates,
     downloadUpdate,

@@ -1,0 +1,176 @@
+name: Tauri Desktop Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish installers and update manifests from a version tag
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  PUBLISH_DESKTOP: ${{ startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) }}
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Universal DMG
+            os: macos-latest
+            target: universal-apple-darwin
+            bundle: dmg,app
+            artifacts: |
+              src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz*
+          - name: Windows x64 NSIS
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: nsis
+            artifacts: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*
+          - name: Linux x64 AppImage
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundle: appimage
+            artifacts: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage*
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install Linux WebKit and packaging dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+
+      - name: Verify release version
+        shell: bash
+        if: env.PUBLISH_DESKTOP == 'true'
+        run: node scripts/desktop-release-assets.mjs --check-version
+
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+
+      - name: Install macOS Rust targets
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install JavaScript build dependencies
+        run: |
+          npm ci
+          npm ci --prefix frontend
+          npm run build --prefix frontend
+
+      - name: Test Rust API
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Build installer
+        shell: bash
+        env:
+          YLOADER_TAURI_UPDATE_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          YLOADER_TAURI_UPDATE_PUBKEY: ${{ vars.YLOADER_TAURI_UPDATE_PUBKEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY || secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD || secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          args=(--ci --target "${{ matrix.target }}" --bundles "${{ matrix.bundle }}")
+          if [[ "$PUBLISH_DESKTOP" == true ]]; then
+            : "${YLOADER_TAURI_UPDATE_PUBKEY:?Set the Tauri updater public key in repository variables}"
+            : "${TAURI_SIGNING_PRIVATE_KEY:?Set the matching private key in repository secrets}"
+            if [[ "$RUNNER_OS" == macOS ]]; then
+              : "${APPLE_CERTIFICATE:?Set the Developer ID Application certificate}"
+              : "${APPLE_CERTIFICATE_PASSWORD:?Set the certificate password}"
+              : "${APPLE_SIGNING_IDENTITY:?Set the Developer ID Application identity}"
+              : "${APPLE_ID:?Set the Apple ID for notarization}"
+              : "${APPLE_PASSWORD:?Set the Apple app-specific password for notarization}"
+              : "${APPLE_TEAM_ID:?Set the Apple Developer team ID}"
+            fi
+            node <<'NODE'
+          const { YLOADER_TAURI_UPDATE_ENDPOINT, YLOADER_TAURI_UPDATE_PUBKEY } = process.env
+          const config = {
+            bundle: { createUpdaterArtifacts: true },
+            plugins: { updater: {
+              endpoints: [YLOADER_TAURI_UPDATE_ENDPOINT],
+              pubkey: YLOADER_TAURI_UPDATE_PUBKEY,
+              requireSignedVersion: true,
+            } },
+          }
+          require('node:fs').writeFileSync('src-tauri/tauri.updater-build.json', JSON.stringify(config))
+          NODE
+            args+=(--config src-tauri/tauri.updater-build.json)
+          else
+            unset YLOADER_TAURI_UPDATE_ENDPOINT YLOADER_TAURI_UPDATE_PUBKEY
+            unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+            if [[ "$RUNNER_OS" == macOS ]]; then export APPLE_SIGNING_IDENTITY=-; fi
+          fi
+          npm run build:desktop -- "${args[@]}"
+
+      - name: Verify macOS architectures
+        if: runner.os == 'macOS'
+        run: |
+          executable="src-tauri/target/universal-apple-darwin/release/bundle/macos/yLoader.app/Contents/MacOS/yloader"
+          architectures=$(lipo -archs "$executable" | tr ' ' '\n' | sort)
+          test "$architectures" = "$(printf 'arm64\nx86_64\n')"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.target }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish desktop release
+    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: desktop-*
+          path: release-assets
+      - name: Assemble and validate desktop update manifests
+        run: node scripts/desktop-release-assets.mjs
+      - name: Publish desktop installers and manifests
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: release-upload/*
+          fail_on_unmatched_files: true
+      - name: Make the completed release public
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false

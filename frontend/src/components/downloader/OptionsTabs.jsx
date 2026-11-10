@@ -71,7 +71,7 @@ export default function OptionsTabs({
   const { t: i18nT } = useI18n()
   const { showNotification } = useNotification()
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const isElectronRuntime = Boolean(runtime?.isElectron)
+  const isDesktopRuntime = Boolean(runtime?.isDesktop)
 
   const normalizedDisabledDownloadTypes = React.useMemo(
     () => normalizeDisabledDownloadTypes(disabledDownloadTypes),
@@ -462,7 +462,7 @@ export default function OptionsTabs({
             audioFormats={data.audioFormats}
             maxAudioBitrateKbps={data.maxAudioBitrateKbps}
             loadingFormats={data.loadingFormats}
-            isElectronRuntime={isElectronRuntime}
+            isDesktopRuntime={isDesktopRuntime}
             downloadTargetSettings={data.audioDownloadTargetSettings}
             defaultAudioContainer={data.downloadSettings?.defaultAudioContainer}
             defaultCoverEmbedEnabled={data.downloadSettings?.defaultEmbedCoverArt}
@@ -498,7 +498,7 @@ export default function OptionsTabs({
             videoFormats={data.videoFormats}
             maxVideoHeight={data.maxVideoHeight}
             loadingFormats={data.loadingFormats}
-            isElectronRuntime={isElectronRuntime}
+            isDesktopRuntime={isDesktopRuntime}
             downloadTargetSettings={data.videoDownloadTargetSettings}
             defaultVideoContainer={data.downloadSettings?.defaultVideoContainer}
             videoTitle={videoTitle}

@@ -295,26 +295,12 @@
   margin: 0 !important;
   align-self: center;
   box-shadow: 0 2px 7px rgba(0, 0, 0, 0.08);
-  transition: background-color 140ms ease, color 140ms ease, transform 140ms ease !important;
+  transition: background-color 140ms ease, color 140ms ease !important;
 }
 
 .yl-notification-btn:hover {
   background: color-mix(in srgb, var(--yl-accent, transparent) 74%, transparent);
   color: var(--yl-foreground, inherit);
-  transform: translateY(-1px);
-}
-
-.yl-notification-btn:active {
-  transform: translateY(0);
-}
-
-.yl-tabbar:not(.is-electron) .yl-notification-btn {
-  transition: background-color 140ms ease, color 140ms ease !important;
-}
-
-.yl-tabbar:not(.is-electron) .yl-notification-btn:hover,
-.yl-tabbar:not(.is-electron) .yl-notification-btn:active {
-  transform: none;
 }
 
 .yl-notification-btn .MuiBadge-badge {
@@ -365,7 +351,6 @@
   margin-left: 0;
   z-index: 1700;
   pointer-events: auto;
-  -webkit-app-region: no-drag;
 }
 
 .yl-window-btn {
@@ -378,11 +363,6 @@
   cursor: default !important;
   overflow: hidden;
   transition: none !important;
-}
-
-:root[data-runtime-target='electron'] .yl-window-controls .yl-window-btn-control,
-:root[data-runtime-target='electron'] .yl-window-controls .yl-window-btn-control * {
-  cursor: default !important;
 }
 
 .yl-window-btn:not(.yl-window-btn-notification),
@@ -404,6 +384,11 @@
 .yl-window-btn:hover {
   background: var(--yl-accent, transparent);
   color: var(--yl-foreground, inherit);
+}
+
+.yl-window-btn.Mui-focusVisible {
+  outline: 2px solid var(--yl-foreground, currentColor);
+  outline-offset: -2px;
 }
 
 .yl-window-btn.is-close:hover {

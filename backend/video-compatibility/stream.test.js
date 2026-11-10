@@ -84,7 +84,7 @@ const media = file => JSON.parse(execFileSync(ffprobe, [
   '-v', 'error', '-show_streams', '-show_format', '-of', 'json', file,
 ], { encoding: 'utf8' }))
 
-for (const runtime of ['server', 'electron']) {
+for (const runtime of ['server', 'docker']) {
   test(`stream: ${runtime} converts after cuts, handles cache/validation/failure and retains target`, async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yloader-stream-'))
     let child
@@ -92,36 +92,31 @@ for (const runtime of ['server', 'electron']) {
       await fixture(dir)
       const server = await startServer(dir, runtime)
       child = server.child
-      const target = path.join(dir, 'selected.mp4')
-      const direct = runtime === 'electron' ? { electronSavePath: target, electronAllowOverwrite: true } : {}
       const cuts = { enabled: true, mode: 'keep', trimStart: 0.2, trimEnd: 1.2 }
-      const result = await download(server.base, { ...direct, cuts })
+      const result = await download(server.base, { cuts })
       assert.equal(result.status, 200)
       assert.match(result.text, /"stage":"converting"/)
       const complete = completion(result.text)
       assert.ok(complete, result.text)
       assert.equal(path.extname(complete.filename), '.mp4')
-      if (runtime === 'electron') assert.equal(complete.savePath, target)
       const output = media(complete.savePath)
       assert.equal(output.streams.find(s => s.codec_type === 'video').codec_name, 'h264')
       assert.equal(output.streams.find(s => s.codec_type === 'audio').codec_name, 'aac')
       assert.ok(Number(output.format.duration) < 1.5)
-      if (runtime === 'server') {
-        const cached = await download(server.base, { cuts })
-        assert.match(cached.text, /"stage":"cached"/)
-        const ordinary = await download(server.base, { cuts, maximumCompatibility: false })
-        assert.doesNotMatch(ordinary.text, /"stage":"cached"/)
-        assert.equal(media(completion(ordinary.text).savePath).streams[0].codec_name, 'vp9')
-      }
+      const cached = await download(server.base, { cuts })
+      assert.match(cached.text, /"stage":"cached"/)
+      const ordinary = await download(server.base, { cuts, maximumCompatibility: false })
+      assert.doesNotMatch(ordinary.text, /"stage":"cached"/)
+      assert.equal(media(completion(ordinary.text).savePath).streams[0].codec_name, 'vp9')
       const invalid = await download(server.base, { maximumCompatibility: 'true' })
       assert.equal(invalid.status, 400)
       const before = await fs.readFile(complete.savePath)
       await fs.writeFile(path.join(dir, 'fail'), '')
-      const failed = await download(server.base, { ...direct, videoTitle: 'failure' })
+      const failed = await download(server.base, { videoTitle: 'failure' })
       assert.match(failed.text, /VIDEO_COMPATIBILITY_FAILED/)
       assert.equal(completion(failed.text), null)
       assert.deepEqual(await fs.readFile(complete.savePath), before)
-      const remaining = await fs.readdir(runtime === 'server' ? path.join(dir, 'downloads') : dir)
+      const remaining = await fs.readdir(path.join(dir, 'downloads'))
       assert.ok(!remaining.some(name => name.includes('_compatible_') || name.startsWith('yloader_') || name.startsWith('temp_')))
     } finally {
       if (child && child.exitCode === null) { child.kill(); await once(child, 'exit') }

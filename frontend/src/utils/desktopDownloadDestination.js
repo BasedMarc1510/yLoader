@@ -6,7 +6,7 @@ import {
 function getRuntimeBridge() {
   if (typeof window === 'undefined') return null
   const runtime = window?.yloaderRuntime
-  if (!runtime?.isElectron) return null
+  if (!runtime?.isDesktop) return null
   if (!runtime?.downloads) return null
   return runtime
 }
@@ -132,7 +132,7 @@ function normalizeTargetSettings(value) {
   }
 }
 
-export async function resolveElectronDownloadDestination({
+export async function resolveDesktopDownloadDestination({
   apiBase,
   downloadType,
   suggestedFilename,
@@ -141,7 +141,7 @@ export async function resolveElectronDownloadDestination({
 }) {
   const runtime = getRuntimeBridge()
   if (!runtime) {
-    return { enabled: false, canceled: false, electronSavePath: '', electronTargetDirectory: '' }
+    return { enabled: false, canceled: false, desktopSavePath: '', desktopTargetDirectory: '' }
   }
 
   let target = normalizeTargetSettings(targetSettings)
@@ -163,29 +163,29 @@ export async function resolveElectronDownloadDestination({
 
     if (!picked || picked.canceled || !picked.path) {
       if (!picked || picked.canceled) {
-        return { enabled: true, canceled: true, electronSavePath: '', electronTargetDirectory: '' }
+        return { enabled: true, canceled: true, desktopSavePath: '', desktopTargetDirectory: '' }
       }
 
       return {
         enabled: true,
         canceled: false,
-        electronSavePath: '',
-        electronTargetDirectory: configuredDirectory,
+        desktopSavePath: '',
+        desktopTargetDirectory: configuredDirectory,
       }
     }
 
     return {
       enabled: true,
       canceled: false,
-      electronSavePath: String(picked.path || '').trim(),
-      electronTargetDirectory: '',
+      desktopSavePath: String(picked.path || '').trim(),
+      desktopTargetDirectory: '',
     }
   }
 
   return {
     enabled: true,
     canceled: false,
-    electronSavePath: '',
-    electronTargetDirectory: configuredDirectory,
+    desktopSavePath: '',
+    desktopTargetDirectory: configuredDirectory,
   }
 }

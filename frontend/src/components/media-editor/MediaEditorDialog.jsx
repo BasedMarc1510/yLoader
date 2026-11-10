@@ -18,6 +18,8 @@ export default function MediaEditorDialog({ entry, onClose, onSaved }) {
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const editor = useMediaEditor(entry, onSaved)
   const { media, error, saving, result, disabled, range, invalid } = editor
+  const saveDownload = window.yloaderRuntime?.downloads?.saveDownload
+  const [downloadError, setDownloadError] = React.useState(false)
   const close = () => { editor.cancel(); onClose() }
 
   return <Dialog open onClose={saving ? undefined : close} fullScreen={fullScreen} fullWidth maxWidth="lg"
@@ -34,6 +36,7 @@ export default function MediaEditorDialog({ entry, onClose, onSaved }) {
     </DialogTitle>
     <DialogContent dividers sx={{ p: { xs: 2, sm: 2.5 } }}>
       <Stack spacing={1.5}>
+        {downloadError && <Alert severity="error">{t('downloader.errorDownloadFailed')}</Alert>}
         {error && <Alert severity="error">{t(`editor.errors.${error}`)}</Alert>}
         {!media && !error && <Box sx={{ textAlign: 'center', py: 8 }}><CircularProgress aria-label={t('editor.loading')} /></Box>}
         {media && <>
@@ -70,8 +73,11 @@ export default function MediaEditorDialog({ entry, onClose, onSaved }) {
         {t('editor.exportHint', { format: editor.audioOnly ? 'M4A' : 'MP4' })}
       </Typography>
       <Button color="inherit" onClick={close}>{t(saving ? 'editor.cancel' : 'editor.close')}</Button>
-      {result ? <Button variant="contained" startIcon={<Download size={18} />} component="a"
-        href={`${getApiBase()}/api/downloads/${result.id}/file`}>{t('editor.download')}</Button>
+      {result ? <Button variant="contained" startIcon={<Download size={18} />}
+        component={saveDownload ? 'button' : 'a'}
+        href={saveDownload ? undefined : `${getApiBase()}/api/downloads/${result.id}/file`}
+        onClick={saveDownload ? () => { setDownloadError(false); saveDownload(result.id).catch(() => setDownloadError(true)) } : undefined}>
+        {t('editor.download')}</Button>
         : <Button variant="contained" startIcon={<Download size={18} />} onClick={editor.save} disabled={!media || invalid || saving}>{t('editor.save')}</Button>}
     </DialogActions>
   </Dialog>

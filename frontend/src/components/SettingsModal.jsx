@@ -135,7 +135,7 @@ function SettingsModalInner({
   requestedFocusRequestId = '',
   onToolUpdateSummaryChange,
   appUpdateState,
-  isElectronUpdaterAvailable = false,
+  isDesktopUpdaterAvailable = false,
   checkForAppUpdates,
   downloadAppUpdate,
   installAppUpdate,
@@ -147,9 +147,9 @@ function SettingsModalInner({
   const { mode, setPreference } = useContext(ColorModeContext)
   const { language, setLanguage } = useContext(SettingsContext)
   const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-  const isElectronRuntime = Boolean(runtime?.isElectron)
+  const isDesktopRuntime = Boolean(runtime?.isDesktop)
   const desktopSettingsApi = runtime?.desktopSettings
-  const isDesktopSettingsAvailable = Boolean(isElectronRuntime && desktopSettingsApi)
+  const isDesktopSettingsAvailable = Boolean(isDesktopRuntime && desktopSettingsApi)
   // Map legacy section keys from external callers to the new navigation structure.
   // This ensures openSettingsModal('yt-dlp', 'cookies') still works after the refactor.
   const resolveSectionKey = React.useCallback((key) => {
@@ -245,7 +245,7 @@ function SettingsModalInner({
   const [ytCookieSettingsSaving, setYtCookieSettingsSaving] = useState(false)
   const [ytCookieSettingsError, setYtCookieSettingsError] = useState('')
 
-  /* ─── electron desktop settings ─── */
+  /* ─── desktop settings ─── */
   const [desktopSettings, setDesktopSettings] = useState(() => ({ ...DESKTOP_SETTINGS_DEFAULTS }))
   const desktopSettingsRef = useRef(desktopSettings)
   const desktopSettingsRequestIdRef = useRef(0)
@@ -540,7 +540,7 @@ function SettingsModalInner({
       }
       try {
         const runtime = typeof window !== 'undefined' ? window.yloaderRuntime : null
-        if (runtime?.isElectron && typeof runtime?.downloads?.settingsUpdated === 'function') {
+        if (runtime?.isDesktop && typeof runtime?.downloads?.settingsUpdated === 'function') {
           await runtime.downloads.settingsUpdated()
         }
       } catch {
@@ -1139,7 +1139,7 @@ function SettingsModalInner({
           selectSx={selectSx}
           t={t}
           appUpdateState={appUpdateState}
-          isElectronUpdaterAvailable={isElectronUpdaterAvailable}
+          isDesktopUpdaterAvailable={isDesktopUpdaterAvailable}
           checkForAppUpdates={checkForAppUpdates}
           downloadAppUpdate={downloadAppUpdate}
           installAppUpdate={installAppUpdate}
@@ -1166,7 +1166,7 @@ function SettingsModalInner({
           updateAutoDownloadSettings={updateAutoDownloadSettings}
           selectSx={selectSx}
           t={t}
-          isElectronRuntime={isElectronRuntime}
+          isDesktopRuntime={isDesktopRuntime}
           isMobileLayout={isMobileLayout}
           activeSubsection={downloadsSubsection}
           onNavigateToSubsection={handleNavigateToDownloadsSubsection}
@@ -1186,7 +1186,7 @@ function SettingsModalInner({
           requestedFocusTarget={sectionFocusTarget}
           requestedFocusRequestId={sectionFocusRequestId}
           t={t}
-          isElectronRuntime={isElectronRuntime}
+          isDesktopRuntime={isDesktopRuntime}
           isMobileLayout={isMobileLayout}
         />
       )
