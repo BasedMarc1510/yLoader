@@ -1,5 +1,5 @@
 import React from 'react'
-import { Button, Switch, TextField, Select, MenuItem } from '@mui/material'
+import { Alert, Button, Switch, TextField, Select, MenuItem } from '@mui/material'
 import SettingRow from './SettingRow'
 import {
   CHROMIUM_COOKIE_BROWSERS,
@@ -9,7 +9,7 @@ import {
 
 export default function YtDlpCookieBrowserSettingsGroup({
   cookieState,
-  cookieControlsDisabled,
+  cookieControlsDisabled: settingsDisabled,
   onUpdateCookieSettings,
   t,
 }) {
@@ -18,10 +18,10 @@ export default function YtDlpCookieBrowserSettingsGroup({
   const browserEnabled = Boolean(cookieState.cookiesFromBrowserEnabled)
   const browserHasChromiumKeyring = CHROMIUM_COOKIE_BROWSERS.has(selectedBrowser)
   const browserHasFirefoxContainer = selectedBrowser === 'firefox'
-
-  if (!browserImportSupported) {
-    return null
-  }
+  const requestBrowserAccess = typeof window !== 'undefined' && window.yloaderRuntime?.cookies?.requestBrowserAccess
+  const [requestingAccess, setRequestingAccess] = React.useState(false)
+  const [accessStatus, setAccessStatus] = React.useState('')
+  const cookieControlsDisabled = settingsDisabled || requestingAccess
 
   const [browserProfileDraft, setBrowserProfileDraft] = React.useState(String(cookieState.browserProfile || ''))
   const [browserContainerDraft, setBrowserContainerDraft] = React.useState(String(cookieState.browserContainer || ''))
@@ -60,22 +60,59 @@ export default function YtDlpCookieBrowserSettingsGroup({
       : []
   ), [cookieState.supportedKeyrings])
 
+  const applyBrowserSettings = async (patch, checkAccess = false) => {
+    setAccessStatus('')
+    if (requestBrowserAccess && checkAccess) {
+      const browser = patch?.browserName || selectedBrowser
+      const profile = patch?.browserProfile ?? browserProfileDraft.trim()
+      setRequestingAccess(true)
+      try {
+        const status = await requestBrowserAccess(browser, profile, t('settings.cookieBrowserAccessPrompt', {
+          browser: resolveBrowserLabel(t, browser),
+        }))
+        if (status !== 'ready') {
+          setAccessStatus(status === 'canceled' ? '' : status)
+          return
+        }
+        if (!patch) setAccessStatus('ready')
+      } catch {
+        setAccessStatus('unavailable')
+        return
+      } finally {
+        setRequestingAccess(false)
+      }
+    }
+    if (patch) onUpdateCookieSettings?.(patch)
+  }
+
+  if (!browserImportSupported) return null
+
+  const accessMessage = {
+    ready: 'cookieBrowserAccessReady',
+    missing: 'cookieBrowserAccessMissing',
+    wrongLocation: 'cookieBrowserAccessWrongLocation',
+    denied: 'cookieBrowserAccessDenied',
+    unavailable: 'cookieBrowserAccessDenied',
+  }[accessStatus]
+
   return (
     <>
       <SettingRow
         label={t('settings.cookieBrowserEnabled')}
-        description={browserImportSupported ? t('settings.cookieBrowserEnabledDesc') : t('settings.cookieBrowserUnsupportedHint')}
+        description={t(requestBrowserAccess && !selectedBrowser ? 'settings.cookieBrowserChooseFirst' : 'settings.cookieBrowserEnabledDesc')}
       >
         <Switch
           checked={browserImportSupported && browserEnabled}
-          disabled={cookieControlsDisabled || !browserImportSupported}
+          disabled={cookieControlsDisabled || Boolean(requestBrowserAccess && !selectedBrowser)}
+          inputProps={{ 'aria-label': t('settings.cookieBrowserEnabled') }}
           onChange={(event) => {
             const nextEnabled = event.target.checked
             const fallbackBrowser = selectedBrowser || browserOptions[0] || ''
-            onUpdateCookieSettings?.({
+            void applyBrowserSettings({
               cookiesFromBrowserEnabled: nextEnabled,
               browserName: nextEnabled ? fallbackBrowser : selectedBrowser,
-            })
+              ...(requestBrowserAccess && nextEnabled ? { browserProfile: browserProfileDraft.trim() } : {}),
+            }, nextEnabled)
           }}
         />
       </SettingRow>
@@ -89,18 +126,20 @@ export default function YtDlpCookieBrowserSettingsGroup({
             <Select
               size="small"
               value={selectedBrowser}
-              disabled={cookieControlsDisabled || !browserEnabled}
+              disabled={cookieControlsDisabled || (!browserEnabled && !requestBrowserAccess)}
+              inputProps={{ 'aria-label': t('settings.cookieBrowser') }}
               onChange={(event) => {
                 const nextBrowser = String(event.target.value || '').trim().toLowerCase()
                 const supportsKeyring = CHROMIUM_COOKIE_BROWSERS.has(nextBrowser)
                 const supportsContainer = nextBrowser === 'firefox'
 
-                onUpdateCookieSettings?.({
+                void applyBrowserSettings({
                   browserName: nextBrowser,
                   browserKeyring: supportsKeyring ? cookieState.browserKeyring : '',
                   browserContainer: supportsContainer ? cookieState.browserContainer : '',
-                  cookiesFromBrowserEnabled: Boolean(nextBrowser),
-                })
+                  ...(requestBrowserAccess ? { browserProfile: '' } : {}),
+                  cookiesFromBrowserEnabled: Boolean(nextBrowser) && (browserEnabled || !requestBrowserAccess),
+                }, Boolean(nextBrowser) && browserEnabled)
               }}
               sx={{
                 fontSize: 13,
@@ -157,7 +196,7 @@ export default function YtDlpCookieBrowserSettingsGroup({
             <TextField
               size="small"
               value={browserProfileDraft}
-              disabled={cookieControlsDisabled || !browserEnabled || !selectedBrowser}
+              disabled={cookieControlsDisabled || (!browserEnabled && !requestBrowserAccess) || !selectedBrowser}
               placeholder={t('settings.cookieBrowserProfilePlaceholder')}
               onChange={(event) => setBrowserProfileDraft(event.target.value)}
               onBlur={commitBrowserProfile}
@@ -204,6 +243,20 @@ export default function YtDlpCookieBrowserSettingsGroup({
             </SettingRow>
           )}
 
+          {requestBrowserAccess && browserEnabled && (
+            <SettingRow label={t('settings.cookieBrowserAccess')}>
+              <Button size="small" disabled={cookieControlsDisabled} onClick={() => void applyBrowserSettings(null, true)}>
+                {t('settings.cookieBrowserAccessRetry')}
+              </Button>
+            </SettingRow>
+          )}
+
+          {(requestingAccess || accessMessage) && (
+            <Alert severity={requestingAccess || accessStatus === 'ready' ? 'info' : 'warning'}>
+              {t(`settings.${requestingAccess ? 'cookieBrowserAccessPending' : accessMessage}`)}
+            </Alert>
+          )}
+
           <SettingRow
             label={t('settings.cookieBrowserRemoveTitle')}
             description={t('settings.cookieBrowserRemoveDesc')}
@@ -214,6 +267,7 @@ export default function YtDlpCookieBrowserSettingsGroup({
               size="small"
               disabled={cookieControlsDisabled || (!browserEnabled && !selectedBrowser)}
               onClick={() => {
+                setAccessStatus('')
                 setBrowserProfileDraft('')
                 setBrowserContainerDraft('')
                 onUpdateCookieSettings?.({

@@ -2,12 +2,31 @@ pub mod app_updates;
 pub mod links;
 pub mod shell;
 
+#[cfg(target_os = "macos")]
+mod browser_cookies;
+
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use tauri::{Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+
+#[tauri::command]
+pub async fn desktop_browser_cookie_access(
+    window: WebviewWindow,
+    browser: String,
+    profile: String,
+    title: String,
+) -> &'static str {
+    #[cfg(target_os = "macos")]
+    return browser_cookies::request(&window, &browser, &profile, title);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, browser, profile, title);
+        "unsupported"
+    }
+}
 
 fn directory(window: &WebviewWindow, raw: &str) -> Option<PathBuf> {
     let path = Path::new(raw.trim());

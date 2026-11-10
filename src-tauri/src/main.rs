@@ -43,6 +43,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![desktop::desktop_pick, desktop::desktop_inspect, desktop::desktop_reveal, desktop::desktop_save_download,
+            desktop::desktop_browser_cookie_access,
             desktop::links::desktop_pending_links, desktop::shell::desktop_settings_get,
             desktop::shell::desktop_settings_update, desktop::shell::desktop_tray_labels,
             desktop::app_updates::desktop_app_update_get,

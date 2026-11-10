@@ -29,6 +29,11 @@ runtime.desktopSettings = Object.freeze({
   update: (patch) => invoke('desktop_settings_update', { patch }),
   setTrayLabels: (quit) => invoke('desktop_tray_labels', { quit }),
 })
+if (runtime.platform === 'darwin') {
+  runtime.cookies = Object.freeze({
+    requestBrowserAccess: (browser, profile, title) => invoke('desktop_browser_cookie_access', { browser, profile, title }),
+  })
+}
 const subscribe = (name, handler) => {
   const listener = window.__TAURI__.event.listen(name, ({ payload }) => handler(payload))
   listener.catch(() => {})

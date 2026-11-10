@@ -174,6 +174,8 @@ npm run dev
 
 The command builds the React frontend and starts the Rust desktop backend. Restart it after editing the frontend to rebuild the assets. It uses the desktop app's local profile, so close an already running yLoader desktop instance before starting it.
 
+On macOS, choose a browser under **Settings → Network → Cookie import**, then enable browser cookies. If macOS blocks access, yLoader opens a native picker. Confirm the suggested browser folder or select the requested Safari cookie file. Use **Check access** if browser cookies were already enabled. If macOS still denies access during `npm run dev`, check **System Settings → Privacy & Security → Files and Folders** for the app hosting the terminal, such as Terminal or Visual Studio Code.
+
 For local development in the browser, run `npm run start`. For Docker, use the commands below.
 
 ```bash
